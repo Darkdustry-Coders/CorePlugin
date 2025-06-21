@@ -1,0 +1,61 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+dependencyResolutionManagement {
+    versionCatalogs {
+        libs {
+            def kotlin = "2.1.21"
+            def kotlin_ksp = "2.0.1"
+            def kotlin_cbor_json = "1.8.0"
+            def kotlin_ktoml = "0.7.0"
+            def kotlin_datetime = "0.6.2"
+            def kotlin_coro = "1.10.2"
+            def rabbitmq_aqmp = "5.25.0"
+            def surrealdb = "0.2.1"
+            def mindustry = "v146"
+            def jline = "3.30.0"
+
+            plugin("kotlin-jvm", "org.jetbrains.kotlin.jvm").version(kotlin)
+            plugin("kotlin-ksp", "com.google.devtools.ksp").version("$kotlin-$kotlin_ksp")
+            plugin("kotlin-serialization", "org.jetbrains.kotlin.plugin.serialization").version(kotlin)
+            plugin("kotlin-assert", "org.jetbrains.kotlin.plugin.power-assert").version(kotlin)
+
+            library("kotlin-json", "org.jetbrains.kotlinx", "kotlinx-serialization-json").version(kotlin_cbor_json)
+            library("kotlin-cbor", "org.jetbrains.kotlinx", "kotlinx-serialization-cbor").version(kotlin_cbor_json)
+            library("kotlin-toml-core", "com.akuleshov7", "ktoml-core").version(kotlin_ktoml)
+            library("kotlin-toml-source", "com.akuleshov7", "ktoml-source").version(kotlin_ktoml)
+            library("kotlin-datetime", "org.jetbrains.kotlinx", "kotlinx-datetime").version(kotlin_datetime)
+
+            library("kotlin-reflect", "org.jetbrains.kotlin", "kotlin-reflect").version(kotlin)
+            library("kotlin-ksp", "com.google.devtools.ksp", "symbol-processing-api").version("$kotlin-$kotlin_ksp")
+            library("kotlin-coro", "org.jetbrains.kotlinx", "kotlinx-coroutines-core").version(kotlin_coro)
+
+            library("mindustry-arc", "com.github.Anuken.Arc", "arc-core").version(mindustry)
+            library("mindustry-core", "com.github.Anuken.Mindustry", "core").version(mindustry)
+            library("mindustry-server", "com.github.Anuken.Mindustry", "server").version(mindustry)
+
+            library("rabbitmq-amqp", "com.rabbitmq", "amqp-client").version(rabbitmq_aqmp)
+            library("surrealdb", "com.surrealdb", "surrealdb").version(surrealdb)
+
+            library("jline-core", "org.jline", "jline").version(jline)
+            library("jline-terminal", "org.jline", "jline-terminal").version(jline)
+            library("jline-reader", "org.jline", "jline-reader").version(jline)
+
+            bundle("mindustry", ["mindustry-arc", "mindustry-core", "mindustry-server"])
+            bundle("jline", ["jline-core", "jline-reader", "jline-terminal"])
+            bundle("kotlin-serialization", ["kotlin-json", "kotlin-cbor", "kotlin-toml-core", "kotlin-toml-source"])
+        }
+    }
+}
+
+rootProject.name = 'CorePlugin'
+include 'annotations', 'processor', 'buildExtras'
+

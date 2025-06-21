@@ -1,0 +1,133 @@
+import groovy.json.JsonSlurper
+
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.ksp)
+    alias(libs.plugins.kotlin.assert)
+    id 'java-library'
+}
+
+def json = new JsonSlurper()
+def mod = json.parse("${projectDir}/src/main/resources/plugin.json" as File)
+
+group = 'mindurka'
+version = "${mod['version']}"
+
+compileJava.options.encoding = "UTF-8"
+
+repositories {
+    maven { url "https://raw.githubusercontent.com/Zelaux/MindustryRepo/master/repository" }
+    maven { url "https://jitpack.io" }
+}
+
+allprojects {
+    tasks.withType(JavaCompile).configureEach {
+        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies { 
+    compileOnly libs.bundles.mindustry
+
+    implementation libs.bundles.kotlin.serialization
+    implementation libs.kotlin.reflect
+    implementation libs.kotlin.datetime
+    implementation libs.kotlin.coro
+
+    implementation libs.rabbitmq.amqp
+    implementation libs.surrealdb
+
+    implementation libs.bundles.jline
+
+    testImplementation "org.jetbrains.kotlin:kotlin-test"
+    testImplementation libs.bundles.mindustry
+
+    implementation project(':annotations')
+    implementation project(':buildExtras')
+    ksp project(':processor')
+}
+
+jar {
+    from ({ configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }) {
+        exclude 'natives/**'
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+powerAssert {
+    functions = ["kotlin.assert", "kotlin.test.assertTrue", "kotlin.test.assertEquals", "kotlin.test.assertNull"]
+    includedSourceSets = ["main", "test"]
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "skipped", "failed"
+
+        showExceptions true
+        exceptionFormat "full"
+        showCauses true
+        showStackTraces true
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+}
+
+tasks.named("build") {
+    dependsOn ":test"
+}
+
+tasks.register("runServer") {
+    dependsOn build
+
+    doLast {
+        def path = rootProject.rootDir.toPath().resolve("run")
+        Files.createDirectories(path.resolve("config/mods"))
+        Files.createDirectories(path.resolve("config/maps"))
+
+        if (!Files.exists(path.resolve("server.jar"))) {
+            println "Downloading Mindustry server..."
+            Files.copy(
+                    new URI("https://github.com/Anuken/Mindustry/releases/download/v146/server-release.jar").toURL().openStream(),
+                    path.resolve("server.jar"))
+            Files.copy(
+                    rootDir.toPath().resolve("assets/Crashtest.msav"),
+                    path.resolve("config/maps/Crashtest.msav"))
+            Files.copy(
+                    rootDir.toPath().resolve("assets/settings.bin"),
+                    path.resolve("config/settings.bin"))
+        }
+
+        Files.copy(
+                jar.archiveFile.get().asFile.toPath(),
+                path.resolve("config/mods/Debug.jar"),
+                StandardCopyOption.REPLACE_EXISTING)
+
+        javaexec {
+            classpath = files(path.resolve("server.jar"))
+            workingDir = path.toFile()
+            standardInput = System.in
+
+            debugOptions {
+                enabled = true
+                port = 7857
+                server = true
+                suspend = false
+            }
+        }
+    }
+}

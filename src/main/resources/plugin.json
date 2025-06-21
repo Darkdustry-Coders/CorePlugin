@@ -1,0 +1,7 @@
+{
+  "name": "CorePlugin",
+  "author": "buj",
+  "main": "mindurka.coreplugin.Main",
+  "description": "Mindurka plugin rewritten in Kotlin",
+  "version": 0.1
+}

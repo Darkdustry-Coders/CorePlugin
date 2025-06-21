@@ -1,0 +1,4 @@
+- https://github.com/omaraflak/Annotation-Processor-Sample/blob/master/processor/src/main/java/me/aflak/processor/ActivityProcessor.java
+- https://stackoverflow.com/questions/15202997/what-is-the-difference-between-canonical-name-simple-name-and-class-name-in-jav
+- https://stackoverflow.com/questions/61218193/how-to-create-a-resource-with-spaces-in-file-name-from-annotation-processor
+- https://github.com/google/auto

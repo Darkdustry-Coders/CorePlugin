@@ -1,0 +1,18 @@
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+}
+
+group = 'mindurka.coreplugin'
+version = '0.1-SNAPSHOT'
+
+dependencies {
+    implementation project(":annotations")
+    implementation project(":buildExtras")
+
+    implementation libs.kotlin.ksp
+    implementation libs.kotlin.reflect
+}
+
+kotlin {
+    jvmToolchain(17)
+}
