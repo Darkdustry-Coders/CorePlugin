@@ -21,9 +21,17 @@ object Serializers {
     enum class T {
         Toml,
         Json,
+
+        ;
+
+        @OptIn(ExperimentalSerializationApi::class)
+        fun <T> serialize(`object`: T, output: OutputStream) {
+            Serializers.serialize<Any?>(output, this, `object`)
+        }
     }
 
     @PublicAPI
+    @JvmStatic
     val toml: Toml = Toml(
         TomlInputConfig(
             ignoreUnknownNames = true,
@@ -35,6 +43,7 @@ object Serializers {
 
     @OptIn(ExperimentalSerializationApi::class)
     @PublicAPI
+    @JvmStatic
     val json: Json = Json {
         prettyPrint = true
         prettyPrintIndent = "    "

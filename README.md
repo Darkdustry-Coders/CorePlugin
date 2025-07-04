@@ -1,10 +1,10 @@
 <center>
-# CorePlugin
+<h1>CorePlugin</h1>
 
 Kotlin rewrite of Mindurka's main plugin.
 </center>
 
-> ⚠️ `todo!();`
+> ⚠️
 > 
 > Still in development!
 

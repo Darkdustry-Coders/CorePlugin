@@ -471,13 +471,16 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                 }
                 classFile.println("if (!args.isEmpty()) return null")
                 classFile.println("return {")
+                val awaits = sym.annotations.any { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Awaits::class.java.canonicalName }
+                if (awaits) classFile.println("Async.run {")
                 classFile.print("method.call(")
                 if (f.firstParam != null) classFile.print("caller as ${f.firstParam},")
                 for (i in (if (f.firstParam == null) 0 else 1)..<paramTypes.size) {
                     val meta = paramTypes[i]
                     classFile.print("arg$i,")
                 }
-                classFile.println(")")
+                classFile.print(")")
+                if (awaits) classFile.print("}")
                 classFile.println("}}}")
 
                 classFile.flush()

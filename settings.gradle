@@ -12,8 +12,8 @@ plugins {
 dependencyResolutionManagement {
     versionCatalogs {
         libs {
-            def kotlin = "2.1.21"
-            def kotlin_ksp = "2.0.1"
+            def kotlin = "2.2.0"
+            def kotlin_ksp = "2.0.2"
             def kotlin_cbor_json = "1.8.0"
             def kotlin_ktoml = "0.7.0"
             def kotlin_datetime = "0.6.2"
@@ -48,9 +48,10 @@ dependencyResolutionManagement {
             library("jline-core", "org.jline", "jline").version(jline)
             library("jline-terminal", "org.jline", "jline-terminal").version(jline)
             library("jline-reader", "org.jline", "jline-reader").version(jline)
+            library("jline-jna", "org.jline", "jline-terminal-jna").version(jline)
 
             bundle("mindustry", ["mindustry-arc", "mindustry-core", "mindustry-server"])
-            bundle("jline", ["jline-core", "jline-reader", "jline-terminal"])
+            bundle("jline", ["jline-core", "jline-reader", "jline-terminal", "jline-jna"])
             bundle("kotlin-serialization", ["kotlin-json", "kotlin-cbor", "kotlin-toml-core", "kotlin-toml-source"])
         }
     }

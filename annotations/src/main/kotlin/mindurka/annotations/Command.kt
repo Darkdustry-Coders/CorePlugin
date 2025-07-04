@@ -3,7 +3,7 @@ import kotlin.reflect.KClass
 
 /**
  * A command that can be executed via console.
- * <p>
+ *
  * This annotation can only be applied to static functions.
  */
 @Target(AnnotationTarget.FUNCTION)
@@ -11,7 +11,7 @@ import kotlin.reflect.KClass
 annotation class ConsoleCommand(val value: String = "<infer>")
 /**
  * A command that can be executed in-game.
- * <p>
+ *
  * This annotation can only be applied to static functions.
  */
 @Target(AnnotationTarget.FUNCTION)

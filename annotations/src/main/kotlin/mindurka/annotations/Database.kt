@@ -12,7 +12,7 @@ annotation class DatabaseEntry(
 
 /**
  * An event that is sent over the network.
- * <p>
+ *
  * Unlike regular events, a network event is not immediately
  * dispatched to the application, instead being sent to the broker.
  */

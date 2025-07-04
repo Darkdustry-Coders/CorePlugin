@@ -1,5 +1,6 @@
 package mindurka.coreplugin
 
+// Keeping those unwrapped for my own sanity.
 import arc.Core
 import arc.struct.Seq
 import arc.util.Log
@@ -15,8 +16,6 @@ import mindurka.build.CommandType
 import mindurka.coreplugin.commands.metadataForCommand
 import mindurka.coreplugin.commands.registerCommand
 import mindurka.ui.handleUiEvent
-import mindurka.ui.openDialog
-import mindurka.util.*
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
@@ -27,6 +26,10 @@ import org.jline.reader.LineReaderBuilder
 import org.jline.terminal.TerminalBuilder
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import mindurka.annotations.Awaits
+import mindurka.ui.openMenu
+import kotlinx.coroutines.future.await
+import mindurka.util.*
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -96,55 +99,9 @@ data class CommandListData (
     var page: UInt,
 )
 
-fun helpPageMenu(data: CommandListData) {
-    data.caller.openDialog {
-        title("{commands.help.select-page.title}")
-        message("{commands.help.select-page.message}").put("page", data.page.toString())
-
-        var i = 0U
-        while (i <= data.maxPage) {
-            group {
-                for (o in 0..<3) {
-                    i++
-                    val switchTo = i
-                    if (i <= data.maxPage) optionText("$i") {
-                        data.page = switchTo
-                        helpMenu(data)
-                    }
-                    else optionText("[gray]x")
-                }
-            }
-        }
-
-        option("[scarlet]{generic.close}")
-    }
-}
-
-fun helpMenu(data: CommandListData) {
-    data.caller.openDialog {
-        title("{commands.help.title-page}")
-
-        message = data.commands.iterator().skip((data.page - 1U) * 5U).take(5U).join("\n\n")
-
-        group {
-            optionText("") {
-                if (data.page != 1U) data.page--
-                rerenderDialog()
-            }
-            optionText("[white]${data.page}/${data.maxPage}") { helpPageMenu(data) }
-            optionText("") {
-                if (data.page != data.maxPage) data.page++
-                rerenderDialog()
-            }
-        }
-
-        option("[scarlet]{generic.close}")
-    }
-}
-
-/** List commands. */
+/** List commands */
 @Command
-private fun help(caller: Player, page_: UInt?) {
+private fun help(caller: Player, pageInit: UInt?) = Async.run {
     val commands = Vars.netServer.clientCommands.commandList.iterator()
         .filter {
             val commands = metadataForCommand(it.text, CommandType.Player).collect(Seq())
@@ -152,12 +109,61 @@ private fun help(caller: Player, page_: UInt?) {
         }
         .map { Tl.fmt(caller).put("command", it.text).done("{commands.help.command}") }
         .collect(Seq())
-    var page = (page_ ?: 1U)
+    var page = (pageInit ?: 1U)
+    if (page == 0U) page = 1U
     val maxPage = ceil(commands.size.toFloat().div(5)).roundToInt().toUInt()
+    if (page > maxPage) page = maxPage
 
-    val data = CommandListData(caller, commands, maxPage, page)
+    abstract class Cmd
+    val OpenMenu = object : Cmd() {}
 
-    helpMenu(data)
+    while (true) {
+        val x = caller.openMenu<Cmd> {
+            title("{commands.help.title-page}")
+            message = commands.iterator().skip((page - 1U) * 5U).take(5U).join("\n\n")
+
+            group {
+                optionText("") {
+                    if (page != 1U) page--
+                    rerenderDialog()
+                }
+                optionText("[white]$page/$maxPage") {
+                    OpenMenu
+                }
+                optionText("") {
+                    if (page != maxPage) page++
+                    rerenderDialog()
+                }
+            }
+        }.await()
+        when (x) {
+            OpenMenu -> {
+                val newPage = caller.openMenu<UInt> {
+                    title("{commands.help.select-page.title}")
+                    message("{commands.help.select-page.message}").put("page", page.toString())
+
+                    var i = 0U
+                    while (i <= maxPage) {
+                        group {
+                            for (o in 0..<3) {
+                                i++
+                                val switchTo = i
+                                if (i <= maxPage) optionText("$i") {
+                                    switchTo
+                                }
+                                else optionText("[gray]x")
+                            }
+                        }
+                    }
+
+                    option("[scarlet]{generic.close}")
+                }.await()
+                if (newPage != null) page = newPage
+                else break
+            }
+            else -> break
+        }
+    }
 }
 
 /** List commands. */
