@@ -30,6 +30,7 @@ import mindurka.annotations.Awaits
 import mindurka.ui.openMenu
 import kotlinx.coroutines.future.await
 import mindurka.util.*
+import mindurka.ui.openText
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -72,7 +73,13 @@ object CorePlugin {
             }
         }
         
+        on<EventType.PlayerLeave> {
+            handleUiEvent(it)
+        }
         on<EventType.MenuOptionChooseEvent> {
+            handleUiEvent(it)
+        }
+        on<EventType.TextInputEvent> {
             handleUiEvent(it)
         }
 

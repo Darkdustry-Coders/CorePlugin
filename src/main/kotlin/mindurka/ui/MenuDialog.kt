@@ -1,3 +1,5 @@
+// TODO: Documentation
+
 package mindurka.ui
 
 import mindustry.gen.Player
@@ -30,6 +32,8 @@ data class MenuUiButton<T> (
  * A wrapper over Mindustry's menu dialogs.
  *
  * This class isn't meant to be used directly.
+ *
+ * Once `future` returns, instance of this class must not be used again.
  */
 class MenuDialog<T>: Dialog {
     var title: String = ""
@@ -60,7 +64,6 @@ class MenuDialog<T>: Dialog {
         closeHandle = null
         exitHandle = null
         returnValue = null
-        future = CompletableFuture()
         options.clear()
     }
 

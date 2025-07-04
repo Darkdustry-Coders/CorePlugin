@@ -1,8 +1,8 @@
-<center>
+<p align="center" width="100%">
 <h1>CorePlugin</h1>
 
 Kotlin rewrite of Mindurka's main plugin.
-</center>
+</p>
 
 > ⚠️
 > 
