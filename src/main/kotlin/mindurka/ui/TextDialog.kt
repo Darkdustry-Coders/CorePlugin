@@ -11,6 +11,8 @@ import mindustry.util.nodecl
 import java.util.concurrent.CompletableFuture
 import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
+import arc.func.Func
+import arc.func.Prov
 
 class TextDialog: Dialog {
     var title: String = ""
@@ -21,11 +23,17 @@ class TextDialog: Dialog {
     var messageCtx: LCtx? = null
     var defaultCtx: LCtx? = null
 
+    var onOverrun: Func<String, String?>? = null
+    var onComplete: Func<String, String?>? = null
+    var onExit: Prov<String?>? = null
+    var onClose: Prov<String?>? = null
+
     var textLength = 128
     var numeric = false
 
     var future: CompletableFuture<String?> = CompletableFuture()
     var menuId = 0
+    var rerender: Runnable? = null
 
     fun write(player: Player) {
         menuId = DialogsInternal.newId(player)
@@ -42,14 +50,32 @@ class TextDialog: Dialog {
     }
 
     fun handleEvent(event: TextInputEvent) {
-        future.complete(event.text)
+        var value = event.text
+        if (event.text == null) {
+            val onClose = onClose
+            value = if (onClose != null) onClose.get() else event.text
+        } else if (event.text.length > textLength) {
+            val onOverrun = onOverrun
+            value = if (onOverrun != null) onOverrun[event.text] else event.text
+        } else {
+            val onComplete = onComplete
+            value = if (onComplete != null) onComplete[event.text] else event.text
+        }
+
+        var rerender = rerender
+        if (rerender == null) {
+            future.complete(value)
+        } else {
+            rerender.run()
+            this.rerender = null
+        }
     }
     fun handleEvent(event: PlayerLeave) {
-        future.complete(null)
+        future.complete(onExit?.get())
     }
 }
 
-class TextDialogBuilder(private val dialog: TextDialog, private val player: Player) {
+class TextDialogBuilder(private val dialog: TextDialog, private val player: Player, private val executeAgain: Runnable) {
     var title: String
         get() = if (dialog.titleCtx == null) dialog.title else Ls(player.locale, dialog.titleCtx!!).done(dialog.title)
         set(value) {
@@ -95,14 +121,36 @@ class TextDialogBuilder(private val dialog: TextDialog, private val player: Play
     var numeric: Boolean
         get() = dialog.numeric
         set(v) { dialog.numeric = v }
+
+    fun onClose(callback: Prov<String?>) {
+        dialog.onClose = callback
+    }
+    fun onExit(callback: Prov<String?>) {
+        dialog.onExit = callback
+    }
+    fun onComplete(callback: Func<String, String?>) {
+        dialog.onComplete = callback
+    }
+    fun onOverrun(callback: Func<String, String?>) {
+        dialog.onOverrun = callback
+    }
+
+    fun rerenderDialog(): String? {
+        dialog.rerender = executeAgain
+        return null
+    }
 }
 
 @PublicAPI
 fun Player.openText(builder: TextDialogBuilder.() -> Unit): CompletableFuture<String?> {
     val d = TextDialog()
-    val b = TextDialogBuilder(d, this)
+    val b: Array<TextDialogBuilder> = arrayOf(nodecl())
+    b[0] = TextDialogBuilder(d, this) {
+        builder(b[0])
+        d.write(this)
+    }
 
-    builder(b)
+    builder(b[0])
     d.write(this)
 
     return d.future
