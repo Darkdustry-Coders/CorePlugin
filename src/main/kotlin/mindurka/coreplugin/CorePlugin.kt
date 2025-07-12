@@ -102,6 +102,24 @@ object CorePlugin {
     }
 }
 
+/** Text test */
+@Command
+private fun test(caller: Player) = Async.run {
+    val text = caller.openText {
+        title = "yo"
+        message = "hi"
+
+        onComplete {
+            if ("hi" !in it) rerenderDialog()
+            else it
+        }
+    }.await() ?: return@run
+    caller.openMenu<K> {
+        title = "yo"
+        message = text
+    }.await()
+}
+
 /** List commands */
 @Command
 private fun help(caller: Player, pageInit: UInt?) = Async.run {

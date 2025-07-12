@@ -12,7 +12,8 @@ import arc.util.Log
 import mindustry.gen.Call
 import arc.struct.Seq
 
-object Completion
+/** Approximate time that is necessary to prevent flashing when opening a dialog. */
+internal val TIMER_CLOSE_TIME = 0.031f
 
 object DialogsInternal {
     val data = WeakHashMap<Player, OpenDialogs>()

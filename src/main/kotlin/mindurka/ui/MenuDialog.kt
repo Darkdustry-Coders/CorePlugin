@@ -18,10 +18,8 @@ import arc.util.Timer
 import arc.struct.Seq
 import java.util.concurrent.CompletableFuture
 
-val TIMER_CLOSE_TIME = 0.031f
-
 /**
- * Button
+ * Button.
  */
 data class MenuUiButton<T> (
     val text: String,
@@ -30,11 +28,9 @@ data class MenuUiButton<T> (
 )
 
 /**
- * A menu dialog
+ * A menu dialog.
  *
  * A wrapper over Mindustry's menu dialogs.
- *
- * This class isn't meant to be used directly.
  *
  * Once `future` returns, instance of this class must not be used again.
  */

@@ -13,6 +13,7 @@ import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
 import arc.func.Func
 import arc.func.Prov
+import mindurka.util.Ref
 
 class TextDialog: Dialog {
     var title: String = ""
@@ -32,7 +33,7 @@ class TextDialog: Dialog {
     var numeric = false
 
     var future: CompletableFuture<String?> = CompletableFuture()
-    var menuId = 0
+    var menuId: Int? = null
     var rerender: Runnable? = null
 
     fun write(player: Player) {
@@ -40,7 +41,7 @@ class TextDialog: Dialog {
         DialogsInternal.openDialog(player, this)
         Call.textInput(
             player.con,
-            menuId,
+            menuId!!,
             if (titleCtx == null) title else Ls(player.locale, titleCtx!!).done(title),
             if (messageCtx == null) message else Ls(player.locale, messageCtx!!).done(message),
             textLength,
@@ -50,6 +51,8 @@ class TextDialog: Dialog {
     }
 
     fun handleEvent(event: TextInputEvent) {
+        menuId = null
+
         var value = event.text
         if (event.text == null) {
             val onClose = onClose
@@ -64,6 +67,7 @@ class TextDialog: Dialog {
 
         var rerender = rerender
         if (rerender == null) {
+            DialogsInternal.closeDialog(event.player, this)
             future.complete(value)
         } else {
             rerender.run()
@@ -122,6 +126,9 @@ class TextDialogBuilder(private val dialog: TextDialog, private val player: Play
         get() = dialog.numeric
         set(v) { dialog.numeric = v }
 
+    fun onInit(callback: Runnable) {
+        if (dialog.menuId == null) dialog.rerender = callback
+    }
     fun onClose(callback: Prov<String?>) {
         dialog.onClose = callback
     }
@@ -136,6 +143,8 @@ class TextDialogBuilder(private val dialog: TextDialog, private val player: Play
     }
 
     fun rerenderDialog(): String? {
+        if (dialog.menuId != null) throw IllegalStateException("Cannot re-render TextDialog. 'rerenderDialog' can only be called when TextDialog is closed.")
+
         dialog.rerender = executeAgain
         return null
     }
@@ -144,13 +153,15 @@ class TextDialogBuilder(private val dialog: TextDialog, private val player: Play
 @PublicAPI
 fun Player.openText(builder: TextDialogBuilder.() -> Unit): CompletableFuture<String?> {
     val d = TextDialog()
-    val b: Array<TextDialogBuilder> = arrayOf(nodecl())
-    b[0] = TextDialogBuilder(d, this) {
-        builder(b[0])
+    val b: Ref<TextDialogBuilder> = Ref(nodecl())
+    b.r = TextDialogBuilder(d, this) {
+        builder(b.r)
         d.write(this)
     }
 
-    builder(b[0])
+    builder(b.r)
+    d.rerender?.run()
+    d.rerender = null
     d.write(this)
 
     return d.future
