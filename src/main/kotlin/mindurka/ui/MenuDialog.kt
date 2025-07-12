@@ -2,20 +2,23 @@
 
 package mindurka.ui
 
-import mindustry.gen.Player
-import mindustry.gen.Call
-import mindurka.util.map
-import mindurka.util.collect
-import arc.struct.Seq
-import buj.tl.LCtx
-import mindurka.annotations.PublicAPI
-import mindustry.util.nodecl
-import buj.tl.Ls
-import arc.func.Cons
-import java.util.concurrent.CompletableFuture
-import arc.func.Prov
 import mindustry.game.EventType.MenuOptionChooseEvent
 import mindustry.game.EventType.PlayerLeave
+import mindustry.gen.Player
+import mindustry.gen.Call
+import mindurka.annotations.PublicAPI
+import mindurka.util.map
+import mindurka.util.collect
+import mindurka.util.nodecl
+import buj.tl.LCtx
+import buj.tl.Ls
+import arc.func.Cons
+import arc.func.Prov
+import arc.util.Timer
+import arc.struct.Seq
+import java.util.concurrent.CompletableFuture
+
+val TIMER_CLOSE_TIME = 0.031f
 
 /**
  * Button
@@ -48,10 +51,11 @@ class MenuDialog<T>: Dialog {
 
     var menuId: Int? = null
 
-    var future: CompletableFuture<T?> = CompletableFuture()
+    val future: CompletableFuture<T?> = CompletableFuture()
     var returnValue: T? = null
 
     var rerender: Runnable? = null
+    var handlingButton = false
 
     /**
      * Clear all UI elements.
@@ -68,9 +72,9 @@ class MenuDialog<T>: Dialog {
     }
 
     fun write(player: Player) {
-        val id = DialogsInternal.newId(player)
-        DialogsInternal.setOpenDialog(player, this)
-        Call.menu(
+        val id = menuId ?: DialogsInternal.newId(player)
+        DialogsInternal.openDialog(player, this)
+        Call.followUpMenu(
             player.con,
             id,
             if (titleCtx == null) title else Ls(player.locale, titleCtx!!).done(title),
@@ -87,22 +91,35 @@ class MenuDialog<T>: Dialog {
         if (event.option == -1) {
             val value = closeHandle?.get()
             val r = rerender
+            menuId = null
             if (r != null) {
                 rerender = null
                 r.run()
-            } else future.complete(value)
+            } else {
+                DialogsInternal.closeDialog(event.player, this)
+                future.complete(value)
+            }
             return
         }
         var optionIdx = 0
         r@for (group in options)
             for (option in group)
                 if (optionIdx++ == event.option) {
-                    val value = option.fn?.get()
+                    val handler = option.fn ?: break@r
+                    handlingButton = true
+                    val value = handler.get()
+                    handlingButton = false
                     val r = rerender
+                    val id = menuId
                     if (r != null) {
                         rerender = null
                         r.run()
-                    } else future.complete(value)
+                    } else {
+                        menuId = null
+                        if (id != null) Timer.schedule({ Call.hideFollowUpMenu(event.player.con, id) }, TIMER_CLOSE_TIME)
+                        DialogsInternal.closeDialog(event.player, this)
+                        future.complete(value)
+                    }
                     
                     break@r
                 }
@@ -169,17 +186,13 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
     }
 
     @JvmName("optionText")
-    fun optionText(text: String) {
-        optionText(text, null)
-    }
+    fun optionText(text: String) = optionText(text, null)
     @JvmName("optionText")
     fun optionText(text: String, cb: Prov<T?>?) {
         dialog.options.add(Seq.with(MenuUiButton(text, cb)))
     }
     @JvmName("option")
-    fun option(text: String) {
-        option(text, null)
-    }
+    fun option(text: String): LCtx = option(text, null)
     @JvmName("option")
     fun option(text: String, cb: Prov<T?>?): LCtx {
         val ctx = LCtx()
@@ -199,6 +212,9 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
         dialog.options.add(group)
     }
 
+    fun onInit(callback: Runnable) {
+        if (dialog.menuId == null) dialog.rerender = callback;
+    }
     fun onClose(callback: Prov<T?>) {
         dialog.closeHandle = callback
     }
@@ -206,8 +222,27 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
         dialog.exitHandle = callback
     }
 
+    @JvmOverloads
+    fun closeDialog(value: T? = null): T? {
+        if (dialog.handlingButton) throw IllegalStateException("TODO! 'closeDialog()' cannot be used in a callback.")
+
+        val id = dialog.menuId ?: throw IllegalStateException("Calling 'closeDialog()' on a dialog that is not being displayed!")
+
+        dialog.menuId = null
+        executeAgain.run()
+        Timer.schedule({ Call.hideFollowUpMenu(player.con, id) }, TIMER_CLOSE_TIME)
+        DialogsInternal.closeDialog(player, dialog)
+        dialog.future.complete(value)
+
+        return null
+    }
+
     fun rerenderDialog(): T? {
-        dialog.rerender = executeAgain
+        dialog.menuId ?: throw IllegalStateException("Calling 'rerenderDialog()' on a dialog that is not being displayed!")
+
+        if (dialog.handlingButton) dialog.rerender = executeAgain
+        else executeAgain.run()
+
         return null
     }
 }
@@ -222,6 +257,8 @@ fun <T> Player.openMenu(dialogFun: MenuBuilder<T>.() -> kotlin.Unit): Completabl
         dialog.write(this)
     }
     dialogFun(builder[0])
+    dialog.rerender?.run()
+    dialog.rerender = null
     dialog.write(this)
     return dialog.future
 }

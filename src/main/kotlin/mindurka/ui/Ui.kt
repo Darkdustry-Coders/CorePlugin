@@ -9,6 +9,8 @@ import java.util.concurrent.CompletableFuture
 import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
 import arc.util.Log
+import mindustry.gen.Call
+import arc.struct.Seq
 
 object Completion
 
@@ -22,9 +24,14 @@ object DialogsInternal {
         return id
     }
 
-    fun setOpenDialog(player: Player, dialog: Dialog?) {
+    fun openDialog(player: Player, dialog: Dialog) {
         val dialogs = data.getOrPut(player) { OpenDialogs() }
-        dialogs.mainDialog = dialog
+        dialogs.openedDialogs.addUnique(dialog)
+    }
+
+    fun closeDialog(player: Player, dialog: Dialog) {
+        val dialogs = data.getOrPut(player) { OpenDialogs() }
+        dialogs.openedDialogs.removeAll { it == dialog }
     }
 
     operator fun get(player: Player) = data[player]
@@ -34,7 +41,7 @@ interface Dialog {}
 
 data class OpenDialogs (
     var id: Int = 0,
-    var mainDialog: Dialog? = null,
+    var openedDialogs: Seq<Dialog> = Seq(),
 )
 
 @PublicAPI
@@ -48,34 +55,41 @@ object Dialogs {
 
 fun handleUiEvent(event: TextInputEvent) {
     val dialogs = DialogsInternal[event.player] ?: return
-    val mainDialog = dialogs.mainDialog
 
-    if (mainDialog is TextDialog) {
-        if (mainDialog.menuId != event.textInputId) return
-        dialogs.mainDialog = null
-        mainDialog.handleEvent(event)
+    for (dialog in dialogs.openedDialogs) {
+        if (dialog is TextDialog) {
+            if (dialog.menuId != event.textInputId) return
+            dialog.handleEvent(event)
+            break
+        }
     }
 }
 fun handleUiEvent(event: MenuOptionChooseEvent) {
     val dialogs = DialogsInternal[event.player] ?: return
-    val mainDialog = dialogs.mainDialog
 
-    if (mainDialog is MenuDialog<*>) {
-        if (mainDialog.menuId != event.menuId) return
-        dialogs.mainDialog = null
-        mainDialog.handleEvent(event)
+    for (dialog in dialogs.openedDialogs) {
+        if (dialog is MenuDialog<*>) {
+            if (dialog.menuId != event.menuId) return
+            dialog.handleEvent(event)
+            break
+        }
     }
 }
 fun handleUiEvent(event: PlayerLeave) {
     val dialogs = DialogsInternal[event.player] ?: return
-    val mainDialog = dialogs.mainDialog
 
-    if (mainDialog is MenuDialog<*>) {
-        dialogs.mainDialog = null
-        mainDialog.handleEvent(event)
+    for (dialog in dialogs.openedDialogs) {
+        if (dialog is MenuDialog<*>) {
+            dialog.handleEvent(event)
+            break
+        }
+        else if (dialog is TextDialog) {
+            dialog.handleEvent(event)
+            break
+        }
     }
-    else if (mainDialog is TextDialog) {
-        dialogs.mainDialog = null
-        mainDialog.handleEvent(event)
-    }
+}
+
+fun Player.openURI(uri: String) {
+    Call.openURI(con, uri)
 }

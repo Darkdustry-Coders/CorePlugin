@@ -16,21 +16,24 @@ import mindurka.build.CommandType
 import mindurka.coreplugin.commands.metadataForCommand
 import mindurka.coreplugin.commands.registerCommand
 import mindurka.ui.handleUiEvent
+import mindurka.util.K
+import mindurka.util.Ref
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
 import mindustry.game.Team
 import mindustry.gen.Player
 import mindustry.server.ServerControl
-import org.jline.reader.LineReaderBuilder
-import org.jline.terminal.TerminalBuilder
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 import mindurka.annotations.Awaits
 import mindurka.ui.openMenu
 import kotlinx.coroutines.future.await
-import mindurka.util.*
 import mindurka.ui.openText
+import arc.util.Timer
+import org.jline.reader.LineReaderBuilder
+import org.jline.terminal.TerminalBuilder
+import mindurka.util.*
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -99,16 +102,13 @@ object CorePlugin {
     }
 }
 
-data class CommandListData (
-    val caller: Player,
-    val commands: Seq<String>,
-    val maxPage: UInt,
-    var page: UInt,
-)
-
 /** List commands */
 @Command
 private fun help(caller: Player, pageInit: UInt?) = Async.run {
+    abstract class Page
+    data class HelpMenu(var page: UInt) : Page() {}
+    val SelectPage = object : Page() {}
+    
     val commands = Vars.netServer.clientCommands.commandList.iterator()
         .filter {
             val commands = metadataForCommand(it.text, CommandType.Player).collect(Seq())
@@ -116,61 +116,63 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
         }
         .map { Tl.fmt(caller).put("command", it.text).done("{commands.help.command}") }
         .collect(Seq())
-    var page = (pageInit ?: 1U)
-    if (page == 0U) page = 1U
     val maxPage = ceil(commands.size.toFloat().div(5)).roundToInt().toUInt()
-    if (page > maxPage) page = maxPage
+    var page: Page = HelpMenu(run {
+        var page = (pageInit ?: 1U)
+        if (page == 0U) page = 1U
+        if (page > maxPage) page = maxPage
+        page
+    })
 
-    abstract class Cmd
-    val OpenMenu = object : Cmd() {}
-
-    while (true) {
-        val x = caller.openMenu<Cmd> {
-            title("{commands.help.title-page}")
-            message = commands.iterator().skip((page - 1U) * 5U).take(5U).join("\n\n")
-
-            group {
-                optionText("") {
-                    if (page != 1U) page--
-                    rerenderDialog()
+    caller.openMenu<K> {
+        val currentPage = page
+        when (currentPage) {
+            is HelpMenu -> {
+                title("{commands.help.title-page}")
+                message = commands.iterator().skip((currentPage.page - 1U) * 5U).take(5U).join("\n\n")
+    
+                group {
+                    optionText("") {
+                        if (currentPage.page != 1U) currentPage.page--
+                        else currentPage.page = maxPage
+                        rerenderDialog()
+                    }
+                    optionText("[white]${currentPage.page}/$maxPage") {
+                        page = SelectPage
+                        rerenderDialog()
+                    }
+                    optionText("") {
+                        if (currentPage.page != maxPage) currentPage.page++
+                        else currentPage.page = 1U
+                        rerenderDialog()
+                    }
                 }
-                optionText("[white]$page/$maxPage") {
-                    OpenMenu
-                }
-                optionText("") {
-                    if (page != maxPage) page++
-                    rerenderDialog()
-                }
+    
+                option("{generic.close}") { K }
             }
-        }.await()
-        when (x) {
-            OpenMenu -> {
-                val newPage = caller.openMenu<UInt> {
-                    title("{commands.help.select-page.title}")
-                    message("{commands.help.select-page.message}").put("page", page.toString())
-
-                    var i = 0U
-                    while (i <= maxPage) {
-                        group {
-                            for (o in 0..<3) {
-                                i++
-                                val switchTo = i
-                                if (i <= maxPage) optionText("$i") {
-                                    switchTo
-                                }
-                                else optionText("[gray]x")
+            SelectPage -> {
+                title("{commands.help.select-page.title}")
+    
+                var i = 0U
+                while (i <= maxPage) {
+                    group {
+                        for (o in 0..<3) {
+                            i++
+                            val switchTo = i
+                            if (i <= maxPage) optionText("$i") {
+                                page = HelpMenu(switchTo)
+                                rerenderDialog()
                             }
+                            else optionText("")
                         }
                     }
-
-                    option("[scarlet]{generic.close}")
-                }.await()
-                if (newPage != null) page = newPage
-                else break
+                }
+    
+                option("{generic.close}") { K }
             }
-            else -> break
+            else -> throw UnreachableException()
         }
-    }
+    }.await()
 }
 
 /** List commands. */

@@ -1,6 +1,6 @@
 # Generic
 
-generic.close = Close
+generic.close = [lime] Close
 generic.server = Mindurka
 
 # Commands
@@ -19,7 +19,7 @@ commands.help.title-cmd =  Command help
                         = [accent]/{command} [white]{commands.{command}.params}
 commands.help.command = [accent]/{command} [white]{commands.{command}.params}
                       = [lightgray]{commands.{command}.description}
-commands.help.invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{0}[]. There are no secret commands behind there. We promise.
+commands.help.invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{max}[]. There are no secret commands behind there. We promise.
 
 commands.maps.description = List of server maps.
 commands.maps.manpage = List of server maps.

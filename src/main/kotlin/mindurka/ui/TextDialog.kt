@@ -7,7 +7,7 @@ import mindurka.annotations.PublicAPI
 import mindustry.gen.Call
 import buj.tl.LCtx
 import buj.tl.Ls
-import mindustry.util.nodecl
+import mindurka.util.nodecl
 import java.util.concurrent.CompletableFuture
 import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
@@ -37,7 +37,7 @@ class TextDialog: Dialog {
 
     fun write(player: Player) {
         menuId = DialogsInternal.newId(player)
-        DialogsInternal.setOpenDialog(player, this)
+        DialogsInternal.openDialog(player, this)
         Call.textInput(
             player.con,
             menuId,

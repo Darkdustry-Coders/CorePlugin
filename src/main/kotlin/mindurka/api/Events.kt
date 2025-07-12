@@ -142,23 +142,9 @@ object Events {
                 @Suppress("UNCHECKED_CAST")
                 arc.Events.on(cls) { event ->
                     val a = eventHandlers[cls]
-                    // val handlers = Seq.with<Cons<Any>>()
-                    // for (priority in 0 ..< Priority.entries.size) {
-                    //     for (lifetime in Lifetime.entries) {
-                    //         if (a.containsKey(lifetime) && a[lifetime][priority] != null)
-                    //             handlers.addAll(a[lifetime][priority])
-                    //     }
-                    // }
-                    // notCancelled.add(event)
-                    // while (event in notCancelled && !handlers.isEmpty()) {
-                    //     val handler = handlers.remove(0) ?: break
-                    //     handler[event]
-                    // }
-                    // notCancelled.remove(event)
-                    // a.remove(Lifetime.OnceOrRound)
-                    // a.remove(Lifetime.Once)
                     val handlers = Seq.with<Cons<Any>>()
                     for (priority in 0 ..< Priority.entries.size) {
+                        handlers.clear()
                         for (lifetime in Lifetime.entries) {
                             if (a.containsKey(lifetime) && a[lifetime][priority] != null) {
                                 handlers.addAll(a[lifetime][priority])
