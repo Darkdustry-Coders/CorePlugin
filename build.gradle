@@ -2,6 +2,7 @@ import groovy.json.JsonSlurper
 
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.Paths
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -15,7 +16,7 @@ def json = new JsonSlurper()
 def mod = json.parse("${projectDir}/src/main/resources/plugin.json" as File)
 
 group = 'mindurka'
-version = "${mod['version']}"
+version = "${mod['version']}" 
 
 compileJava.options.encoding = "UTF-8"
 
@@ -89,6 +90,16 @@ allprojects {
 
 tasks.named("build") {
     dependsOn ":test"
+
+    if (System.env["MINDURKA_WORKSPACE"] != null) {
+        def jarPath = Paths.get("${jar.archivePath}")
+        doLast {
+            Files.copy(
+                jarPath,
+                Paths.get(System.env["MINDURKA_WORKSPACE"]).resolve("CorePlugin.jar"),
+                StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
 }
 
 tasks.register("runServer") {

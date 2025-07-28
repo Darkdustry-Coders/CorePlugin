@@ -57,6 +57,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'CorePlugin'
+rootProject.name = "CorePlugin"
 include 'annotations', 'processor', 'buildExtras'
 
