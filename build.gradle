@@ -96,7 +96,7 @@ tasks.named("build") {
         doLast {
             Files.copy(
                 jarPath,
-                Paths.get(System.env["MINDURKA_WORKSPACE"]).resolve("CorePlugin.jar"),
+                Paths.get(System.env["MINDURKA_WORKSPACE"]).resolve(".bin/CorePlugin.jar"),
                 StandardCopyOption.REPLACE_EXISTING)
         }
     }
