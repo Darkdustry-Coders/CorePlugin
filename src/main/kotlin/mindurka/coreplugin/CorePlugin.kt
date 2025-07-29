@@ -33,7 +33,11 @@ import mindurka.ui.openText
 import arc.util.Timer
 import org.jline.reader.LineReaderBuilder
 import org.jline.terminal.TerminalBuilder
+import org.jline.terminal.Terminal
 import mindurka.util.*
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.ConsoleHandler;
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -89,7 +93,7 @@ object CorePlugin {
         val serverControl = Core.app.listeners.first { it is ServerControl } as ServerControl
 
         serverControl.serverInput = object : Runnable { override fun run() {
-            val terminal = TerminalBuilder.builder().jna(true).build()
+            val terminal = TerminalBuilder.builder().jna(true).system(true).dumb(true).build()
             val reader = LineReaderBuilder.builder().terminal(terminal).build()
 
             terminal.enterRawMode()

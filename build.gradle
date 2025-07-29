@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.kotlin.assert)
+    id 'maven-publish'
     id 'java-library'
 }
 
@@ -18,7 +19,7 @@ def mod = json.parse("${projectDir}/src/main/resources/plugin.json" as File)
 group = 'mindurka'
 version = "${mod['version']}" 
 
-compileJava.options.encoding = "UTF-8"
+compileJava.options.encoding = "UTF-8" 
 
 repositories {
     maven { url "https://raw.githubusercontent.com/Zelaux/MindustryRepo/master/repository" }
@@ -44,6 +45,7 @@ dependencies {
     implementation libs.surrealdb
 
     implementation libs.bundles.jline
+    implementation libs.jansi
 
     testImplementation "org.jetbrains.kotlin:kotlin-test"
     testImplementation libs.bundles.mindustry
@@ -51,6 +53,11 @@ dependencies {
     implementation project(':annotations')
     implementation project(':buildExtras')
     ksp project(':processor')
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
 }
 
 jar {
@@ -88,17 +95,30 @@ allprojects {
     }
 }
 
+publishing {
+    publications {
+        internal(MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url = "file://${System.env["MINDURKA_WORKSPACE"]}/.cache/maven"
+        }
+    }
+}
+
 tasks.named("build") {
     dependsOn ":test"
 
-    if (System.env["MINDURKA_WORKSPACE"] != null) {
-        def jarPath = Paths.get("${jar.archivePath}")
-        doLast {
-            Files.copy(
-                jarPath,
-                Paths.get(System.env["MINDURKA_WORKSPACE"]).resolve(".bin/CorePlugin.jar"),
-                StandardCopyOption.REPLACE_EXISTING)
-        }
+    def jarPath = Paths.get("${jar.archivePath}")
+    doLast {
+        Files.createDirectories(Paths.get("${System.env["MINDURKA_WORKSPACE"]}/.bin"))
+        Files.copy(
+            jarPath,
+            Paths.get(System.env["MINDURKA_WORKSPACE"]).resolve(".bin/CorePlugin.jar"),
+            StandardCopyOption.REPLACE_EXISTING)
+        println "Copied CorePlugin to '${System.env["MINDURKA_WORKSPACE"]}/.bin/CorePlugin.jar'"
     }
 }
 
