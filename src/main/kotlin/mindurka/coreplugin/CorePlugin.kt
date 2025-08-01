@@ -103,25 +103,9 @@ object CorePlugin {
                 if (!line.isEmpty()) serverControl.handleCommandString(line)
             }
         } }
+
+        RabbitMQ.load()
     }
-}
-
-/** Text test */
-@Command
-private fun test(caller: Player) = Async.run {
-    val text = caller.openText {
-        title = "yo"
-        message = "hi"
-
-        onComplete {
-            if ("hi" !in it) rerenderDialog()
-            else it
-        }
-    }.await() ?: return@run
-    caller.openMenu<K> {
-        title = "yo"
-        message = text
-    }.await()
 }
 
 /** List commands */

@@ -18,18 +18,6 @@ import java.nio.charset.Charset
 
 @PublicAPI
 object Serializers {
-    enum class T {
-        Toml,
-        Json,
-
-        ;
-
-        @OptIn(ExperimentalSerializationApi::class)
-        fun <T> serialize(`object`: T, output: OutputStream) {
-            Serializers.serialize<Any?>(output, this, `object`)
-        }
-    }
-
     @PublicAPI
     @JvmStatic
     val toml: Toml = Toml(
@@ -53,21 +41,5 @@ object Serializers {
         allowSpecialFloatingPointValues = true
         ignoreUnknownKeys = true
         isLenient = true
-    }
-
-    @OptIn(ExperimentalSerializationApi::class)
-    inline fun <reified S> deserialize(inp: InputStream, ser: T): S {
-        return when (ser) {
-            T.Toml -> toml.decodeFromStream(toml.serializersModule.serializer(), inp)
-            T.Json -> json.decodeFromStream(inp)
-        }
-    }
-
-    @OptIn(ExperimentalSerializationApi::class)
-    inline fun <reified S> serialize(outp: OutputStream, ser: T, o: S) {
-        when (ser) {
-            T.Toml -> outp.writer(charset("UTF-8")).append(toml.encodeToString(o))
-            T.Json -> json.encodeToStream(o, outp)
-        }
     }
 }

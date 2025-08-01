@@ -1,23 +1,27 @@
-package mindurka.config
+package mindurka.coreplugin
 
 import com.akuleshov7.ktoml.source.decodeFromStream
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import mindustry.Vars
 import java.io.IOException
+import arc.math.Mathf
+import mindurka.config.Serializers
 
 @Serializable
-data class CorePluginConfig(
+data class Config(
+    val serverName: String = "unnamed-server-${Mathf.random(Int.MAX_VALUE)}",
     val globalConfigPath: String = Vars.dataDirectory.child("globalConfig.toml").path(),
 ) {
     companion object {
-        val instance: CorePluginConfig = run {
+        @JvmField
+        val config: Config = run {
             val file = Vars.dataDirectory.child("corePlugin.toml")
-            var instance: CorePluginConfig
+            var instance: Config
             try {
                 instance = Serializers.toml.decodeFromStream(file.read(8192))
             } catch (_: IOException) {
-                instance = CorePluginConfig()
+                instance = Config()
                 if (!file.exists()) try {
                     file.writeString(Serializers.toml.encodeToString(instance))
                 } catch (_: Exception) {}
@@ -26,5 +30,10 @@ data class CorePluginConfig(
             }
             instance
         }
+
+        @Suppress("NOTHING_TO_INLINE") // ik it's insignificant.
+                                       // Still removes a stack frame to get a property tho and I like to type less characters.
+        inline fun i(): Config = config
+        operator fun unaryPlus(): Config = config
     }
 }

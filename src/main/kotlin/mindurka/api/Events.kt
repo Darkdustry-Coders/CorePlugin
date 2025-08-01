@@ -9,6 +9,8 @@ import mindustry.game.EventType
 import mindustry.game.Team
 import mindustry.gen.Player
 import arc.util.Log
+import mindurka.util.any
+import mindurka.annotations.NetworkEvent
 
 /**
  * A player is having their team assigned.
@@ -192,6 +194,7 @@ object Events {
     /** Emit an event. */
     @JvmStatic
     fun <T> fire(event: T) {
+        if (event.javaClass.annotations.any({ it == Databas }))
         arc.Events.fire(event)
     }
 

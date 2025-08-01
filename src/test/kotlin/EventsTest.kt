@@ -6,11 +6,11 @@ import mindurka.api.Events
 class Tests {
     @Test
     fun listenEvent() {
-        var works = arrayOf(false)
+        var works = arrayOf(0)
 
         class CustomEvent {
             fun works() {
-                works[0] = true
+                works[0] += 1
             }
         }
 
@@ -19,6 +19,6 @@ class Tests {
         }
         Events.fire(CustomEvent())
 
-        assert(works[0])
+        assert(works[0] == 1)
     }
 }

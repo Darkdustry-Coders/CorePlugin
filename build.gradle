@@ -21,6 +21,8 @@ version = "${mod['version']}"
 
 compileJava.options.encoding = "UTF-8" 
 
+def workspacePath = gradle.ext.workspacePath
+
 repositories {
     maven { url "https://raw.githubusercontent.com/Zelaux/MindustryRepo/master/repository" }
     maven { url "https://jitpack.io" }
@@ -103,7 +105,7 @@ publishing {
     }
     repositories {
         maven {
-            url = "file://${System.env["MINDURKA_WORKSPACE"]}/.cache/maven"
+            url = "file://$workspacePath/.cache/maven"
         }
     }
 }
@@ -113,52 +115,52 @@ tasks.named("build") {
 
     def jarPath = Paths.get("${jar.archivePath}")
     doLast {
-        Files.createDirectories(Paths.get("${System.env["MINDURKA_WORKSPACE"]}/.bin"))
+        Files.createDirectories(workspacePath.resolve(".bin"))
         Files.copy(
             jarPath,
-            Paths.get(System.env["MINDURKA_WORKSPACE"]).resolve(".bin/CorePlugin.jar"),
+            workspacePath.resolve(".bin/CorePlugin.jar"),
             StandardCopyOption.REPLACE_EXISTING)
-        println "Copied CorePlugin to '${System.env["MINDURKA_WORKSPACE"]}/.bin/CorePlugin.jar'"
+        println "Copied CorePlugin to '$workspacePath/.bin/CorePlugin.jar'"
     }
 }
 
-tasks.register("runServer") {
-    dependsOn build
-
-    doLast {
-        def path = rootProject.rootDir.toPath().resolve("run")
-        Files.createDirectories(path.resolve("config/mods"))
-        Files.createDirectories(path.resolve("config/maps"))
-
-        if (!Files.exists(path.resolve("server.jar"))) {
-            println "Downloading Mindustry server..."
-            Files.copy(
-                    new URI("https://github.com/Anuken/Mindustry/releases/download/v146/server-release.jar").toURL().openStream(),
-                    path.resolve("server.jar"))
-            Files.copy(
-                    rootDir.toPath().resolve("assets/Crashtest.msav"),
-                    path.resolve("config/maps/Crashtest.msav"))
-            Files.copy(
-                    rootDir.toPath().resolve("assets/settings.bin"),
-                    path.resolve("config/settings.bin"))
-        }
-
-        Files.copy(
-                jar.archiveFile.get().asFile.toPath(),
-                path.resolve("config/mods/Debug.jar"),
-                StandardCopyOption.REPLACE_EXISTING)
-
-        javaexec {
-            classpath = files(path.resolve("server.jar"))
-            workingDir = path.toFile()
-            standardInput = System.in
-
-            debugOptions {
-                enabled = true
-                port = 7857
-                server = true
-                suspend = false
-            }
-        }
-    }
-}
+// tasks.register("runServer") {
+//     dependsOn build
+// 
+//     doLast {
+//         def path = rootProject.rootDir.toPath().resolve("run")
+//         Files.createDirectories(path.resolve("config/mods"))
+//         Files.createDirectories(path.resolve("config/maps"))
+// 
+//         if (!Files.exists(path.resolve("server.jar"))) {
+//             println "Downloading Mindustry server..."
+//             Files.copy(
+//                     new URI("https://github.com/Anuken/Mindustry/releases/download/v146/server-release.jar").toURL().openStream(),
+//                     path.resolve("server.jar"))
+//             Files.copy(
+//                     rootDir.toPath().resolve("assets/Crashtest.msav"),
+//                     path.resolve("config/maps/Crashtest.msav"))
+//             Files.copy(
+//                     rootDir.toPath().resolve("assets/settings.bin"),
+//                     path.resolve("config/settings.bin"))
+//         }
+// 
+//         Files.copy(
+//                 jar.archiveFile.get().asFile.toPath(),
+//                 path.resolve("config/mods/Debug.jar"),
+//                 StandardCopyOption.REPLACE_EXISTING)
+// 
+//         javaexec {
+//             classpath = files(path.resolve("server.jar"))
+//             workingDir = path.toFile()
+//             standardInput = System.in
+// 
+//             debugOptions {
+//                 enabled = true
+//                 port = 7857
+//                 server = true
+//                 suspend = false
+//             }
+//         }
+//     }
+// }
