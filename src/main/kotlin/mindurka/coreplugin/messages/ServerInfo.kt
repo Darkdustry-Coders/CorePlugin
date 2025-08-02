@@ -3,6 +3,7 @@ package mindurka.coreplugin.messages
 import kotlinx.serialization.Serializable
 import mindurka.annotations.NetworkEvent
 import mindurka.annotations.PublicAPI
+import mindurka.annotations.NetworkRequest
 
 /**
  * Server info event.
@@ -72,3 +73,11 @@ data class ServerInfo(
 @Serializable
 @NetworkEvent("generic.serverDown", ttl = 5)
 class ServerDown
+
+/**
+ * Tell all servers to resend server info.
+ */
+@Serializable
+@NetworkEvent("generic.serversRefresh", ttl = 5)
+@NetworkRequest(ServerInfo::class)
+class ServersRefresh

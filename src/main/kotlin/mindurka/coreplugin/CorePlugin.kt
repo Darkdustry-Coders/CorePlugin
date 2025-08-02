@@ -11,6 +11,7 @@ import mindurka.api.Events
 import mindurka.api.Gamemode
 import mindurka.api.PlayerTeamAssign
 import mindurka.api.on
+import mindurka.api.emit
 import mindurka.build.CommandImpl
 import mindurka.build.CommandType
 import mindurka.coreplugin.commands.metadataForCommand
@@ -38,6 +39,11 @@ import mindurka.util.*
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.ConsoleHandler;
+import mindurka.coreplugin.messages.ServerInfo
+import mindustry.gen.Groups
+import mindurka.config.GlobalConfig
+import mindustry.net.Administration
+import mindurka.coreplugin.messages.ServersRefresh
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -62,6 +68,18 @@ object CorePlugin {
     fun init(klass: Class<mindustry.mod.Plugin>) {
         init(klass.classLoader)
     }
+
+    private fun serverInfo(): ServerInfo = ServerInfo(
+        name = Core.settings.getString("name", "server with no name"),
+        motd = Core.settings.getString("desc", "hi this is a null handler"),
+        gamemode = Vars.state.rules.modeName,
+        map = Vars.state.map.name(),
+        players = Groups.player.size(),
+        maxPlayers = -1,
+        wave = if (Vars.state.rules.waves) -1 else Vars.state.wave,
+        maxWaves = if (Vars.state.rules.winWave > 0) Vars.state.rules.winWave else -1,
+        ip = "${(+GlobalConfig).serverIp}:${Administration.Config.port.get()}",
+    )
 
     init {
         Log.info("Starting CorePlugin")
@@ -89,6 +107,9 @@ object CorePlugin {
         on<EventType.TextInputEvent> {
             handleUiEvent(it)
         }
+        on<ServersRefresh> {
+
+        }
 
         val serverControl = Core.app.listeners.first { it is ServerControl } as ServerControl
 
@@ -105,6 +126,8 @@ object CorePlugin {
         } }
         
         RabbitMQ.noop()
+
+        Timer.schedule({ emit(serverInfo()) }, 0f, 30f)
     }
 }
 
@@ -136,7 +159,7 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
             is HelpMenu -> {
                 title("{commands.help.title-page}")
                 message = commands.iterator().skip((currentPage.page - 1U) * 5U).take(5U).join("\n\n")
-    
+
                 group {
                     optionText("") {
                         if (currentPage.page != 1U) currentPage.page--
@@ -153,12 +176,12 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
                         rerenderDialog()
                     }
                 }
-    
+
                 option("{generic.close}") { K }
             }
             SelectPage -> {
                 title("{commands.help.select-page.title}")
-    
+
                 var i = 0U
                 while (i <= maxPage) {
                     group {
@@ -173,7 +196,7 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
                         }
                     }
                 }
-    
+
                 option("{generic.close}") { K }
             }
             else -> throw UnreachableException()
