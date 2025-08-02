@@ -31,6 +31,7 @@ data class Config(
             instance
         }
 
+        val i: Config get() = config
         @Suppress("NOTHING_TO_INLINE") // ik it's insignificant.
                                        // Still removes a stack frame to get a property tho and I like to type less characters.
         inline fun i(): Config = config

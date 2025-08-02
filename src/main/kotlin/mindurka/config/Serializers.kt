@@ -15,6 +15,7 @@ import java.io.OutputStream
 import kotlinx.serialization.json.encodeToStream
 import kotlinx.serialization.encodeToString
 import java.nio.charset.Charset
+import kotlinx.serialization.cbor.Cbor
 
 @PublicAPI
 object Serializers {
@@ -29,7 +30,6 @@ object Serializers {
         ),
     )
 
-    @OptIn(ExperimentalSerializationApi::class)
     @PublicAPI
     @JvmStatic
     val json: Json = Json {
@@ -41,5 +41,11 @@ object Serializers {
         allowSpecialFloatingPointValues = true
         ignoreUnknownKeys = true
         isLenient = true
+    }
+
+    @PublicAPI
+    @JvmStatic
+    val cbor: Cbor = Cbor {
+        ignoreUnknownKeys = true
     }
 }

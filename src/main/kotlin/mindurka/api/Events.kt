@@ -11,6 +11,7 @@ import mindustry.gen.Player
 import arc.util.Log
 import mindurka.util.any
 import mindurka.annotations.NetworkEvent
+import mindurka.coreplugin.RabbitMQ
 
 /**
  * A player is having their team assigned.
@@ -194,8 +195,8 @@ object Events {
     /** Emit an event. */
     @JvmStatic
     fun <T> fire(event: T) {
-        if (event.javaClass.annotations.any({ it == Databas }))
-        arc.Events.fire(event)
+        if (event?.javaClass?.annotations?.any{ it.annotationClass == NetworkEvent::class } == true) RabbitMQ.send(event)
+        else arc.Events.fire(event)
     }
 
     /** Remove an event handler. */

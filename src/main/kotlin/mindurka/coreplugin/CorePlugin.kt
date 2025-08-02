@@ -103,8 +103,8 @@ object CorePlugin {
                 if (!line.isEmpty()) serverControl.handleCommandString(line)
             }
         } }
-
-        RabbitMQ.load()
+        
+        RabbitMQ.noop()
     }
 }
 

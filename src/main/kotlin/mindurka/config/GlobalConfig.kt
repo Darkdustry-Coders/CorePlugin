@@ -40,6 +40,8 @@ data class GlobalConfig(
             instance
         }
 
+        val i: GlobalConfig get() = globalConfig
+
         @Suppress("NOTHING_TO_INLINE") // ik it's insignificant.
                                        // Still removes a stack frame to get a property tho and I like to type less characters.
         inline fun i(): GlobalConfig = globalConfig
