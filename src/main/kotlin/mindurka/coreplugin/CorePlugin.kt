@@ -18,27 +18,19 @@ import mindurka.coreplugin.commands.metadataForCommand
 import mindurka.coreplugin.commands.registerCommand
 import mindurka.ui.handleUiEvent
 import mindurka.util.K
-import mindurka.util.Ref
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
-import mindustry.game.Team
 import mindustry.gen.Player
 import mindustry.server.ServerControl
 import kotlin.math.ceil
 import kotlin.math.roundToInt
-import mindurka.annotations.Awaits
 import mindurka.ui.openMenu
 import kotlinx.coroutines.future.await
-import mindurka.ui.openText
 import arc.util.Timer
 import org.jline.reader.LineReaderBuilder
 import org.jline.terminal.TerminalBuilder
-import org.jline.terminal.Terminal
 import mindurka.util.*
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.logging.ConsoleHandler;
 import mindurka.coreplugin.messages.ServerInfo
 import mindustry.gen.Groups
 import mindurka.config.GlobalConfig
@@ -59,7 +51,7 @@ object CorePlugin {
             .forEach {
                 @Suppress("UNCHECKED_CAST")
                 val klass = loader.loadClass(it) as Class<CommandImpl>
-                val init = klass.getConstructors().first()
+                val init = klass.constructors.first()
                 val cmd = init.newInstance() as CommandImpl
                 registerCommand(cmd)
             }
@@ -70,12 +62,12 @@ object CorePlugin {
     }
 
     private fun serverInfo(): ServerInfo = ServerInfo(
-        name = Core.settings.getString("name", "server with no name"),
-        motd = Core.settings.getString("desc", "hi this is a null handler"),
+        name = Administration.Config.serverName.get() as String,
+        motd = Administration.Config.desc.get() as String,
         gamemode = Vars.state.rules.modeName,
         map = Vars.state.map.name(),
         players = Groups.player.size(),
-        maxPlayers = -1,
+        maxPlayers = Vars.netServer.admins.playerLimit,
         wave = if (Vars.state.rules.waves) -1 else Vars.state.wave,
         maxWaves = if (Vars.state.rules.winWave > 0) Vars.state.rules.winWave else -1,
         ip = "${(+GlobalConfig).serverIp}:${Administration.Config.port.get()}",
@@ -86,16 +78,14 @@ object CorePlugin {
 
         val self = this
         val vanillaTeamAssigner = Vars.netServer.assigner
-        Vars.netServer.assigner = object : NetServer.TeamAssigner {
-            override fun assign(player: Player, players: Iterable<Player>): Team {
-                val event = PlayerTeamAssign(
-                    player,
-                    players,
-                    vanillaTeamAssigner.assign(player, players)
-                )
-                Events.fire(event)
-                return event.team
-            }
+        Vars.netServer.assigner = NetServer.TeamAssigner { player, players ->
+            val event = PlayerTeamAssign(
+                player,
+                players,
+                vanillaTeamAssigner.assign(player, players)
+            )
+            Events.fire(event)
+            event.team
         }
         
         on<EventType.PlayerLeave> {
@@ -108,12 +98,12 @@ object CorePlugin {
             handleUiEvent(it)
         }
         on<ServersRefresh> {
-
+            RabbitMQ.reply(it, serverInfo())
         }
 
         val serverControl = Core.app.listeners.first { it is ServerControl } as ServerControl
 
-        serverControl.serverInput = object : Runnable { override fun run() {
+        serverControl.serverInput = Runnable {
             val terminal = TerminalBuilder.builder().jna(true).system(true).dumb(true).build()
             val reader = LineReaderBuilder.builder().terminal(terminal).build()
 
@@ -123,7 +113,7 @@ object CorePlugin {
                 val line = reader.readLine("> ").trim()
                 if (!line.isEmpty()) serverControl.handleCommandString(line)
             }
-        } }
+        }
         
         RabbitMQ.noop()
 

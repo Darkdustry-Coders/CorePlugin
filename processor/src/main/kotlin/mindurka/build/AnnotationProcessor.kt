@@ -24,6 +24,8 @@ import java.io.PrintWriter
 import java.util.UUID
 import java.util.Scanner
 import java.io.File
+import java.util.Locale
+import java.util.Locale.getDefault
 
 interface Note
 
@@ -177,9 +179,39 @@ private fun init() {
     for (intType in arrayOf(
         "kotlin.UInt", "kotlin.UShort", "kotlin.UByte", "kotlin.ULong",
         "kotlin.Int", "kotlin.Short", "kotlin.Byte", "kotlin.Long",
-        "kotlin.Float", "kotlin.Double"
+        "kotlin.Float", "kotlin.Double",
     )) {
         val convert = intType.substring("kotlin.".length)
+        ARG_PARSERS[intType] = { write, varr, meta ->
+            if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
+            else write.print("val $varr: ${meta.datatype()} = ")
+            if (meta.list) write.print("val s = ")
+            if (meta.spread) {
+                write.print("args.rest()")
+            } else {
+                write.print("args.takeUntil { it == ' ' }")
+            }
+            if (!meta.list) write.print("?.to${convert}OrNull()")
+            if (!meta.nullable) write.print("?:return null")
+            if (meta.list) {
+                write.println()
+                if (meta.nullable) write.print("?")
+                write.println("val col = ${meta.datatype()}()")
+                write.println("for (x in s.split(${if (meta.spread) "Regex(\" *\")" else "Regex(\", *\")"}))")
+                write.println("if (!x.isEmpty())")
+                write.println("col.add(x.to${convert}OrNull()?:return@run null)")
+                write.println("col")
+                write.print("}")
+                if (!meta.nullable) write.print("?:return null")
+            }
+            write.println()
+        }
+    }
+
+    for (intType in arrayOf(
+        "int", "long", "short", "float", "double", "byte",
+    )) {
+        val convert = intType.replaceFirstChar { it.uppercase() }
         ARG_PARSERS[intType] = { write, varr, meta ->
             if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
             else write.print("val $varr: ${meta.datatype()} = ")
@@ -316,10 +348,13 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
             FunctionAnnotationDecl(annotation = ConsoleCommand::class, type = CommandType.Console, firstParam = null, tag = 'C'),
         )) {
             syms@for (sym in resolver.getSymbolsWithAnnotation(f.annotation.java.canonicalName)) {
+                val isJava = sym.containingFile?.filePath?.endsWith(".java") == true;
+
                 if (!sym.validate()) {
                     environment.logger.error(goodError(sym, "Invalid symbol", arrayOf()), sym)
                     continue
                 }
+
                 if (sym !is KSFunctionDeclaration) {
                     environment.logger.error(goodError(
                         sym,
@@ -345,7 +380,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                         parent.parent is KSFile ||
                         parent.isCompanionObject ||
                         parent.parent is KSPropertyDeclaration && parent.parent!!.parent is KSFile
-                    )
+                    ) || isJava
                 )) {
                     environment.logger.error(goodError(
                         sym,

@@ -200,6 +200,13 @@ object Gamemode {
     /** Map manager. */
     @JvmStatic
     var maps: MapManager = DefaultMapManager()
+    /**
+     * Whether secret blocks need to be unblocked.
+     *
+     * Only has an effect at the start of the round.
+     */
+    @JvmField
+    var unlockSpecialBlocks = true
 
     /** Initialize CorePlugin. */
     @JvmStatic

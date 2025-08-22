@@ -396,21 +396,21 @@ private object ScrNone : Script {
 private fun parseUnicode(script: String, idx: Array<Int>): Char {
     var num = 0
     if (idx[0] >= script.length || script[idx[0]] != '{')
-        throw RuntimeException("invalid unicode escape")
+        throw RuntimeException("invalid unicode escape (Tl unicode escapes must follow the format of \\u{..})")
     while (++idx[0] < script.length && script[idx[0]] != '}') {
         val ch = script[idx[0]]
         num *= 16
         num += when (ch) {
             in '0'..'9' -> ch.code - '0'.code
             in 'a'..'f' -> ch.code - 'a'.code + 10
-            in 'A'..'F' -> ch.code - 'a'.code + 10
-            else        -> throw RuntimeException("invalid unicode escape")
+            in 'A'..'F' -> ch.code - 'A'.code + 10
+            else        -> throw RuntimeException("invalid unicode escape (unicode codepoint must be in hex)")
         }
     }
-    if (++idx[0] >= script.length || script[idx[0]] != '}')
-        throw RuntimeException("invalid unicode escape")
+    if (idx[0] >= script.length || script[idx[0]] != '}')
+        throw RuntimeException("invalid unicode escape (Tl unicode escapes must follow the format of \\u{..})")
     if (num !in (Char.MIN_VALUE.code..Char.MAX_VALUE.code))
-        throw RuntimeException("invalid unicode escape")
+        throw RuntimeException("invalid unicode escape (invalid codepoint $num)")
     idx[0]++
     return num.toChar()
 }
@@ -701,6 +701,7 @@ private fun parseRoot(script: String, idx: Array<Int>): Script {
 
             text += when (ch) {
                 'u' -> {
+                    idx[0]++
                     val o = parseUnicode(script, idx)
                     idx[0]--
                     o

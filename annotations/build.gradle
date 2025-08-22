@@ -1,9 +1,33 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+
+    id 'maven-publish'
     id 'java-library'
 }
 
 group = 'mindurka.coreplugin'
+
+def workspacePath = gradle.ext.workspacePath
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+publishing {
+    publications {
+        internal(MavenPublication) {
+            from components.java
+
+            version "latest-SNAPSHOT"
+        }
+    }
+    repositories {
+        maven {
+            url = "file://$workspacePath/.cache/maven"
+        }
+    }
+}
 
 kotlin {
     jvmToolchain(17)

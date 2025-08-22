@@ -58,7 +58,7 @@ data class ServerInfo(
     /**
      * Server IP.
      *
-     * This includes both domain and port separated with a semicolon (`:`).
+     * This includes both domain and port separated with a colon (`:`).
      */
     val ip: String,
 )

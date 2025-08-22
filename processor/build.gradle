@@ -1,9 +1,14 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+
+    id 'maven-publish'
+    id 'java-library'
 }
 
 group = 'mindurka.coreplugin'
 version = '0.1-SNAPSHOT'
+
+def workspacePath = gradle.ext.workspacePath
 
 dependencies {
     implementation project(":annotations")
@@ -11,6 +16,26 @@ dependencies {
 
     implementation libs.kotlin.ksp
     implementation libs.kotlin.reflect
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+publishing {
+    publications {
+        internal(MavenPublication) {
+            from components.java
+
+            version "latest-SNAPSHOT"
+        }
+    }
+    repositories {
+        maven {
+            url = "file://$workspacePath/.cache/maven"
+        }
+    }
 }
 
 kotlin {

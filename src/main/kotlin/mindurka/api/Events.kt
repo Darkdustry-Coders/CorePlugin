@@ -159,6 +159,9 @@ object Events {
                     a.remove(Lifetime.OnceOrRound)
                     a.remove(Lifetime.Once)
                 }
+                if (cls.annotations.any{ it.annotationClass == NetworkEvent::class } == true) RabbitMQ.recv<Any>(cls as Class<Any>) {
+                    arc.Events.fire(it)
+                }
                 val handlers = ObjectMap<Lifetime, Seq<Seq<Cons<Any>>>>()
                 eventHandlers.put(cls, handlers)
                 Events.on(

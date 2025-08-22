@@ -1,12 +1,8 @@
 package mindurka.coreplugin
 
-import arc.util.Log
-import arc.Core
-import arc.struct.ObjectMap
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.Channel
-import com.rabbitmq.client.AMQP.Queue
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.AMQP.BasicProperties.Builder as PropertiesBuilder
 import mindurka.annotations.NetworkEvent
@@ -22,13 +18,13 @@ import kotlin.reflect.full.createType
 import arc.func.Cons
 import mindurka.annotations.NetworkRequest
 import arc.math.Mathf
+import arc.util.Log
 import arc.util.Timer
+import com.rabbitmq.client.AMQP.BasicProperties.Builder
+import mindurka.annotations.PublicAPI
 import java.util.concurrent.CompletableFuture
-import mindurka.util.Async
 import mindurka.util.Ref
 import mindurka.util.nodecl
-
-class MessageWrapper {}
 
 class TookTooLongExeption(message: String): Exception(message)
 
@@ -41,10 +37,9 @@ object RabbitMQ {
     private val correlationId = WeakHashMap<Any?, String?>()
 
     init {
-        Log.info("Starting RabbitMQ")
         val factory = ConnectionFactory()
         factory.setUri(GlobalConfig.i().rabbitMqUrl)
-        factory.setAutomaticRecoveryEnabled(true)
+        factory.isAutomaticRecoveryEnabled = true
         var con: Connection
         while (true) {
             try {
@@ -57,35 +52,65 @@ object RabbitMQ {
         }
         connection = con
         channel = connection.createChannel()
-        Log.info("Connected to RabbitMQ")
+        channel.basicQos(100);
+        channel.addShutdownListener {
+            Log.err("The world is on fire", it)
+        }
     }
 
     /** Do nothing. This is here to force rabbitmq to load. */
     fun noop() {}
 
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    fun<T> send(`object`: T) {
-        val `annotation` = `object`?.javaClass?.annotations?.
-                                   find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
-                                   ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
-        val queueName = `annotation`.value
+    private fun exchange(queueName: String) = "main.$queueName"
+
+    private fun queue(queueName: String) = "main.$queueName.${CorePluginConfig.i.serverName}"
+
+    private fun ensureExchange(queueName: String) {
         if (queues.add(queueName)) {
-            channel.exchangeDeclare(queueName, "direct", true, true, false, emptyMap())
-            channel.queueDeclare(queueName, true, false, true, emptyMap())
-            channel.queueBind(queueName, queueName, CorePluginConfig.i().serverName)
+            channel.exchangeDeclare(exchange(queueName), "fanout", true, false, false, emptyMap())
+            channel.queueDeclare(queue(queueName), true, false, true, emptyMap())
+            channel.queueBind(queue(queueName), exchange(queueName), CorePluginConfig.i.serverName)
         }
-        val body = Serializers.cbor.encodeToByteArray(
-            Serializers.cbor.serializersModule.serializer(`object`.javaClass.kotlin.createType(emptyList(), false, emptyList())),
-            `object`)
+    }
+
+    private fun publish(queueName: String, body: ByteArray, routingKey: String = "#", props: BasicProperties.Builder = PropertiesBuilder()) {
         channel.basicPublish(
-            queueName,
-            CorePluginConfig.i().serverName,
+            exchange(queueName),
+            routingKey,
             true, false,
-            PropertiesBuilder()
+            props
                 .appId(CorePluginConfig.i().serverName)
                 .contentEncoding("text/cbor")
                 .build(),
             body)
+    }
+
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    fun<T> send(`object`: T, routingKey: String = "#") {
+        val `annotation` = `object`?.javaClass?.annotations?.
+                                   find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
+                                   ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
+        val queueName = `annotation`.value
+        ensureExchange(queueName)
+        val body = Serializers.cbor.encodeToByteArray(
+            Serializers.cbor.serializersModule.serializer(`object`.javaClass.kotlin.createType(emptyList(), false, emptyList())),
+            `object`)
+        publish(queueName, body, routingKey)
+    }
+
+    @PublicAPI
+    @JvmStatic
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    fun<T> sendTo(`object`: T, to: String, routingKey: String = "#") {
+        val `annotation` = `object`?.javaClass?.annotations?.
+        find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
+            ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
+        val queueName = `annotation`.value
+        ensureExchange(queueName)
+        val body = Serializers.cbor.encodeToByteArray(
+            Serializers.cbor.serializersModule.serializer(`object`.javaClass.kotlin.createType(emptyList(), false, emptyList())),
+            `object`)
+        publish(queueName, body, routingKey, props = PropertiesBuilder().replyTo(to))
     }
 
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
@@ -94,12 +119,9 @@ object RabbitMQ {
                            find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
                            ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
         val queueName = `annotation`.value
-        if (queues.add(queueName)) {
-            channel.exchangeDeclare(queueName, "direct", true, false, true, emptyMap())
-            channel.queueDeclare(queueName, true, false, true, emptyMap())
-            channel.queueBind(queueName, queueName, CorePluginConfig.i().serverName)
-        }
-        val tag = channel.basicConsume(queueName, true, queueName, true, false, emptyMap(), { _, msg ->
+        ensureExchange(queueName)
+        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE / 2)}-${System.currentTimeMillis()}"
+        val tag = channel.basicConsume(queue(queueName), true, consumerTag, true, false, emptyMap(), { _, msg ->
             if (msg.properties.replyTo != null && msg.properties.replyTo != CorePluginConfig.i().serverName) return@basicConsume
             if (msg.properties.contentEncoding != "text/cbor" && msg.properties.contentEncoding != null) return@basicConsume
 
@@ -118,11 +140,17 @@ object RabbitMQ {
         }
     }
 
+    @PublicAPI
+    @JvmStatic
     fun<T> sentBy(`object`: T): String? = sentBy[`object`]
+    @PublicAPI
+    @JvmStatic
     fun<T> correlationId(`object`: T): String? = correlationId[`object`]
 
+    @PublicAPI
+    @JvmStatic
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    fun<R, T> request(`object`: T, recv: Cons<R>) {
+    fun<R, T> request(`object`: T, timeout: Float, recv: Cons<R>) {
         val networkEvent = `object`?.javaClass?.annotations?.
                                    find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
                                    ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
@@ -130,16 +158,12 @@ object RabbitMQ {
                                      find { it.annotationClass == NetworkRequest::class } as NetworkRequest?
                                      ?: throw IllegalArgumentException("can only send requests annotated with '@NetworkRequest'")
         val queueName = networkEvent.value
-        if (queues.add(queueName)) {
-            channel.exchangeDeclare(queueName, "direct", true, true, false, emptyMap())
-            channel.queueDeclare(queueName, true, false, true, emptyMap())
-            channel.queueBind(queueName, queueName, CorePluginConfig.i().serverName)
-        }
+        ensureExchange(queueName)
         val body = Serializers.cbor.encodeToByteArray(
             Serializers.cbor.serializersModule.serializer(`object`.javaClass.kotlin.createType(emptyList(), false, emptyList())),
             `object`)
-        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE)}-${System.currentTimeMillis()}"
-        val tag = channel.basicConsume(queueName, true, queueName, true, false, emptyMap(), { _, msg ->
+        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE / 2)}-${System.currentTimeMillis()}"
+        val tag = channel.basicConsume("Q$queueName-${CorePluginConfig.i.serverName}", true, consumerTag, true, false, emptyMap(), { _, msg ->
             if (msg.properties.replyTo != null && msg.properties.replyTo != CorePluginConfig.i().serverName) return@basicConsume
             if (msg.properties.contentEncoding != "text/cbor" && msg.properties.contentEncoding != null) return@basicConsume
 
@@ -152,8 +176,9 @@ object RabbitMQ {
 
             recv[`object`]
         }, {}, { _, _ -> })
+        publish(queueName, body)
         channel.basicPublish(
-            queueName,
+            "Ex$queueName",
             CorePluginConfig.i().serverName,
             true, false,
             PropertiesBuilder()
@@ -161,11 +186,13 @@ object RabbitMQ {
                 .contentEncoding("text/cbor")
                 .build(),
             body)
-        Timer.schedule({ channel.basicCancel(tag) }, networkEvent.ttl.toFloat())
+        Timer.schedule({ channel.basicCancel(tag) }, timeout)
     }
 
+    @PublicAPI
+    @JvmStatic
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    fun<T, R> requestOnce(`object`: T): CompletableFuture<R> {
+    fun<T, R> requestOnce(`object`: T, timeout: Float): CompletableFuture<R> {
         val future = CompletableFuture<R>()
         val timer = Ref<Timer.Task>(nodecl())
         val networkEvent = `object`?.javaClass?.annotations?.
@@ -175,17 +202,13 @@ object RabbitMQ {
                                      find { it.annotationClass == NetworkRequest::class } as NetworkRequest?
                                      ?: throw IllegalArgumentException("can only send requests annotated with '@NetworkRequest'")
         val queueName = networkEvent.value
-        if (queues.add(queueName)) {
-            channel.exchangeDeclare(queueName, "direct", true, true, false, emptyMap())
-            channel.queueDeclare(queueName, true, false, true, emptyMap())
-            channel.queueBind(queueName, queueName, CorePluginConfig.i().serverName)
-        }
+        ensureExchange(queueName)
         val body = Serializers.cbor.encodeToByteArray(
             Serializers.cbor.serializersModule.serializer(`object`.javaClass.kotlin.createType(emptyList(), false, emptyList())),
             `object`)
-        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE)}-${System.currentTimeMillis()}"
+        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE / 2)}-${System.currentTimeMillis()}"
         val tag = Ref("")
-        tag.r = channel.basicConsume(queueName, true, queueName, true, false, emptyMap(), { _, msg ->
+        tag.r = channel.basicConsume("Q$queueName-${CorePluginConfig.i.serverName}", true, consumerTag, true, false, emptyMap(), { _, msg ->
             if (msg.properties.replyTo != null && msg.properties.replyTo != CorePluginConfig.i().serverName) return@basicConsume
             if (msg.properties.contentEncoding != "text/cbor" && msg.properties.contentEncoding != null) return@basicConsume
 
@@ -201,7 +224,7 @@ object RabbitMQ {
             future.complete(`object`)
         }, {}, { _, _ -> })
         channel.basicPublish(
-            queueName,
+            "Ex$queueName",
             CorePluginConfig.i().serverName,
             true, false,
             PropertiesBuilder()
@@ -212,10 +235,12 @@ object RabbitMQ {
         timer.r = Timer.schedule({
             channel.basicCancel(tag.r)
             future.completeExceptionally(TookTooLongExeption("could not receive an event in required time"))
-        }, networkEvent.ttl.toFloat())
+        }, timeout)
         return future
     }
 
+    @PublicAPI
+    @JvmStatic
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     fun<E, M> reply(event: E, message: M) {
         val sentBy = sentBy(event)
@@ -225,24 +250,10 @@ object RabbitMQ {
                                    find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
                                    ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
         val queueName = `annotation`.value
-        if (queues.add(queueName)) {
-            channel.exchangeDeclare(queueName, "direct", true, true, false, emptyMap())
-            channel.queueDeclare(queueName, true, false, true, emptyMap())
-            channel.queueBind(queueName, queueName, CorePluginConfig.i().serverName)
-        }
+        ensureExchange(queueName)
         val body = Serializers.cbor.encodeToByteArray(
             Serializers.cbor.serializersModule.serializer(message.javaClass.kotlin.createType(emptyList(), false, emptyList())),
             message)
-        channel.basicPublish(
-            queueName,
-            CorePluginConfig.i().serverName,
-            true, false,
-            PropertiesBuilder()
-                .appId(CorePluginConfig.i().serverName)
-                .contentEncoding("text/cbor")
-                .replyTo(sentBy)
-                .correlationId(correlationId)
-                .build(),
-            body)
+        publish(queueName, body, props = PropertiesBuilder().replyTo(sentBy).correlationId(correlationId))
     }
 }

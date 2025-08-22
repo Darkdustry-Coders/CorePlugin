@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.kotlin.assert)
+
     id 'maven-publish'
     id 'java-library'
 }
@@ -26,6 +27,26 @@ def workspacePath = gradle.ext.workspacePath
 repositories {
     maven { url "https://raw.githubusercontent.com/Zelaux/MindustryRepo/master/repository" }
     maven { url "https://jitpack.io" }
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+publishing {
+    publications {
+        internal(MavenPublication) {
+            from components.java
+
+            version "latest-SNAPSHOT"
+        }
+    }
+    repositories {
+        maven {
+            url = "file://$workspacePath/.cache/maven"
+        }
+    }
 }
 
 allprojects {
@@ -55,11 +76,6 @@ dependencies {
     implementation project(':annotations')
     implementation project(':buildExtras')
     ksp project(':processor')
-}
-
-java {
-    withSourcesJar()
-    withJavadocJar()
 }
 
 jar {
@@ -94,19 +110,6 @@ kotlin {
 allprojects {
     repositories {
         mavenCentral()
-    }
-}
-
-publishing {
-    publications {
-        internal(MavenPublication) {
-            from components.java
-        }
-    }
-    repositories {
-        maven {
-            url = "file://$workspacePath/.cache/maven"
-        }
     }
 }
 

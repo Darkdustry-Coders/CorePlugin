@@ -10,6 +10,7 @@ import mindurka.annotations.PublicAPI
 import java.io.InputStream
 import kotlinx.serialization.serializer
 import com.akuleshov7.ktoml.source.decodeFromStream
+import kotlinx.serialization.SerialFormat
 import kotlinx.serialization.json.decodeFromStream
 import java.io.OutputStream
 import kotlinx.serialization.json.encodeToStream
@@ -17,6 +18,7 @@ import kotlinx.serialization.encodeToString
 import java.nio.charset.Charset
 import kotlinx.serialization.cbor.Cbor
 
+@OptIn(ExperimentalSerializationApi::class)
 @PublicAPI
 object Serializers {
     @PublicAPI
