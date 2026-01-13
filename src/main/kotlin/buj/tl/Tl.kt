@@ -115,6 +115,39 @@ private class LocaleFile {
     private val tls = ObjectMap<String, Script>()
 }
 
+private fun closeColors(s: String): String {
+    val builder = StringBuilder()
+    var colorNestness = 0
+
+    var i = 0
+    while (true) {
+        val prev = i
+
+        i = s.indexOf('[', i)
+        if (i == -1) break;
+
+        builder.append(s.substring(prev..i))
+
+        val o = s.indexOf(']', i)
+        if (o == -1) break;
+
+        else if (isValidColor(s.substring(i + 1..<o))) colorNestness++
+
+        i = o + 1
+    }
+
+    builder.append(builder.drop(i))
+
+    if (builder.isEmpty()) return s
+    if (s.endsWith('[')) {
+        i = s.length - 1
+        while (i >= 0 && s[i] == '[') i--
+        i++
+        if ((s.length - i) % 2 == 1) "$s[$builder"
+    }
+    return "$s$builder"
+}
+
 class LCtx(private val parent: LCtx? = null) {
     private val tls = ObjectMap<String, Script>()
 
@@ -130,7 +163,7 @@ class LCtx(private val parent: LCtx? = null) {
 
     fun tl(key: String, lang: String): Script {
         if (tls.containsKey(key)) return tls[key]
-        return LocaleFile.get(lang, key)
+        return LocaleFile[lang, key]
     }
 }
 
@@ -295,8 +328,8 @@ private class ScrIf(
             EqualsIgnoreCase -> "=="
             NotEquals -> "!="
             NotEqualsIgnoreCase -> "!=="
-            Contains -> "~="
-            ContainsIgnoreCase -> "~"
+            Contains -> "~"
+            ContainsIgnoreCase -> "~="
             StartsWith -> "#="
             EndsWith -> "=#"
             Greater -> ">"
@@ -312,8 +345,8 @@ private class ScrIf(
                 "==" -> EqualsIgnoreCase
                 "!=" -> NotEquals
                 "!==" -> NotEquals
-                "~=" -> Contains
-                "~" -> ContainsIgnoreCase
+                "~" -> Contains
+                "~=" -> ContainsIgnoreCase
                 "#=" -> StartsWith
                 "=#" -> EndsWith
                 ">" -> Greater

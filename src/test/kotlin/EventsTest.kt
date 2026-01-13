@@ -6,7 +6,7 @@ import mindurka.api.Events
 class Tests {
     @Test
     fun listenEvent() {
-        var works = arrayOf(0)
+        val works = arrayOf(0)
 
         class CustomEvent {
             fun works() {

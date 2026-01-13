@@ -14,6 +14,7 @@ import mindustry.game.Team
 import mindustry.gen.Player
 import mindustry.io.SaveIO
 import mindustry.io.SaveMeta
+import java.util.WeakHashMap
 
 @PublicAPI
 enum class MapFlags {
@@ -35,10 +36,12 @@ interface MapHandle {
     fun height(): Int
     /** Obtain flags for the specified map. */
     fun flags(): Iterator<MapFlags>
-    /** Load this map. */
+    /**
+     * Load this map.
+     *
+     * Must be executed immediately.
+     */
     fun rtv()
-    /** Set this as the next map. */
-    fun setNext()
 }
 
 @PublicAPI
@@ -57,8 +60,12 @@ interface MapManager {
      */
     fun hasSaves(): Boolean
 
-    /** Load the next map. */
-    fun rtv()
+    /** Get the next map. */
+    fun next(): MapHandle
+
+    /** Refresh maps. */
+    fun setNext(map: MapHandle)
+
     /**
      * Make a save with the provided name.
      *
@@ -75,13 +82,22 @@ interface MapManager {
  */
 @PublicAPI
 open class DefaultMapManager : MapManager {
+    private val mapHandles = WeakHashMap<mindustry.maps.Map, MapHandle>()
+    private fun mapHandleFor(map: mindustry.maps.Map): MapHandle {
+        val handle = mapHandles[map]
+        if (handle != null) return handle
+        val newHandle = DefaultMapHandle(map)
+        mapHandles[map] = newHandle
+        return newHandle
+    }
+
     protected companion object {
-        var nextSave: Fi? = null
+        var nextMap: MapHandle? = null
     }
 
     open class DefaultMapHandle(val map: mindustry.maps.Map) : MapHandle {
         val flags = Seq<MapFlags>()
-        
+
         init {
             for (obj in map.rules().objectives) {
                 if (obj is FlagObjective) {
@@ -99,12 +115,7 @@ open class DefaultMapManager : MapManager {
         override fun width(): Int = map.width
         override fun height(): Int = map.height
         override fun flags(): Iterator<MapFlags> = flags.iterator()
-        override fun rtv() {
-            mindustry.server.ServerControl.instance.play { Vars.world.loadMap(map) }
-        }
-        override fun setNext() {
-            Vars.maps.setNextMapOverride(map)
-        }
+        override fun rtv() { Vars.world.loadMap(map) }
     }
 
     open class DefaultSaveHandle(val fi: Fi, val meta: SaveMeta, val flags: Seq<MapFlags>) : MapHandle {
@@ -114,12 +125,7 @@ open class DefaultMapManager : MapManager {
         override fun width(): Int = meta.map.width
         override fun height(): Int = meta.map.height
         override fun flags(): Iterator<MapFlags> = flags.iterator()
-        override fun rtv() {
-            mindustry.server.ServerControl.instance.play { SaveIO.load(fi) }
-        }
-        override fun setNext() {
-            nextSave = fi
-        }
+        override fun rtv() { SaveIO.load(fi) }
     }
 
     protected val saves = Seq<DefaultSaveHandle>()
@@ -140,6 +146,7 @@ open class DefaultMapManager : MapManager {
                         }
                     }
                 }
+                saves.add(DefaultSaveHandle(save, meta, flags))
             } catch (_: Exception) {}
         }
     }
@@ -148,20 +155,23 @@ open class DefaultMapManager : MapManager {
         reloadSaves()
     }
 
-    override fun current(): MapHandle = DefaultMapHandle(Vars.state.map)
+    override fun current(): MapHandle = mapHandleFor(Vars.state.map)
     override fun maps(): Iterator<MapHandle> =
-        Vars.maps.customMaps().iterator().map { DefaultMapHandle(it) }
+        Vars.maps.customMaps().iterator().map { mapHandleFor(it) }
     override fun saves(): Iterator<MapHandle> = saves.iterator()
     override fun hasSaves(): Boolean = true
-    override fun rtv() {
-        if (nextSave != null) {
-            val save = nextSave ?: unreachable()
-            mindustry.server.ServerControl.instance.play { SaveIO.load(save) }
-            nextSave = null
-            return
+    override fun next(): MapHandle {
+        val nextMap = nextMap
+        if (nextMap != null) {
+            DefaultMapManager.nextMap = null
+            return nextMap
         }
         val map = Vars.maps.getNextMap(Vars.state.rules.mode(), Vars.state.map)
-        mindustry.server.ServerControl.instance.play { Vars.world.loadMap(map) }
+        return mapHandleFor(map)
+    }
+
+    override fun setNext(map: MapHandle) {
+        nextMap = map
     }
     override fun save(name: SafeFilename) {
         Vars.dataDirectory.child("saves").mkdirs()
@@ -200,6 +210,7 @@ object Gamemode {
     /** Map manager. */
     @JvmStatic
     var maps: MapManager = DefaultMapManager()
+
     /**
      * Whether secret blocks need to be unblocked.
      *
@@ -207,6 +218,14 @@ object Gamemode {
      */
     @JvmField
     var unlockSpecialBlocks = true
+    /**
+     * Whether teams should be restored upon rejoin.
+     */
+    @JvmField
+    var restoreTeams = true
+    /** Enable /rtv. */
+    @JvmField
+    var enableRtv = true
 
     /** Initialize CorePlugin. */
     @JvmStatic

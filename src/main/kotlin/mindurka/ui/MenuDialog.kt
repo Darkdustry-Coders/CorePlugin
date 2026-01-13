@@ -16,6 +16,7 @@ import arc.func.Cons
 import arc.func.Prov
 import arc.util.Timer
 import arc.struct.Seq
+import mindurka.api.Lifetime
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -34,7 +35,7 @@ data class MenuUiButton<T> (
  *
  * Once `future` returns, instance of this class must not be used again.
  */
-class MenuDialog<T>: Dialog {
+class MenuDialog<T>(val lifetime: Lifetime): Dialog {
     var title: String = ""
     var message: String = ""
 
@@ -93,6 +94,7 @@ class MenuDialog<T>: Dialog {
                 r.run()
             } else {
                 DialogsInternal.closeDialog(event.player, this)
+                lifetime.cancel()
                 future.complete(value)
             }
             return
@@ -114,6 +116,7 @@ class MenuDialog<T>: Dialog {
                         menuId = null
                         if (id != null) Timer.schedule({ Call.hideFollowUpMenu(event.player.con, id) }, TIMER_CLOSE_TIME)
                         DialogsInternal.closeDialog(event.player, this)
+                        lifetime.cancel()
                         future.complete(value)
                     }
                     
@@ -122,6 +125,8 @@ class MenuDialog<T>: Dialog {
     }
     fun handleEvent(event: PlayerLeave) {
         val value = exitHandle?.get()
+        future.complete(value)
+        lifetime.cancel()
     }
 }
 
@@ -129,7 +134,7 @@ class MenuDialog<T>: Dialog {
  * A menu group builder.
  */
 @PublicAPI
-class MenuGroupBuilder<T>(private val group: Seq<MenuUiButton<T>>) {
+class MenuGroupBuilder<T>(private val group: Seq<MenuUiButton<T>>, val lifetime: Lifetime) {
     @JvmName("optionText")
     fun optionText(text: String) {
         optionText(text, null)
@@ -154,7 +159,7 @@ class MenuGroupBuilder<T>(private val group: Seq<MenuUiButton<T>>) {
  * A menu builder.
  */
 @PublicAPI
-class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Player, private val executeAgain: Runnable) {
+class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Player, val lifetime: Lifetime, private val executeAgain: Runnable) {
     var title: String
         get() = if (dialog.titleCtx == null) dialog.title else Ls(player.locale, dialog.titleCtx!!).done(dialog.title)
         set(value) {
@@ -198,13 +203,13 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
 
     fun group(config: MenuGroupBuilder<T>.() -> kotlin.Unit) {
         val group = Seq<MenuUiButton<T>>()
-        config(MenuGroupBuilder<T>(group))
+        config(MenuGroupBuilder<T>(group, lifetime))
         dialog.options.add(group)
     }
     @JvmName("group")
     fun group(config: Cons<MenuGroupBuilder<T>>) {
         val group = Seq<MenuUiButton<T>>()
-        config[MenuGroupBuilder<T>(group)]
+        config[MenuGroupBuilder<T>(group, lifetime)]
         dialog.options.add(group)
     }
 
@@ -245,9 +250,11 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
 
 @PublicAPI
 fun <T> Player.openMenu(dialogFun: MenuBuilder<T>.() -> kotlin.Unit): CompletableFuture<T?> {
-    val dialog = MenuDialog<T>()
+    val lifetime = Lifetime()
+
+    val dialog = MenuDialog<T>(lifetime)
     val builder = arrayOf(nodecl<MenuBuilder<T>>())
-    builder[0] = MenuBuilder(dialog, this) {
+    builder[0] = MenuBuilder(dialog, this, lifetime) {
         dialog.clear()
         dialogFun(builder[0])
         dialog.write(this)

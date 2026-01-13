@@ -11,6 +11,7 @@ import mindurka.config.Serializers
 @Serializable
 data class Config(
     val serverName: String = "unnamed-server-${Mathf.random(Int.MAX_VALUE)}",
+    val gamemode: String = "unknown",
     val globalConfigPath: String = Vars.dataDirectory.child("globalConfig.toml").path(),
 ) {
     companion object {
