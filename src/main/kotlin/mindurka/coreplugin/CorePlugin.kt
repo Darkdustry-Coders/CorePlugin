@@ -28,6 +28,7 @@ import mindurka.build.CommandType
 import mindurka.config.GlobalConfig
 import mindurka.coreplugin.commands.metadataForCommand
 import mindurka.coreplugin.commands.registerCommand
+import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerInfo
 import mindurka.coreplugin.messages.ServersRefresh
 import mindurka.ui.handleUiEvent
@@ -162,7 +163,7 @@ object CorePlugin {
             emit(BuildEventPost)
         }
 
-        Consts.serverControl.gameOverListener = Cons<EventType.GameOverEvent> { event ->
+        Consts.serverControl.gameOverListener = Cons { event ->
             val map = Gamemode.maps.next()
             val key = "{generic.gameover.${if (Vars.state.rules.pvp)
                                                if (event.winner == Team.derelict) "tie"
@@ -197,6 +198,10 @@ object CorePlugin {
         setupTerminalInput()
 
         RabbitMQ.noop()
+        Runtime.getRuntime().addShutdownHook(Thread {
+            emit(ServerDown)
+            RabbitMQ.flush()
+        })
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.");
     }

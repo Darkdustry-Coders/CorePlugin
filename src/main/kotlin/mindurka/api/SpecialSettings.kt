@@ -1,10 +1,15 @@
 package mindurka.api
 
+import arc.struct.Seq
+import arc.util.Strings
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.Config
 import mindustry.Vars
 import mindustry.game.EventType
+import mindustry.game.Rules
 import mindustry.maps.Map
+import mindustry.world.Block
+import mindustry.world.Tiles
 import java.util.Objects
 
 /**
@@ -21,10 +26,30 @@ class NotMindurkaMap(message: String): Exception(message)
  * valid.
  */
 @PublicAPI
-class SpecialSettingsLoad(val settings: SpecialSettings)
+class SpecialSettingsLoad(val rc: RulesContext)
 
 @PublicAPI
-class SpecialSettings internal constructor(val map: Map) {
+data class RulesContext(
+    val rules: Rules,
+    val specialSettings: SpecialSettings,
+    val mapWidth: Int,
+    val mapHeight: Int,
+
+    val warnings: Seq<String> = Seq.with(),
+) {
+    fun r(key: String, de: String): String = rules.tags.get(key, de)
+    fun r(key: String, de: Int): Int = rules.tags.getInt(key, de)
+    fun r(key: String, de: Float): Float = rules.tags.getFloat(key, de)
+    fun r(key: String, de: Boolean): Boolean = rules.tags.get(key)?.let { it == "true" } ?: de
+    fun r(key: String, de: Block): Block = rules.tags.get(key)?.let { Vars.content.block(key) } ?: de
+
+    fun warn(text: String) {
+        warnings.addUnique(text)
+    }
+}
+
+@PublicAPI
+class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeight: Int) {
     companion object {
         private var settings: SpecialSettings? = null;
 
@@ -44,25 +69,55 @@ class SpecialSettings internal constructor(val map: Map) {
          * @throws NotMindurkaMap If map is not valid.
          */
         @PublicAPI
-        fun of(map: Map) = SpecialSettings(map)
+        fun of(rules: Rules, tiles: Tiles) = SpecialSettings(rules, tiles.width, tiles.height)
+
+        /**
+         * Get special settings for a map.
+         *
+         * @throws NotMindurkaMap If map is not valid.
+         */
+        @PublicAPI
+        fun of(map: Map) = SpecialSettings(map.rules(), map.width, map.height)
+
+        @JvmStatic
+        val PREFIX = "mdrk"
+        @JvmStatic
+        val FORMAT = "$PREFIX.format"
+        @JvmStatic
+        val FORMAT_VER = "1"
+        @JvmStatic
+        val PATCH = "$PREFIX.patch"
+        @JvmStatic
+        val GAMEMODE = "$PREFIX.gamemmmode"
+        @JvmStatic
+        val GAMEMODE_LEGACY = "mindurkaGamemode"
     }
 
-    /**
-     * String name of the gamemode.
-     */
-    @PublicAPI
-    val gamemode: String
+    /** String name of the gamemode. */
+    @PublicAPI val gamemode: String
+    /** Patch version. Used by gamemodes to apply updates to older maps */
+    @PublicAPI val patch: Int
+    /** Context for rules parsing. */
+    @PublicAPI val rc: RulesContext = RulesContext(rules, this, mapWidth, mapHeight)
 
     init {
-        val tags = map.rules().tags;
+        val tags = rules.tags;
 
-        var formatVersion: String =
-            tags.get("mdrk.format") ?: throw NotMindurkaMap("Not a Mindurka map. Consider specifying a gamemode using MindurkaCompat")
-        if (formatVersion != "1") throw NotMindurkaMap("Unsupported format version $formatVersion")
+        rc.r(FORMAT, "0").let { version ->
+            if (version == "0") throw NotMindurkaMap("Not a Mindurka map. Consider specifying a gamemode using MindurkaCompat")
+            if (version != FORMAT_VER) throw NotMindurkaMap("Unknown format version $version. Is gamemode not specified?")
+        }
 
-        gamemode = tags.get("mdrk.gamemode") ?: throw NotMindurkaMap("Not a Mindurka map. Consider specifying a gamemode using MindurkaCompat")
-        if (gamemode != Config.i().gamemode) throw NotMindurkaMap("This map was made for a different gamemode ($gamemode vs ${Config.i().gamemode})")
+        gamemode = tags.get(GAMEMODE)
+            ?: tags.get(GAMEMODE_LEGACY)?.let {
+                rc.warn("Using legacy gamemode key. Consider updating the map.")
+                it
+            }
+            ?: throw NotMindurkaMap("Not a Mindurka map. Consider specifying a gamemode using MindurkaCompat")
+        if (gamemode != Config.i().gamemode) throw NotMindurkaMap("This map was made for a different gamemode ('$gamemode' != '${Config.i().gamemode}')")
 
-        emit(SpecialSettingsLoad(this))
+        patch = rc.r(PATCH, 0)
+
+        emit(SpecialSettingsLoad(rc))
     }
 }

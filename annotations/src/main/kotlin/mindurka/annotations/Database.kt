@@ -11,12 +11,25 @@ annotation class DatabaseEntry(
 )
 
 /**
- * An event that is sent over the network.
- *
- * Unlike regular events, a network event is not immediately
- * dispatched to the application, instead being sent to the broker.
+ * Automatically increment the value.
  */
 @Target(AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.RUNTIME)
 @PublicAPI
-annotation class PrimaryKey
+annotation class Autoincrement
+
+/**
+ * Automatically generate a snowflake key.
+ */
+@Target(AnnotationTarget.FIELD)
+@Retention(AnnotationRetention.RUNTIME)
+@PublicAPI
+annotation class Autosnowflake
+
+/**
+ * Assigned value must never appear again on any other entry.
+ */
+@Target(AnnotationTarget.FIELD)
+@Retention(AnnotationRetention.RUNTIME)
+@PublicAPI
+annotation class Unique

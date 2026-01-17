@@ -256,4 +256,10 @@ object RabbitMQ {
             message)
         publish(queueName, body, props = PropertiesBuilder().replyTo(sentBy).correlationId(correlationId))
     }
+
+    @PublicAPI
+    fun flush() {
+        // TODO: Somehow make this work properly, idk
+        Thread.sleep(200);
+    }
 }

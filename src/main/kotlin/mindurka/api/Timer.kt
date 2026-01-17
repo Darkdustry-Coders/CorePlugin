@@ -1,7 +1,21 @@
 package mindurka.api
 
+import kotlinx.coroutines.CancellationException
 import mindurka.annotations.PublicAPI
+import mindurka.util.K
+import java.util.concurrent.CompletableFuture
 import arc.util.Timer as ArcTimer
+
+@PublicAPI
+fun sleep(seconds: Float, lifetime: Lifetime = Lifetime.Forever): CompletableFuture<K> = object : CompletableFuture<K>() {
+    val cancel: Cancel = timer(seconds, lifetime) { complete(K) }
+
+    override fun cancel(mayInterruptIfRunning: Boolean): Boolean {
+        completeExceptionally(CancellationException())
+        cancel.cancel()
+        return super.cancel(mayInterruptIfRunning)
+    }
+}
 
 /**
  * Run after time specified in seconds.
