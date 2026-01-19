@@ -26,7 +26,7 @@ class NotMindurkaMap(message: String): Exception(message)
  * valid.
  */
 @PublicAPI
-class SpecialSettingsLoad(val rc: RulesContext)
+class SpecialSettingsLoad(val rc: RulesContext, val currentMap: Boolean)
 
 @PublicAPI
 data class RulesContext(
@@ -37,6 +37,8 @@ data class RulesContext(
 
     val warnings: Seq<String> = Seq.with(),
 ) {
+    // TODO: Enforce validation.
+
     fun r(key: String, de: String): String = rules.tags.get(key, de)
     fun r(key: String, de: Int): Int = rules.tags.getInt(key, de)
     fun r(key: String, de: Float): Float = rules.tags.getFloat(key, de)
@@ -54,7 +56,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
         private var settings: SpecialSettings? = null;
 
         internal fun `coreplugin$loadSettings`() {
-            settings = of(Vars.state.map)
+            settings = of(Vars.state.rules, Vars.world.tiles)
         }
 
         /**
@@ -88,7 +90,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
         @JvmStatic
         val PATCH = "$PREFIX.patch"
         @JvmStatic
-        val GAMEMODE = "$PREFIX.gamemmmode"
+        val GAMEMODE = "$PREFIX.gamemode"
         @JvmStatic
         val GAMEMODE_LEGACY = "mindurkaGamemode"
     }
@@ -113,11 +115,11 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
                 rc.warn("Using legacy gamemode key. Consider updating the map.")
                 it
             }
-            ?: throw NotMindurkaMap("Not a Mindurka map. Consider specifying a gamemode using MindurkaCompat")
+            ?: throw NotMindurkaMap("Format 1 requires gamemode to be specified!")
         if (gamemode != Config.i().gamemode) throw NotMindurkaMap("This map was made for a different gamemode ('$gamemode' != '${Config.i().gamemode}')")
 
         patch = rc.r(PATCH, 0)
 
-        emit(SpecialSettingsLoad(rc))
+        emit(SpecialSettingsLoad(rc, rules === Vars.state.rules))
     }
 }
