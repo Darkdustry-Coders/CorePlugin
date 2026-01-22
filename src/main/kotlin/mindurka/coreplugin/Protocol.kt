@@ -11,10 +11,7 @@ import arc.util.Reflect
 import arc.util.Time
 import arc.util.io.Reads
 import arc.util.io.ReusableByteOutStream
-import arc.util.io.Writes
 import mindurka.annotations.PublicAPI
-import mindurka.api.PlayerAssignTeamEvent
-import mindurka.api.Username
 import mindurka.api.emit
 import mindurka.api.timer
 import mindurka.config.SharedConfig
@@ -22,9 +19,7 @@ import mindurka.util.Async
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
-import mindustry.game.Team
 import mindustry.gen.Call
-import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.gen.ServerBinaryPacketReliableCallPacket
 import mindustry.gen.ServerBinaryPacketUnreliableCallPacket
@@ -304,7 +299,7 @@ class Protocol {
                 val length = dataStream.readShort();
                 if (length <= 0) throw IllegalArgumentException("length is too small")
                 val encryptedData = dataStream.readNBytes(length.toInt())
-                val cipher = Cipher.getInstance("RSA")
+                val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
                 cipher.init(Cipher.DECRYPT_MODE, state.key)
                 val data = cipher.doFinal(encryptedData)
 
@@ -377,6 +372,7 @@ class Protocol {
                 player.color.set(dataStream.readInt())
                 con.usid = dataStream.readUTF()
                 con.uuid = dataStream.readUTF()
+                player.locale = dataStream.readUTF()
                 // TODO: Replace completely with key auth and forget this exists.
                 player.admin = Vars.netServer.admins.isAdmin(con.uuid, con.usid)
 
