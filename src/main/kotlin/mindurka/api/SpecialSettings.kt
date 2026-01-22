@@ -43,7 +43,7 @@ data class RulesContext(
     fun r(key: String, de: Int): Int = rules.tags.getInt(key, de)
     fun r(key: String, de: Float): Float = rules.tags.getFloat(key, de)
     fun r(key: String, de: Boolean): Boolean = rules.tags.get(key)?.let { it == "true" } ?: de
-    fun r(key: String, de: Block): Block = rules.tags.get(key)?.let { Vars.content.block(key) } ?: de
+    fun r(key: String, de: Block): Block = rules.tags.get(key)?.let(Vars.content::block) ?: de
 
     fun warn(text: String) {
         warnings.addUnique(text)
@@ -63,6 +63,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
          * Get special settings for current map.
          */
         @PublicAPI
+        @JvmStatic
         fun currentMap(): SpecialSettings = Objects.requireNonNull(settings)!!
 
         /**
@@ -71,6 +72,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
          * @throws NotMindurkaMap If map is not valid.
          */
         @PublicAPI
+        @JvmStatic
         fun of(rules: Rules, tiles: Tiles) = SpecialSettings(rules, tiles.width, tiles.height)
 
         /**
@@ -79,28 +81,25 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
          * @throws NotMindurkaMap If map is not valid.
          */
         @PublicAPI
+        @JvmStatic
         fun of(map: Map) = SpecialSettings(map.rules(), map.width, map.height)
 
-        @JvmStatic
-        val PREFIX = "mdrk"
-        @JvmStatic
-        val FORMAT = "$PREFIX.format"
-        @JvmStatic
-        val FORMAT_VER = "1"
-        @JvmStatic
-        val PATCH = "$PREFIX.patch"
-        @JvmStatic
-        val GAMEMODE = "$PREFIX.gamemode"
-        @JvmStatic
-        val GAMEMODE_LEGACY = "mindurkaGamemode"
+        @JvmStatic @PublicAPI val PREFIX = "mdrk"
+        @JvmStatic @PublicAPI val FORMAT = "$PREFIX.format"
+        @JvmStatic @PublicAPI val FORMAT_VER = "1"
+        @JvmStatic @PublicAPI val PATCH = "$PREFIX.patch"
+        @JvmStatic @PublicAPI val GAMEMODE = "$PREFIX.gamemode"
+        @JvmStatic @PublicAPI val GAMEMODE_LEGACY = "mindurkaGamemode"
+        @JvmStatic @PublicAPI val OVERDRIVE_IGNORES_CHEAT = "$PREFIX.overdriveIgnoresCheat"
     }
 
     /** String name of the gamemode. */
-    @PublicAPI val gamemode: String
+    @JvmField @PublicAPI val gamemode: String
     /** Patch version. Used by gamemodes to apply updates to older maps */
     @PublicAPI val patch: Int
     /** Context for rules parsing. */
-    @PublicAPI val rc: RulesContext = RulesContext(rules, this, mapWidth, mapHeight)
+    @JvmField @PublicAPI val rc: RulesContext = RulesContext(rules, this, mapWidth, mapHeight)
+    @JvmField @PublicAPI var overdriveIgnoresCheat = rc.r(OVERDRIVE_IGNORES_CHEAT, false)
 
     init {
         val tags = rules.tags;

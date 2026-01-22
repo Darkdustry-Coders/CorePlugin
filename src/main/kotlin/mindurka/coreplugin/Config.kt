@@ -12,7 +12,7 @@ import mindurka.config.Serializers
 data class Config(
     val serverName: String = "unnamed-server-${Mathf.random(Int.MAX_VALUE)}",
     val gamemode: String = "unknown",
-    val globalConfigPath: String = Vars.dataDirectory.child("globalConfig.toml").path(),
+    val sharedConfigPath: String = Vars.dataDirectory.child("sharedConfig.toml").path(),
 ) {
     companion object {
         @JvmField
@@ -27,7 +27,7 @@ data class Config(
                     file.writeString(Serializers.toml.encodeToString(instance))
                 } catch (_: Exception) {}
             } catch (e: Exception) {
-                throw RuntimeException("Failed to load 'corePlugin.toml'! Please check whether the file is in correct format!")
+                throw RuntimeException("Failed to load 'corePlugin.toml'! Please check whether the file is in correct format!", e)
             }
             instance
         }

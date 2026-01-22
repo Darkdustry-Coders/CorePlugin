@@ -12,7 +12,7 @@ import mindurka.annotations.NetworkRequest
  */
 @PublicAPI
 @Serializable
-@NetworkEvent("generic.serverInfo", ttl = 5)
+@NetworkEvent("mindustry.serverInfo", ttl = 5)
 data class ServerInfo(
     /**
      * Server's name.
@@ -71,13 +71,13 @@ data class ServerInfo(
  * This event may not get sent, so don't rely on it!
  */
 @Serializable
-@NetworkEvent("generic.serverDown", ttl = 5)
+@NetworkEvent("mindustry.serverDown", ttl = 5)
 class ServerDown
 
 /**
  * Tell all servers to resend server info.
  */
 @Serializable
-@NetworkEvent("generic.serversRefresh", ttl = 5)
+@NetworkEvent("mindustry.serversRefresh", ttl = 5)
 @NetworkRequest(ServerInfo::class)
 class ServersRefresh

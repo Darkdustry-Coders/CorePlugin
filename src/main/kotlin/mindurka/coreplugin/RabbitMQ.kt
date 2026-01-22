@@ -7,7 +7,7 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.AMQP.BasicProperties.Builder as PropertiesBuilder
 import mindurka.annotations.NetworkEvent
 import mindurka.coreplugin.Config as CorePluginConfig
-import mindurka.config.GlobalConfig
+import mindurka.config.SharedConfig
 import mindurka.config.Serializers
 import mindurka.api.Cancel
 import kotlinx.serialization.serializer
@@ -20,7 +20,6 @@ import mindurka.annotations.NetworkRequest
 import arc.math.Mathf
 import arc.util.Log
 import arc.util.Timer
-import com.rabbitmq.client.AMQP.BasicProperties.Builder
 import mindurka.annotations.PublicAPI
 import java.util.concurrent.CompletableFuture
 import mindurka.util.Ref
@@ -38,7 +37,7 @@ object RabbitMQ {
 
     init {
         val factory = ConnectionFactory()
-        factory.setUri(GlobalConfig.i().rabbitMqUrl)
+        factory.setUri(SharedConfig.i().rabbitMqUrl)
         factory.isAutomaticRecoveryEnabled = true
         var con: Connection
         while (true) {

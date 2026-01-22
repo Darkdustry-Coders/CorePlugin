@@ -9,6 +9,12 @@ special-settings-error = [scarlet]Flags on this map are not set correctly:
                        = {errors}
                        =
                        = Map may not function correctly.
+gamemode-uses-special-settings = [yellow]Some of this gamemode's features don't work in vanilla.[]
+                               =
+                               = Install [cyan]MindurkaCompat[] from mod explorer to gain access to them.
+map-uses-special-settings = [yellow]Some of this map's features don't work in vanilla.[]
+                          =
+                          = Install [cyan]MindurkaCompat[] from mod explorer to gain access to them.
 
 [generic.team]
 

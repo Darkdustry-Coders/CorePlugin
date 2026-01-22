@@ -22,7 +22,7 @@ object ModifyWorld {
         Consts.syncStream.reset()
         Consts.dataStream.writeInt(build.pos())
         Consts.dataStream.writeShort(build.block.id.toInt())
-        build.writeAll(Writes.get(Consts.dataStream))
+        build.writeAll(Writes(Consts.dataStream))
         Consts.dataStream.close()
         val bytes = Consts.syncStream.bytes
         Call.blockSnapshot(con, 1, bytes)
@@ -35,7 +35,7 @@ object ModifyWorld {
         Consts.syncStream.reset()
         Consts.dataStream.writeInt(build.pos())
         Consts.dataStream.writeShort(build.block.id.toInt())
-        build.writeAll(Writes.get(Consts.dataStream))
+        build.writeAll(Writes(Consts.dataStream))
         Consts.dataStream.close()
         val bytes = Consts.syncStream.bytes
         Call.blockSnapshot(1, bytes)

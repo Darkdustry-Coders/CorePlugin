@@ -375,6 +375,7 @@ object Events {
         return cancel
     }
 
+    // TODO: Make this API thread-safe and remove `Bus`
     /** Emit an event. */
     @JvmStatic
     fun <T> fire(event: T) {

@@ -324,12 +324,14 @@ class Schematic(val width: Int, val height: Int) {
 
             tile.setPackedData(this.data[idx])
             if (options.updateNet && dataChanged) {
-                val buf = ByteBuffer.allocateDirect(16)
+                // TODO: Move this to MindurkaCompat cuz otherwise this crashes hard.
+                val arr = ByteArray(16) { 0 }
+                val buf = ByteBuffer.wrap(arr)
                 buf.putInt(0, x + dx)
                 buf.putInt(4, y + dy)
                 buf.putLong(8, this.data[idx])
 
-                Call.serverBinaryPacketReliable("mindurka.setData", buf.array())
+                Call.serverBinaryPacketReliable("mindurka.setData", arr)
             }
         }
     }

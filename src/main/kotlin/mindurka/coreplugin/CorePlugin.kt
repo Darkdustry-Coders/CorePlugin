@@ -1,7 +1,6 @@
 package mindurka.coreplugin
 
 // Keeping those unwrapped for my own sanity.
-import arc.Core
 import arc.func.Cons
 import arc.struct.Seq
 import arc.util.Log
@@ -25,7 +24,7 @@ import mindurka.api.on
 import mindurka.api.timer
 import mindurka.build.CommandImpl
 import mindurka.build.CommandType
-import mindurka.config.GlobalConfig
+import mindurka.config.SharedConfig
 import mindurka.coreplugin.commands.metadataForCommand
 import mindurka.coreplugin.commands.registerCommand
 import mindurka.coreplugin.messages.ServerDown
@@ -92,13 +91,17 @@ object CorePlugin {
             maxPlayers = Vars.netServer.admins.playerLimit,
             wave = if (Vars.state.rules.waves) -1 else Vars.state.wave,
             maxWaves = if (Vars.state.rules.winWave > 0) Vars.state.rules.winWave else -1,
-            ip = "${(+GlobalConfig).serverIp}:${Administration.Config.port.get()}",
+            ip = "${(+SharedConfig).serverIp}:${Administration.Config.port.get()}",
         )
     }
+
+    @JvmField val protocol: Protocol
 
     init {
         Log.info("Starting CorePlugin")
         Time.mark()
+
+        Overrides.load();
 
         val vanillaTeamAssigner = Vars.netServer.assigner
         Vars.netServer.assigner = NetServer.TeamAssigner { player, players ->
@@ -200,8 +203,14 @@ object CorePlugin {
         RabbitMQ.noop()
         Runtime.getRuntime().addShutdownHook(Thread {
             emit(ServerDown)
+            for (player in Groups.player) {
+                player.kick("Server closed", 0L)
+            }
+            Vars.net.closeServer()
             RabbitMQ.flush()
         })
+
+        protocol = Protocol()
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.");
     }
