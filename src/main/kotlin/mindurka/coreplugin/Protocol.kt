@@ -11,10 +11,18 @@ import arc.util.Reflect
 import arc.util.Time
 import arc.util.io.Reads
 import arc.util.io.ReusableByteOutStream
+import buj.tl.Tl
 import mindurka.annotations.PublicAPI
+import mindurka.api.Username
 import mindurka.api.emit
 import mindurka.api.timer
 import mindurka.config.SharedConfig
+import mindurka.coreplugin.database.Database
+import mindurka.coreplugin.database.DisabledAccountException
+import mindurka.coreplugin.database.DisconnectedAccountException
+import mindurka.coreplugin.database.KeyValidationFailure
+import mindurka.coreplugin.database.MergedAccountException
+import mindurka.coreplugin.database.SharedAccountException
 import mindurka.util.Async
 import mindustry.Vars
 import mindustry.core.NetServer
@@ -237,7 +245,7 @@ class Protocol {
             connectionStates[con] = BeginState;
 
             val connections = Seq.with(Vars.net.connections).retainAll { it.address == con.address }
-            if (connections.size >= 2) {
+            if (connections.size >= 3) {
                 val address = con.address
                 Vars.netServer.admins.blacklistDos(address)
                 con.close()
@@ -378,7 +386,7 @@ class Protocol {
 
                 connectionStates[con] = PatchedClientState(state.key, mcversion)
 
-                Async.run { login(player, mods, mcversion) }
+                Async.run { login(player, mods) }
             } catch (e: Exception) {
                 connectionStates[con] = PanicState
                 con.kick("Protocol error")
@@ -388,8 +396,6 @@ class Protocol {
         }
 
         // This logic will be a bit of a mess due to how many things this needs to handle.
-        //
-        // TODO: Public key auth.
         Vars.net.handleServer(Packets.ConnectPacket::class.java) { con, packet ->
             // You really should not rely on this.
             //
@@ -403,6 +409,8 @@ class Protocol {
             }
             if (connectionStates[con] !== BeginState) return@handleServer
             connectionStates[con] = VanillaClientState
+
+            Log.info(packet.uuid)
 
             val player = Player.create()
             player.con = con
@@ -426,15 +434,38 @@ class Protocol {
             player.color.set(packet.color).a(1f)
             player.locale = packet.locale
 
-            Async.run { login(player, packet.mods, 0) }
+            Async.run { login(player, packet.mods) }
         }
     }
 
-    private suspend fun login(player: Player, mods: Seq<String>, mindurkaCompatVersion: Int) {
+    private suspend fun login(player: Player, mods: Seq<String>) {
         // TODO: Checks
 
         // In case a gamemode overrides that. Although idk if it should be an option. It probably should be.
         player.team(Vars.netServer.assignTeam(player))
+
+        val smallData = try {
+            Database.login(player.uuid(), player.publicKey)
+        } catch (_: MergedAccountException) {
+            player.con.kick(Tl.fmt(player).done("{generic.kick.merged}"))
+            return
+        } catch (_: DisconnectedAccountException) {
+            player.con.kick(Tl.fmt(player).done("{generic.kick.disconnected}"))
+            return
+        } catch (_: KeyValidationFailure) {
+            player.con.kick(Tl.fmt(player).done("{generic.kick.key-validation-failure-${if (player.hasMindurkaCompat) "mdc" else "no-mdc"}}"))
+            return
+        } catch (_: DisabledAccountException) {
+            player.con.kick(Tl.fmt(player).done("{generic.kick.disabled}"))
+            return
+        } catch (_: SharedAccountException) {
+            player.con.kick(Tl.fmt(player).done("{generic.kick.shared}"))
+            return
+        } catch (t: Throwable) {
+            player.con.kick("Internal error.")
+            Log.err(t)
+            return
+        }
 
         try {
             Reflect.get<ReusableByteOutStream>(Vars.netServer, "writeBuffer").reset()
@@ -444,6 +475,9 @@ class Protocol {
             Log.err(t)
             return
         }
+
+        Username.of(player).id = smallData.id
+        Database.setPlayerData(player, smallData)
 
         Vars.netServer.sendWorldData(player)
         emit(EventType.PlayerConnect(player))

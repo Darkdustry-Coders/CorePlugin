@@ -14,6 +14,7 @@ import mindurka.coreplugin.Config as CorePluginConfig
 data class SharedConfig(
     val serverIp: String = "127.0.0.1",
     val rabbitMqUrl: String = "",
+    val surrealDbUrl: String = "",
 ) {
     companion object {
         @JvmStatic

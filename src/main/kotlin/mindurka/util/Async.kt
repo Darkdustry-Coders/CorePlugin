@@ -29,7 +29,7 @@ import mindustry.net.Host
 
 internal class MainMindustryDispatcher: MainCoroutineDispatcher() {
     override fun dispatch(context: CoroutineContext, block: Runnable) {
-        Core.app.run { block.run() }
+        Core.app.post { block.run() }
     }
 
     override val immediate = this

@@ -19,8 +19,13 @@ class Username(player: Player) {
             field = value
             updateUsername()
         }
+    var id: String = ""
+        set(value) {
+            field = value
+            updateUsername()
+        }
 
-    override fun toString() = basename
+    override fun toString() = "$basename [#dadada][${id.substring(0, 6)}]"
 
     fun updateUsername() {
         player.get()?.name = toString()

@@ -1,0 +1,1 @@
+update mindustry_profile set key = encoding::base64::decode($key) where record::id(id) = type::uuid($id);

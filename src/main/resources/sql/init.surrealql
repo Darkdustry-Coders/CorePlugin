@@ -1,0 +1,54 @@
+define table if not exists object;
+insert ignore into object [
+    { id: "seq" }
+];
+
+define table if not exists user schemafull;
+
+define table if not exists mindustry_user schemafull;
+define field if not exists id on mindustry_user type string;
+define field if not exists profile on mindustry_user type record<mindustry_profile>;
+
+define table if not exists mindustry_profile schemafull;
+define field if not exists user on mindustry_profile type record<user>;
+define field if not exists playTime on mindustry_profile type duration default 0s;
+define field if not exists blocksPlaced on mindustry_profile type int default 0;
+define field if not exists blocksBroken on mindustry_profile type int default 0;
+define field if not exists waves on mindustry_profile type int default 0;
+define field if not exists key on mindustry_profile type option<bytes>;
+define index if not exists mindustry_key_index on mindustry_profile fields key unique;
+define field if not exists shortId on user type option<int> default none;
+# If 'disabled' is non-zero, other fields may not be present.
+# 0 - enabled
+# 1 - account merge
+# 2 - account disconnected
+# 3 - key authorization failure
+# 4 - account disabled
+# 5 - shared account
+define field if not exists disabled on mindustry_profile type int default 0;
+define field if not exists ranks on mindustry_profile type array<record<rank>> default [];
+define field if not exists rank on mindustry_profile type option<record<rank>> default none;
+
+define table if not exists mindustry_profile_gamemode schemafull;
+define field if not exists id on mindustry_profile_gamemode type [record<mindustry_profile>, string];
+define field if not exists wins on mindustry_profile_gamemode type int default 0;
+define field if not exists ovas on mindustry_profile_gamemode type int default 0;
+define field if not exists rank on mindustry_profile_gamemode type int default 0;
+
+define table if not exists mindustry_punishment schemafull;
+define field if not exists user on punishment type record<user>;
+# 0 - mute
+# 1 - ban
+# 2 - kick (server name must be specified)
+define field if not exists kind on punishment type int;
+define field if not exists expires on punishment type datetime;
+define field if not exists server_name on punishment type option<string>;
+define field if not exists admin on punishment type record<user>;
+
+define table if not exists rank;
+define field if not exists id on rank type string;
+define field if not exists prefix on rank type string;
+define field if not exists requirements on rank type option<object>;
+
+define table if not exists discord_user schemafull;
+define field if not exists user on discord_user type record<user>;

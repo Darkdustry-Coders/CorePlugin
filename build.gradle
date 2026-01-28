@@ -27,6 +27,8 @@ def workspacePath = gradle.ext.workspacePath
 repositories {
     maven { url "https://raw.githubusercontent.com/Zelaux/MindustryRepo/master/repository" }
     maven { url "https://jitpack.io" }
+    // FIXME: Get HTTPS on the domain. Maybe.
+    maven { url "http://mindurka.online/files/repo"; allowInsecureProtocol = true }
 }
 
 java {

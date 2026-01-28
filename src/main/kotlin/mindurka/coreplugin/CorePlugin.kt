@@ -9,6 +9,8 @@ import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import kotlinx.serialization.ExperimentalSerializationApi
 import mindurka.annotations.Command
+import mindurka.annotations.ConsoleCommand
+import mindurka.annotations.Rest
 import mindurka.api.BuildEvent
 import mindurka.api.BuildEventPost
 import mindurka.api.Consts
@@ -27,6 +29,8 @@ import mindurka.build.CommandType
 import mindurka.config.SharedConfig
 import mindurka.coreplugin.commands.metadataForCommand
 import mindurka.coreplugin.commands.registerCommand
+import mindurka.coreplugin.database.Database
+import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerInfo
 import mindurka.coreplugin.messages.ServersRefresh
@@ -52,6 +56,8 @@ import mindustry.gen.Call
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.net.Administration
+import net.buj.surreal.Query
+import java.util.Arrays
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
@@ -101,7 +107,8 @@ object CorePlugin {
         Log.info("Starting CorePlugin")
         Time.mark()
 
-        Overrides.load();
+        Database.load()
+        Overrides.load()
 
         val vanillaTeamAssigner = Vars.netServer.assigner
         Vars.netServer.assigner = NetServer.TeamAssigner { player, players ->
@@ -300,5 +307,38 @@ private fun maps(caller: Player) {
     caller.sendMessage("De maps:")
     for (map in Gamemode.maps.maps()) {
         caller.sendMessage(map.name())
+    }
+}
+
+@Command
+private fun setkey(caller: Player) = Async.run {
+    if (Database.localPlayerData(caller).keySet) {
+        Tl.send(caller).done("{commands.setkey.error}")
+        return@run
+    }
+
+    if (caller.openMenu {
+        title("{commands.setkey.title}")
+        message("{commands.setkey.message}")
+
+        group {
+            option("{generic.cancel}") { false }
+            option("{generic.ok}") { true }
+        }
+    }.await() != true) return@run
+
+    Database.setKey(caller)
+    Tl.send(caller).done("{commands.setkey.ok}")
+}
+
+/** Execute a SurrealQL query */
+@ConsoleCommand
+private fun sql(@Rest query: String) = Async.run {
+    try {
+        for (r in Arrays.stream(Database.abstractQuery(Query(query)).await().ok())) {
+            Log.info(r.result.toString())
+        }
+    } catch (e: Exception) {
+        Log.err(e)
     }
 }
