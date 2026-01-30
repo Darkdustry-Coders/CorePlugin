@@ -10,6 +10,7 @@ import mindustry.server.ServerControl
 import mindurka.coreplugin.ModCommandHandler
 import mindustry.gen.Player
 import arc.util.Log
+import buj.tl.Tl
 import mindurka.util.map
 import mindurka.util.fold
 import kotlin.math.max
@@ -51,7 +52,7 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
                     return@register
                 }
 
-                if (caller is Player) caller.sendMessage("[coral]Arguments provided to [yellow]/${command.command[0]}[] are incorrect. Try [yellow]/help ${command.command[0]}[]!")
+                if (caller is Player) Tl.send(caller).put("command", command.command[0]).done("{generic.checks.invalid-arguments}")
                 else Log.info("Invalid command arguments!")
             }
         }

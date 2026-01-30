@@ -25,7 +25,7 @@ class Username(player: Player) {
             updateUsername()
         }
 
-    override fun toString() = "$basename [#dadada][${id.substring(0, 6)}]"
+    override fun toString() = "$basename [#dadada][[${id.takeLast(6)}]"
 
     fun updateUsername() {
         player.get()?.name = toString()

@@ -11,6 +11,7 @@ import arc.util.Reflect
 import arc.util.Time
 import arc.util.io.Reads
 import arc.util.io.ReusableByteOutStream
+import arc.util.serialization.Base64Coder
 import buj.tl.Tl
 import mindurka.annotations.PublicAPI
 import mindurka.api.Username
@@ -379,10 +380,11 @@ class Protocol {
                 val versionType = dataStream.readUTF()
                 player.color.set(dataStream.readInt())
                 con.usid = dataStream.readUTF()
-                con.uuid = dataStream.readUTF()
+                if (mcversion < 3) con.uuid = dataStream.readUTF()
+                else con.uuid = String(Base64Coder.encode(dataStream.readNBytes(16)))
                 player.locale = dataStream.readUTF()
                 // TODO: Replace completely with key auth and forget this exists.
-                player.admin = Vars.netServer.admins.isAdmin(con.uuid, con.usid)
+                player.admin = false
 
                 connectionStates[con] = PatchedClientState(state.key, mcversion)
 
@@ -410,8 +412,6 @@ class Protocol {
             if (connectionStates[con] !== BeginState) return@handleServer
             connectionStates[con] = VanillaClientState
 
-            Log.info(packet.uuid)
-
             val player = Player.create()
             player.con = con
             con.player = player
@@ -430,9 +430,11 @@ class Protocol {
                 return@handleServer
             }
             // TODO: Replace completely with key auth and forget this exists.
-            player.admin = Vars.netServer.admins.isAdmin(packet.uuid, packet.usid)
+            player.admin = false
             player.color.set(packet.color).a(1f)
             player.locale = packet.locale
+
+            if (packet.version == -1) con.modclient = true
 
             Async.run { login(player, packet.mods) }
         }
@@ -476,9 +478,17 @@ class Protocol {
             return
         }
 
+        val info = Vars.netServer.admins.getInfo(player.uuid())
+        Vars.netServer.admins.updatePlayerJoined(player.uuid(), player.con.address, player.name)
+
+        player.admin = smallData.permissionLevel > 100 && (smallData.keySet || Vars.netServer.admins.isAdmin(player.uuid(), player.usid()))
+
+        if (!info.admin && !player.admin) info.adminUsid = player.usid()
+
         Username.of(player).id = smallData.id
         Database.setPlayerData(player, smallData)
 
+        Call.hideHudText(player.con) // holy annoying otherwise
         Vars.netServer.sendWorldData(player)
         emit(EventType.PlayerConnect(player))
     }

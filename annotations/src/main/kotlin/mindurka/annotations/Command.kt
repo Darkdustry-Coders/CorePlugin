@@ -65,3 +65,18 @@ annotation class Cooldown(val value: Float)
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class Hidden
+/**
+ * Minimum permission level required to execute the command.
+ *
+ * Currently, defined permission levels are as follows:
+ * - 0: Normal User
+ * - 100: Moderator
+ * - 200: Admin
+ * - 300: Admin Overseer
+ * - 1000: Console
+ *
+ * Cannot be used with `@ConsoleCommand`.
+ */
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class RequiresPermission(val value: Int)

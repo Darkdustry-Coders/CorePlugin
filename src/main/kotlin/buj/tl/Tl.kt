@@ -2,6 +2,7 @@ package buj.tl
 
 import arc.struct.ObjectMap
 import arc.struct.Seq
+import arc.util.Log
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import java.io.IOException
@@ -35,7 +36,7 @@ private val COLORS = arrayOf(
 )
 // @formatter:on
 private fun isValidColor(color: String): Boolean {
-    if (color.startsWith("#")) return color.matches(Regex("^#([0-9]{1,6}|[0-9]{8})$"))
+    if (color.startsWith("#")) return color.matches(Regex("^#([0-9a-fA-F]{1,6}|[0-9a-fA-F]{8})$"))
     return color in COLORS
 }
 
@@ -115,37 +116,50 @@ private class LocaleFile {
     private val tls = ObjectMap<String, Script>()
 }
 
-private fun closeColors(s: String): String {
-    val builder = StringBuilder()
+private fun encloseColors(s: String): String {
+    var s = s
+
+    if (s.isEmpty()) return s
+
     var colorNestness = 0
+    var ptr = 0
 
-    var i = 0
-    while (true) {
-        val prev = i
+    while (run { ptr = s.indexOf('[', ptr); ptr } != -1) {
+        val start = ptr
+        ptr = s.indexOf(']', ptr)
+        if (ptr == -1) break
 
-        i = s.indexOf('[', i)
-        if (i == -1) break;
-
-        builder.append(s.substring(prev..i))
-
-        val o = s.indexOf(']', i)
-        if (o == -1) break;
-
-        else if (isValidColor(s.substring(i + 1..<o))) colorNestness++
-
-        i = o + 1
+        val maybeColor = s.substring(start + 1, ptr)
+        if (maybeColor.contains('[')) {
+            ptr = start + 1 + maybeColor.indexOf('[')
+            continue
+        }
+        if (isValidColor(maybeColor)) colorNestness += 1
+        else if (start + 1 == ptr) {
+            if (colorNestness == 0) {
+                s = if (ptr + 1 == s.length) s.substring(0, start)
+                    else s.substring(0, start) + s.substring(ptr + 1)
+                ptr -= 2
+            } else {
+                colorNestness -= 1
+            }
+        }
     }
 
-    builder.append(builder.drop(i))
+    return closeColors(s) + run { val b = StringBuilder(colorNestness * 2); repeat(colorNestness) { b.append("[]") }; b }
+}
 
-    if (builder.isEmpty()) return s
-    if (s.endsWith('[')) {
-        i = s.length - 1
-        while (i >= 0 && s[i] == '[') i--
-        i++
-        if ((s.length - i) % 2 == 1) "$s[$builder"
-    }
-    return "$s$builder"
+private fun closeColors(s: String): String {
+    if (s.isEmpty()) return s
+
+    var ptr = s.length - 1
+    while ((s[ptr] in 'a'..'f' || s[ptr] in 'A'..'F' || s[ptr] == '#') && ptr > 0) ptr--
+    if (s[ptr] != '[') return s
+    val start = ptr
+    while (s[ptr] == '[' && ptr > 0) ptr--
+    if ((start - ptr) % 2 == 1) return s
+
+    return s.substring(0, start) + "["
 }
 
 class LCtx(private val parent: LCtx? = null) {
@@ -167,14 +181,18 @@ class LCtx(private val parent: LCtx? = null) {
     }
 }
 
-interface L<Self> {
+interface L<Self: L<Self>> {
     /** Add a mapping for a translation key. */
     fun put(key: String, value: Script): Self
-    /** Set translation key to unformatted text. */
+    /** Set translation key to an unformatted text. */
     fun put(key: String, text: String): Self
 }
 
-class La(val ctx: LCtx = LCtx()) : L<La> {
+interface LVoidDone<Self: LVoidDone<Self>> : L<Self> {
+    fun done(key: String)
+}
+
+class La(val ctx: LCtx = LCtx()) : LVoidDone<La> {
     /** Add a mapping for a translation key. */
     override fun put(key: String, value: Script): La {
         ctx.put(key, value)
@@ -186,14 +204,14 @@ class La(val ctx: LCtx = LCtx()) : L<La> {
         return this
     }
 
-    fun done(key: String) {
+    override fun done(key: String) {
         for (player in Groups.player) {
             Lc(player, ctx).done(key)
         }
     }
 }
 
-class Lc(val player: Player, val ctx: LCtx = LCtx()) : L<Lc> {
+class Lc(val player: Player, val ctx: LCtx = LCtx()) : LVoidDone<Lc> {
     /** Add a mapping for a translation key. */
     override fun put(key: String, value: Script): Lc {
         ctx.put(key, value)
@@ -205,7 +223,7 @@ class Lc(val player: Player, val ctx: LCtx = LCtx()) : L<Lc> {
         return this
     }
 
-    fun done(key: String) {
+    override fun done(key: String) {
         val l = Ls(player.locale, ctx)
         for (line in l.done(key).lines()) {
             player.sendMessage(line)
@@ -248,29 +266,16 @@ private class ScrCombo(val list: Seq<Script>) : Script {
     override fun debug(): String = "Combo(${list.map { it.debug() }.joinToString(", ")})"
 }
 
-private class ScrText(text: String) : Script {
-    val text: String
-
-    init {
-        // TODO: :emojis:
-
-        var idx = text.lastIndex
-        while (idx > 0 && text[idx] != '[' && !text[idx].isWhitespace() && text[idx] != ']') idx--
-        this.text =
-            if (text[idx] == '[')
-                    text.substring(0..<idx.coerceAtMost(1)) + '[' + text.substring(idx)
-            else text
-    }
-
+private class ScrText(val text: String) : Script {
     override fun append(ctx: LCtx, source: String, lang: String): String = source + text
-
     override fun debug(): String = "\"$text\""
 }
 
 private class ScrKey(val key: Script) : Script {
     override fun append(ctx: LCtx, source: String, lang: String): String {
         val key = this.key.append(ctx, "", lang)
-        return ctx.tl(key, lang).append(ctx, source, lang)
+        val inner = encloseColors(ctx.tl(key, lang).append(ctx, "", lang))
+        return closeColors(source) + inner
     }
 
     override fun debug(): String = "Key(${key.debug()})"
@@ -330,13 +335,13 @@ private class ScrIf(
             NotEqualsIgnoreCase -> "!=="
             Contains -> "~"
             ContainsIgnoreCase -> "~="
-            StartsWith -> "#="
-            EndsWith -> "=#"
+            StartsWith -> "&="
+            EndsWith -> "=&"
             Greater -> ">"
             Smaller -> "<"
             GreaterOrEqual -> ">="
             SmallerOrEqual -> "<="
-            Spans -> "#~"
+            Spans -> "&~"
         }
 
         companion object {
@@ -347,13 +352,13 @@ private class ScrIf(
                 "!==" -> NotEquals
                 "~" -> Contains
                 "~=" -> ContainsIgnoreCase
-                "#=" -> StartsWith
-                "=#" -> EndsWith
+                "&=" -> StartsWith
+                "=&" -> EndsWith
                 ">" -> Greater
                 "<" -> Smaller
                 ">=" -> GreaterOrEqual
                 "<=" -> SmallerOrEqual
-                "#~" -> Spans
+                "&~" -> Spans
                 else -> throw RuntimeException("invalid operator '${op}'")
             }
         }
@@ -449,15 +454,15 @@ private fun parseUnicode(script: String, idx: Array<Int>): Char {
 }
 
 private fun parseExpr(script: String, idx: Array<Int>): Script {
-    var tempStr = ""
-    var depth = Seq<Char>()
+    var tempStr = StringBuilder()
+    val depth = Seq<Char>()
     var backspace = false
     idx[0]--
     while (++idx[0] < script.length) {
         if (backspace) {
             backspace = false
-            if (script[idx[0]] !in "(){}\\") tempStr += '\\'
-            tempStr += script[idx[0]]
+            if (script[idx[0]] !in "(){}\\") tempStr.append('\\')
+            tempStr.append(script[idx[0]])
             continue
         }
         when (script[idx[0]]) {
@@ -480,12 +485,12 @@ private fun parseExpr(script: String, idx: Array<Int>): Script {
                 if (depth.pop() != '}') throw RuntimeException("mismatched bracket. expected '}'")
             }
         }
-        if (!depth.isEmpty || !script[idx[0]].isWhitespace() && script[idx[0]] !in "<>=#~!")
-                tempStr += script[idx[0]]
+        if (!depth.isEmpty || !script[idx[0]].isWhitespace() && script[idx[0]] !in "<>=&~!")
+                tempStr.append(script[idx[0]])
         else break
     }
     if (!depth.isEmpty) throw RuntimeException("unenclosed expression")
-    return Tl.parse(tempStr)
+    return Tl.parse(tempStr.toString())
 }
 
 private fun parseEach(script: String, idx: Array<Int>): Script {
@@ -650,7 +655,7 @@ private fun parseIf(script: String, idx: Array<Int>, afterOpening: Boolean = fal
     if (idx[0]-- >= script.length) throw RuntimeException("unenclosed if expression")
     var tempStr = ""
     while (++idx[0] < script.length) {
-        if (script[idx[0]] in "<>=#~!") tempStr += script[idx[0]] else break
+        if (script[idx[0]] in "<>=&~!") tempStr += script[idx[0]] else break
     }
     val op = ScrIf.Op.fromString(tempStr)
 
@@ -678,8 +683,11 @@ private fun parseIf(script: String, idx: Array<Int>, afterOpening: Boolean = fal
 
     if (!afterOpening) {
         while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-        if (idx[0] >= script.length || script[idx[0]++] != '}')
-            throw RuntimeException("unenclosed if expression")
+        if (idx[0] >= script.length || script[idx[0]] != '}') {
+            if (idx[0] >= script.length) throw RuntimeException("unenclosed if expression")
+            else throw RuntimeException("unexpected character '${script[idx[0]]}'")
+        }
+        idx[0]++
     }
 
     return ScrIf(rhs, op, lhs, then, other)

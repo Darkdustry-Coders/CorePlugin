@@ -5,6 +5,10 @@ insert ignore into object [
 
 define table if not exists user schemafull;
 
+# TODO: Discord.
+# TODO: Telegram.
+# TODO: Move this out of CorePlugin, this should be applied manually on migration.
+
 define table if not exists mindustry_user schemafull;
 define field if not exists id on mindustry_user type string;
 define field if not exists profile on mindustry_user type record<mindustry_profile>;
@@ -17,7 +21,16 @@ define field if not exists blocksBroken on mindustry_profile type int default 0;
 define field if not exists waves on mindustry_profile type int default 0;
 define field if not exists key on mindustry_profile type option<bytes>;
 define index if not exists mindustry_key_index on mindustry_profile fields key unique;
-define field if not exists shortId on user type option<int> default none;
+define field if not exists short_id on mindustry_profile type option<int> default none;
+define field if not exists last_joined on mindustry_profile type datetime default time::now();
+# 0  - normal player
+# 100 - moderator (mute, kick, ban)
+# 200 - admin (map editing, artv, /stalk)
+# 300 - admin overseer (no special perms)
+# 1000 - console (/js, /sql, /tl)
+# No higher levels cuz technically access to /js or /sql already allows you to escalate to any permission level.
+# Higher permission levels can set others' permission levels
+define field if not exists permission_level on mindustry_profile type int default 0;
 # If 'disabled' is non-zero, other fields may not be present.
 # 0 - enabled
 # 1 - account merge

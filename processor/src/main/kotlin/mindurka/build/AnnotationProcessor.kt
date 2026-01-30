@@ -9,23 +9,14 @@ import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
 import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.containingFile
-import com.google.devtools.ksp.closestClassDeclaration
 import com.google.devtools.ksp.KspExperimental
 import kotlin.reflect.KClass
-import kotlin.reflect.full.declaredFunctions
-import kotlin.reflect.jvm.isAccessible
 import kotlin.math.max
 import kotlin.math.min
-import javax.annotation.processing.AbstractProcessor
-import javax.annotation.processing.RoundEnvironment
-import javax.lang.model.SourceVersion
-import javax.lang.model.element.TypeElement
 import java.io.PrintWriter
 import java.util.UUID
 import java.util.Scanner
 import java.io.File
-import java.util.Locale
-import java.util.Locale.getDefault
 
 interface Note
 
@@ -102,6 +93,7 @@ private data class ArgMeta (
 
     val spread: Boolean,
     val nullable: Boolean,
+    val consoleCommand: Boolean,
 ) {
     val list get() = subtype != null
     val resolvedType get() = subtype ?: type
@@ -267,12 +259,32 @@ private fun init() {
         if (meta.list) {
             write.println("val col = ${meta.datatype()}()")
             write.println("for (x in s.split(Regex(\", +\"))) {")
-            write.println("col.add(mindurka.api.Gamemode.maps.maps().findOrNull { it.startsWith(s) } ?: return@run null)")
+            write.println("col.add(mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(s) } ?: return@run null)")
             write.println("}")
             write.println("col")
         }
-        else write.println("mindurka.api.Gamemode.maps.maps().findOrNull { it.startsWith(s) }")
-        if (meta.nullable) write.println("}?:return null")
+        else write.println("mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(s) }")
+        if (!meta.nullable) write.println("}?:return null")
+        else write.println("}")
+    }
+
+    ARG_PARSERS["mindustry.gen.Player"] = { write, varr, meta ->
+        write.println("val $varr: ${meta.datatype()} = run {\nval s = ")
+        if (meta.spread) {
+            write.print("args.rest()")
+        } else {
+            write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
+        }
+        write.println("?:return@run null")
+        if (meta.list) {
+            write.println("val col = ${meta.datatype()}()")
+            write.println("for (x in s.split(Regex(\", +\"))) {")
+            write.println("col.add(findPlayer(s, false) ?: return@run null)")
+            write.println("}")
+            write.println("col")
+        }
+        else write.println("findPlayer(s, false)")
+        if (!meta.nullable) write.println("}?:return null")
         else write.println("}")
     }
 }
@@ -284,7 +296,7 @@ private fun obtainClass(classname: String): String =
 private fun escapeString(str: String): String = str.replace(Regex("[\\\"$\n\t\r]")) { "\\$it" }
 
 private fun isNullableAnnotation(qualifiedName: String): Boolean =
-    qualifiedName == mindurka.annotations.Maybe::class.java.canonicalName!! ||
+    qualifiedName == Maybe::class.java.canonicalName!! ||
     qualifiedName.split(".").last() == "Nullable"
 
 @KspExperimental
@@ -394,8 +406,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                     else if (parent is KSClassDeclaration) parent.qualifiedName!!.asString()
                     else TODO()
                 val implMethodName = resolver.getJvmName(sym)!!
-                val implDoc = sym.docString
-                
+
                 val commandClassName = "CommandClass_${UUID.randomUUID().toString().replace("-", "")}"
                 val commandName: Array<String> = run {
                     val annotation = sym.annotations.first { it.annotationType.resolve().declaration.qualifiedName!!.asString() == f.annotation.java.canonicalName }
@@ -409,6 +420,13 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                     packageName  = "_gen.mindurka.commands",
                     fileName     = commandClassName,
                 ))
+
+                val cooldown = sym.annotations
+                    .find { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Cooldown::class.java.canonicalName }
+                    ?.let { it.arguments[0].value as Float } ?: 0f
+                val permissionLevel = sym.annotations
+                    .find { it.annotationType.resolve().declaration.qualifiedName!!.asString() == RequiresPermission::class.java.canonicalName }
+                    ?.let { it.arguments[0].value as Int } ?: 0
 
                 classFile.println("package _gen.mindurka.commands")
                 classFile.println("import mindurka.build.StringPtr")
@@ -426,6 +444,8 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                 classFile.println(")")
                 classFile.println("override val type: mindurka.build.CommandType = mindurka.build.CommandType.${f.type.name}")
                 classFile.println("override val hidden: Boolean = ${sym.annotations.any { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Hidden::class.java.canonicalName }}")
+                classFile.println("override val cooldown = ${cooldown}f")
+                classFile.println("override val minPermissionLevel = $permissionLevel")
                 classFile.print("override val priority: Array<Int> = arrayOf(")
                 val paramTypes = ArrayList<ArgMeta>()
                 var paramIdx = -1
@@ -443,12 +463,13 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                             continue
                         }
                     val ty = param.type.resolve()
+                    val nullable = if (isJava) ty.annotations.any { isNullableAnnotation(it.annotationType.resolve().declaration.qualifiedName!!.asString()) } else ty.nullability == Nullability.NULLABLE
                     val strParam = ty.declaration.qualifiedName!!.asString()
-                    val remapped = (if (ty.nullability == Nullability.NULLABLE) null else REMAP_TYPES_NULLABLE[strParam]) ?: REMAP_TYPES[strParam] ?: strParam
+                    val remapped = (if (nullable) null else REMAP_TYPES_NULLABLE[strParam]) ?: REMAP_TYPES[strParam] ?: strParam
                     val prio = PARAM_TYPES[strParam]
                     if (prio != null) {
                         classFile.print("$prio,")
-                        paramTypes.add(ArgMeta(remapped, null, strParam, rest, ty.nullability == Nullability.NULLABLE))
+                        paramTypes.add(ArgMeta(remapped, null, strParam, rest, nullable, f.type == CommandType.Console))
                         continue
                     }
                     if (strParam in LIST_TYPES) {
@@ -456,7 +477,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                         val remappedArg = REMAP_TYPES[strParam2] ?: strParam2
                         val prio = PARAM_TYPES[strParam2]
                         if (prio != null) {
-                            paramTypes.add(ArgMeta(remapped, remappedArg, strParam, rest, ty.nullability == Nullability.NULLABLE))
+                            paramTypes.add(ArgMeta(remapped, remappedArg, strParam, rest, nullable, f.type == CommandType.Console))
                             classFile.print("${prio + LIST_TYPES_PRIORITY},")
                             continue
                         }
@@ -505,11 +526,30 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                     classFile.println("args.trimStart()")
                 }
                 classFile.println("if (!args.isEmpty()) return null")
-                classFile.println("return {")
+                classFile.println("return cb@{")
                 val awaits = sym.annotations.any { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Awaits::class.java.canonicalName }
                 if (awaits) classFile.println("Async.run {")
+
+                if (f.firstParam != null) classFile.println("val firstParam = caller as ${f.firstParam}")
+
+                if (f.type == CommandType.Player) {
+                    if (permissionLevel != 0) {
+                        classFile.println("if (firstParam.permissionLevel < $permissionLevel) {")
+                        classFile.println("buj.tl.Tl.send(firstParam).done(\"{generic.checks.permission}\")")
+                        classFile.println("return@cb")
+                        classFile.println("}")
+                    }
+                    if (cooldown != 0f) {
+                        classFile.println("if (firstParam.checkOnCooldown(\"$commandClassName\")) {")
+                        classFile.println("buj.tl.Tl.send(firstParam).done(\"{generic.checks.cooldown}\")")
+                        classFile.println("return@cb")
+                        classFile.println("}")
+                        classFile.println("firstParam.setCooldown(\"$commandClassName\", ${cooldown}f)")
+                    }
+                }
+
                 classFile.print("method.call(")
-                if (f.firstParam != null) classFile.print("caller as ${f.firstParam},")
+                if (f.firstParam != null) classFile.print("firstParam,")
                 for (i in (if (f.firstParam == null) 0 else 1)..<paramTypes.size) {
                     val meta = paramTypes[i]
                     classFile.print("arg$i,")

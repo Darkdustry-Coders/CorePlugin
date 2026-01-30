@@ -1,7 +1,10 @@
 package mindurka.coreplugin
 
 // Keeping those unwrapped for my own sanity.
+import arc.Core
 import arc.func.Cons
+import arc.struct.IntMap
+import arc.struct.ObjectIntMap
 import arc.struct.Seq
 import arc.util.Log
 import arc.util.Time
@@ -10,12 +13,16 @@ import kotlinx.coroutines.future.await
 import kotlinx.serialization.ExperimentalSerializationApi
 import mindurka.annotations.Command
 import mindurka.annotations.ConsoleCommand
+import mindurka.annotations.PublicAPI
+import mindurka.annotations.RequiresPermission
 import mindurka.annotations.Rest
 import mindurka.api.BuildEvent
 import mindurka.api.BuildEventPost
 import mindurka.api.Consts
 import mindurka.api.Events
 import mindurka.api.Gamemode
+import mindurka.api.Lifetime
+import mindurka.api.MapHandle
 import mindurka.api.PlayerTeamAssign
 import mindurka.api.Priority
 import mindurka.api.RoundEndEvent
@@ -34,17 +41,25 @@ import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerInfo
 import mindurka.coreplugin.messages.ServersRefresh
+import mindurka.coreplugin.votes.NextMapVote
+import mindurka.coreplugin.votes.RtvVote
+import mindurka.coreplugin.votes.Vote
 import mindurka.ui.handleUiEvent
 import mindurka.ui.openMenu
 import mindurka.util.Async
 import mindurka.util.K
 import mindurka.util.ModifyWorld
+import mindurka.util.SendMessage
 import mindurka.util.UnreachableException
 import mindurka.util.all
+import mindurka.util.checkOnCooldown
 import mindurka.util.collect
 import mindurka.util.filter
 import mindurka.util.join
 import mindurka.util.map
+import mindurka.util.minutes
+import mindurka.util.permissionLevel
+import mindurka.util.setCooldown
 import mindurka.util.skip
 import mindurka.util.take
 import mindustry.Vars
@@ -101,7 +116,10 @@ object CorePlugin {
         )
     }
 
+    @JvmField val epoch = Time.millis()
     @JvmField val protocol: Protocol
+    @JvmField var currentGlobalVote: Vote? = null
+    @JvmField val teamVotes = IntMap<Vote>()
 
     init {
         Log.info("Starting CorePlugin")
@@ -128,9 +146,26 @@ object CorePlugin {
                     Blocks.scrapWallHuge, Blocks.scrapWallLarge, Blocks.scrapWallGigantic, Blocks.thruster, Blocks.scrapWall)
             }
         }
-        on<EventType.PlayerLeave>(listener = ::handleUiEvent)
+        on<EventType.PlayerLeave> {
+            handleUiEvent(it)
+
+            Core.app.post {
+                val player = it.player
+                if (currentGlobalVote != null)
+                    currentGlobalVote!!.playerLeft(SendMessage.All, player)
+                if (teamVotes[player.team().id] != null)
+                    teamVotes[player.team().id]!!.playerLeft(SendMessage.Multi(player.team()), player)
+            }
+        }
         on<EventType.MenuOptionChooseEvent>(listener = ::handleUiEvent)
         on<EventType.TextInputEvent>(listener = ::handleUiEvent)
+
+        on<EventType.PlayerJoin> {
+            if (currentGlobalVote != null)
+                currentGlobalVote!!.updateStatus(SendMessage.One(it.player))
+            if (teamVotes[it.player.team().id] != null)
+                teamVotes[it.player.team().id]!!.updateStatus(SendMessage.One(it.player))
+        }
 
         on<ServersRefresh> { serverInfo()?.let { info -> RabbitMQ.reply(it, info) } }
         interval(30f) { serverInfo()?.let(::emit)  }
@@ -171,6 +206,29 @@ object CorePlugin {
             BuildEventPost.unit = it.unit
 
             emit(BuildEventPost)
+        }
+
+        Vars.netServer.admins.addChatFilter chat@{ player, text ->
+            if (currentGlobalVote != null) {
+                if (text == "y" || text == "n") {
+                    if (!currentGlobalVote!!.vote(SendMessage.All, player, text == "y")) {
+                        Tl.send(player).done("{generic.checks.same-vote}")
+                    }
+                    return@chat null
+                }
+            }
+
+            text
+        }
+        Vars.netServer.chatFormatter = formatter@{ player, text ->
+            // TODO: Translator.
+
+            for (recv in Groups.player) {
+                Call.sendMessage(recv.con, Tl.fmt(recv)
+                    .put("player", player.coloredName()).put("message", text).done("{generic.chat}"), text, player)
+            }
+
+            null
         }
 
         Consts.serverControl.gameOverListener = Cons { event ->
@@ -221,6 +279,37 @@ object CorePlugin {
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.");
     }
+
+    /**
+     * Try set new global vote.
+     *
+     * @return `true` on success, `false` otherwise.
+     */
+    @PublicAPI
+    fun startVote(player: Player, vote: Vote): Boolean {
+        if (vote.team == null) {
+            if (currentGlobalVote != null) return false
+            currentGlobalVote = vote
+            timer(30f, lifetime = if (vote.cancelsIfRoundChanged) Lifetime.Round else Lifetime.Forever) {
+                if (vote.finished) return@timer
+                currentGlobalVote = null
+                vote.cancelled(SendMessage.All)
+            }
+            vote.refresh()
+            if (!vote.finished) vote.sendUpdateMessage(SendMessage.All)
+        } else {
+            if (teamVotes[vote.team.id] != null) return false
+            teamVotes.put(vote.team.id, vote)
+            timer(30f, lifetime = if (vote.cancelsIfRoundChanged) Lifetime.Round else Lifetime.Forever) {
+                if (vote.finished) return@timer
+                teamVotes.remove(vote.team.id)
+                vote.cancelled(SendMessage.Multi(vote.team))
+            }
+            vote.refresh()
+            if (!vote.finished) vote.sendUpdateMessage(SendMessage.Multi(vote.team))
+        }
+        return true
+    }
 }
 
 /** List commands */
@@ -229,11 +318,13 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
     abstract class Page
     data class HelpMenu(var page: UInt) : Page() {}
     val SelectPage = object : Page() {}
-    
+
+    val permissionLevel = Database.localPlayerData(caller).permissionLevel
+
     val commands = Vars.netServer.clientCommands.commandList.iterator()
         .filter {
             val commands = metadataForCommand(it.text, CommandType.Player).collect(Seq())
-            commands.isEmpty || !commands.iterator().all { it.hidden }
+            commands.isEmpty || !commands.iterator().all { it.hidden || it.minPermissionLevel > permissionLevel }
         }
         .map { Tl.fmt(caller).put("command", it.text).done("{commands.help.command}") }
         .collect(Seq())
@@ -298,7 +389,12 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
 /** List commands. */
 @Command
 private fun help(caller: Player, command: String) {
-    Tl.send(caller).put("command", command).done("{commands.help.title-cmd}")
+    caller.openMenu {
+        title("{commands.help.man.title}")
+        message("{commands.help.man.message}").put("command", (if (command.startsWith("/") && !command.startsWith("//")) command.substring(1) else command).lowercase())
+
+        option("{generic.close}") { K }
+    }
 }
 
 /** List maps. */
@@ -312,6 +408,11 @@ private fun maps(caller: Player) {
 
 @Command
 private fun setkey(caller: Player) = Async.run {
+    if (!caller.hasMindurkaCompat) {
+        Tl.send(caller).done("{commands.setkey.no-mdc}")
+        return@run
+    }
+
     if (Database.localPlayerData(caller).keySet) {
         Tl.send(caller).done("{commands.setkey.error}")
         return@run
@@ -327,8 +428,78 @@ private fun setkey(caller: Player) = Async.run {
         }
     }.await() != true) return@run
 
-    Database.setKey(caller)
-    Tl.send(caller).done("{commands.setkey.ok}")
+    try {
+        Database.setKey(caller)
+        Tl.send(caller).done("{commands.setkey.ok}")
+    } catch (t: Throwable) {
+        caller.sendMessage("[scarlet]An error has occurred while processing command.")
+        Log.err(t)
+    }
+}
+
+@Command
+private fun vote(caller: Player, vote: String) {
+    if (vote != "y" && vote != "n") {
+        Tl.send(caller).done("{commands.vote.invalid-vote}")
+        return
+    }
+
+    if (!CorePlugin.teamVotes.containsKey(caller.team().id)) {
+        Tl.send(caller).done("{commands.vote.no-vote}")
+        return
+    }
+
+    CorePlugin.teamVotes[caller.team().id].vote(SendMessage.Multi(caller.team()), caller, vote == "y")
+}
+
+@Command
+private fun rtv(caller: Player, @Rest map: MapHandle?) {
+    if (caller.checkOnCooldown("/rtv")) return
+
+    val map = map ?: Gamemode.maps.next()
+
+    if (!CorePlugin.startVote(caller, RtvVote(map, caller))) {
+        Tl.send(caller).done("{generic.checks.vote}")
+        return
+    }
+    caller.setCooldown("/rtv", minutes(5f))
+}
+
+@Command
+private fun vnm(caller: Player, @Rest map: MapHandle?) {
+    if (caller.checkOnCooldown("/vnm")) return
+
+    val map = map ?: Gamemode.maps.next()
+
+    if (!CorePlugin.startVote(caller, NextMapVote(map, caller))) {
+        Tl.send(caller).done("{generic.checks.vote}")
+        return
+    }
+    caller.setCooldown("/vnm", minutes(5f))
+}
+
+@Command
+@RequiresPermission(100)
+private fun a(caller: Player, @Rest message: String) {
+    for (player in Groups.player) {
+        if (player.permissionLevel < 100) continue
+        Tl.send(player).put("player", caller.name).put("message", message).done("{generic.chat.admin} {generic.chat}")
+    }
+}
+
+@Command
+private fun t(caller: Player, @Rest message: String) {
+    for (player in Groups.player) {
+        if (player.team() !== caller.team()) continue
+        Tl.send(player).put("player", caller.name).put("message", message).done("[#${caller.team().color}]{generic.chat.team}[] {generic.chat}")
+    }
+}
+
+@Command
+@RequiresPermission(200)
+private fun artv(caller: Player, @Rest map: MapHandle?) {
+    val map = map ?: Gamemode.maps.next()
+    Consts.serverControl.play(false, map::rtv)
 }
 
 /** Execute a SurrealQL query */
@@ -341,4 +512,22 @@ private fun sql(@Rest query: String) = Async.run {
     } catch (e: Exception) {
         Log.err(e)
     }
+}
+
+/** Localize a string */
+@ConsoleCommand
+private fun tl(locale: String, @Rest query: String) = Async.run {
+    try {
+        Log.info(Tl.fmt(locale).done(query))
+    } catch (e: Exception) {
+        Log.err(e)
+    }
+}
+
+/** Set permission */
+@ConsoleCommand
+private fun setpermlevel(player: Player, level: Int) = Async.run {
+    val data = Database.localPlayerData(player)
+    data.setPermissionLevel(player, level)
+    Log.info("Set permission level of ${player.plainName()} to ${data.permissionLevel}")
 }

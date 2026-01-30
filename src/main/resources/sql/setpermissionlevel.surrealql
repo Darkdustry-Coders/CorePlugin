@@ -1,0 +1,1 @@
+update mindustry_profile set permission_level = $permissionLevel where record::id(id) = type::uuid($id);

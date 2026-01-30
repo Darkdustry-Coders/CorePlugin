@@ -4,7 +4,7 @@ import arc.util.CommandHandler
 import arc.struct.Seq
 
 class ModCommandHandler(private val parent: CommandHandler) : CommandHandler(parent.prefix) {
-    override fun handleMessage(message_: String, params: Any): CommandHandler.CommandResponse {
+    override fun handleMessage(message_: String, params: Any): CommandResponse {
         var message = message_
 
         var spaceIdx = message.indexOf(" ")
@@ -17,11 +17,10 @@ class ModCommandHandler(private val parent: CommandHandler) : CommandHandler(par
         return parent.handleMessage(message, params)
     }
 
-    override fun <T> register(text: String, params: String, description: String, runner: CommandRunner<T>): CommandHandler.Command =
+    override fun <T> register(text: String, params: String, description: String, runner: CommandRunner<T>): Command =
         parent.register(text, params, description, runner)
 
-    override fun getCommandList(): Seq<Command> =
-        parent.getCommandList()
+    override fun getCommandList(): Seq<Command> = parent.commandList
 
     override fun removeCommand(name: String) { parent.removeCommand(name) }
 }

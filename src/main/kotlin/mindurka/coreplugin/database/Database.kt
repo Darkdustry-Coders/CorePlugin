@@ -25,12 +25,25 @@ import java.security.PublicKey
 import java.util.WeakHashMap
 import java.util.concurrent.CompletableFuture
 import kotlin.io.encoding.Base64
+import kotlin.jvm.javaClass
 
 data class PlayerSmallData (
     val id: String,
     var keySet: Boolean,
+    var shortId: Int?,
+    var permissionLevel: Int,
     // TODO: Mutes.
-)
+) {
+    suspend fun setPermissionLevel(player: Player, level: Int) {
+        permissionLevel = level
+        if (permissionLevel < 0) permissionLevel = 0
+        if (permissionLevel > 1000) permissionLevel = 1000
+        player.admin = permissionLevel >= 100
+        Vars.netServer.admins.getInfo(player.uuid()).admin = permissionLevel >= 100
+        Database.abstractQuery(Query(Database.setpermissionlevelScript)
+            .x("permissionLevel", permissionLevel).x("id", id)).await().ok()
+    }
+}
 
 class MergedAccountException: Exception("Unhandled merged account exception")
 class DisabledAccountException: Exception("Unhandled disconnected account exception")
@@ -39,9 +52,10 @@ class SharedAccountException: Exception("Unhandled shared account exception")
 class KeyValidationFailure: Exception("Unhandled key validation failure")
 
 object Database {
-    private val initScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/init.surrealql"))
-    private val loaduserScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
-    private val setkeyScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
+    internal val initScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/init.surrealql"))
+    internal val loaduserScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
+    internal val setkeyScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
+    internal val setpermissionlevelScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
 
     private val playerData = WeakHashMap<Player, PlayerSmallData>()
 
@@ -197,23 +211,22 @@ object Database {
 
         return PlayerSmallData(
             query.result.at("id").asString(),
-            query.result.at("keySet").asBoolean(),
+            query.result.at("key_set").asBoolean(),
+            if (query.result.at("short_id").isNull) null else query.result.at("short_id").asInteger(),
+            query.result.at("permission_level").asInteger(),
         )
     }
 
     internal fun setPlayerData(player: Player, data: PlayerSmallData) { playerData[player] = data }
     fun localPlayerData(player: Player): PlayerSmallData = playerData[player] ?: throw NullPointerException("Player data must not be null!")
+    fun localPlayerDataOrNull(player: Player): PlayerSmallData? = playerData[player]
 
     suspend fun setKey(player: Player) {
-        val data = playerData[player] ?: return
-        val key = player.publicKey ?: return
-        try {
-            abstractQuery(Query(setkeyScript).x("id", data.id).x("key", Base64.withPadding(Base64.PaddingOption.ABSENT).encode(key.encoded))).await().ok()
-        } catch (e: Throwable) {
-            player.sendMessage("[scarlet]An error has occurred while processing command.")
-            Log.err(e)
-            return
-        }
+        val data = localPlayerData(player)
+        val key = player.publicKey ?: throw IllegalStateException("Cannot set key if there is no key!")
+        abstractQuery(Query(setkeyScript)
+            .x("id", data.id)
+            .x("key", Base64.withPadding(Base64.PaddingOption.ABSENT).encode(key.encoded))).await().ok()
         data.keySet = true
     }
 }

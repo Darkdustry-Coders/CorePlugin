@@ -4,12 +4,14 @@ let $key = if $key = none || $key = null { none } else { encoding::base64::decod
 
 let $process = |$x| {
     # TODO: Process bans n stuff.
+    update $x.id set last_joined = time::now();
     let $table = select
         record::id(id) as id,
         if rank = none { null } else { record::id(rank) } as rank,
         disabled,
-        shortId as shortId,
-        key != none as keySet
+        short_id,
+        key != none as key_set,
+        permission_level
     from only $x;
     return $table;
 };

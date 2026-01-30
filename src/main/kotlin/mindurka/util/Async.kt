@@ -8,6 +8,8 @@ import mindurka.annotations.PublicAPI
 import java.util.concurrent.CompletableFuture
 import arc.func.Prov
 import arc.Core
+import arc.util.Log
+import kotlinx.coroutines.CancellationException
 import java.util.WeakHashMap
 import kotlinx.coroutines.future.asCompletableFuture
 import kotlinx.coroutines.internal.MainDispatcherFactory
@@ -29,7 +31,13 @@ import mindustry.net.Host
 
 internal class MainMindustryDispatcher: MainCoroutineDispatcher() {
     override fun dispatch(context: CoroutineContext, block: Runnable) {
-        Core.app.post { block.run() }
+        Core.app.post { try {
+            block.run()
+        } catch (_: CancellationException) {
+            // Don't care.
+        } catch (t: Throwable) {
+            Log.err(t)
+        } }
     }
 
     override val immediate = this

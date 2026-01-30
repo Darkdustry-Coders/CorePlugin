@@ -52,6 +52,10 @@ abstract class CommandImpl {
     abstract val type: CommandType
     /** Order by which matched command implementations take priority. Higher the better. */
     abstract val priority: Array<Int>
+    /** Minimum permission level required to execute this command. */
+    abstract val minPermissionLevel: Int
+    /** Cooldown between command executions. */
+    abstract val cooldown: Float
     /** Prepare command for execution. */
     abstract fun parse(caller: Any?, raw: String): (() -> Unit)?
 }

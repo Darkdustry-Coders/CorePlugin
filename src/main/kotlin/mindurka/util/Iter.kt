@@ -5,8 +5,10 @@ import arc.math.Mathf
 import mindurka.annotations.PublicAPI
 import arc.func.Boolf
 import arc.func.Boolf2
+import arc.func.Floatf
 import arc.func.Func2
 import arc.struct.Seq
+import kotlinx.coroutines.flow.callbackFlow
 
 @PublicAPI
 fun <T> Iterator<T>.collect(collection: Seq<T>): Seq<T> {
@@ -17,6 +19,26 @@ fun <T> Iterator<T>.collect(collection: Seq<T>): Seq<T> {
 fun <T, C: MutableCollection<T>> Iterator<T>.collect(collection: C): C {
     for (it in this) collection.add(it)
     return collection 
+}
+
+@PublicAPI
+fun <T> Iterator<T>.bestOrNull(threshold: Float = 0f, with: Floatf<T>): T? {
+    if (!hasNext()) return null
+
+    var current = next()
+    var value = with[current]
+
+    while (hasNext()) {
+        val next = next()
+        val nextValue = with[next]
+        if (nextValue > value) {
+            current = next
+            value = nextValue
+        }
+    }
+
+    if (value < threshold) return null
+    return current
 }
 
 @PublicAPI
@@ -44,7 +66,7 @@ fun <T> Iterator<T>.all(with: Boolf<T>): Boolean {
 }
 
 @PublicAPI
-fun <T> Iterator<T>.fold(start: T, with: Func2<T, T, T>): T {
+fun <T, Y> Iterator<T>.fold(start: Y, with: Func2<Y, T, Y>): Y {
     var v = start
     for (it in this) v = with[v, it]
     return v
@@ -171,6 +193,7 @@ fun <T> Iterator<T>.random(): T? {
     while (hasNext()) {
         val o = next()
         if (Mathf.random(0, i) == 0) item = o
+        i += 1
     }
 
     return item
@@ -191,6 +214,10 @@ class Empty<T>: Iterator<T> {
 
 @PublicAPI
 object Iterators {
+    @PublicAPI
+    @JvmStatic
+    @Suppress("UNCHECKED_CAST")
+    fun <T> empty(): Empty<T> = Empty.any as Empty<T>
     @PublicAPI
     @JvmStatic
     fun <T, Y> map(iter: Iterator<T>, with: Func<T, Y>): Mapped<T, Y> = Mapped(iter, with)
