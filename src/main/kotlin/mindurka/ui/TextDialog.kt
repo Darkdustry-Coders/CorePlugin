@@ -13,6 +13,7 @@ import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
 import arc.func.Func
 import arc.func.Prov
+import arc.util.Log
 import mindurka.util.Ref
 
 class TextDialog: Dialog {
@@ -56,16 +57,16 @@ class TextDialog: Dialog {
         var value = event.text
         if (event.text == null) {
             val onClose = onClose
-            value = if (onClose != null) onClose.get() else event.text
+            value = onClose?.get()
         } else if (event.text.length > textLength) {
             val onOverrun = onOverrun
-            value = if (onOverrun != null) onOverrun[event.text] else event.text
+            value = if (onOverrun != null) onOverrun[event.text] else null
         } else {
             val onComplete = onComplete
             value = if (onComplete != null) onComplete[event.text] else event.text
         }
 
-        var rerender = rerender
+        val rerender = rerender
         if (rerender == null) {
             DialogsInternal.closeDialog(event.player, this)
             future.complete(value)

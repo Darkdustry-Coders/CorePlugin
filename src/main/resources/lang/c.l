@@ -40,6 +40,9 @@ vote = [#EC5784] There's already a vote ongoing.
 unknown-command = [#EC5784] Could not find command [yellow]{command}[]. Check [yellow]/help[].
 invalid-arguments = [#EC5784] Arguments provided for [yellow]{command}[] are incorrect. Try [yellow]/help {command}[]!
 permission = [#EC5784] You don't have permission to execute this command.
+admin-action-permission = [#EC5784] You don't have permission to perform this action.
+admin-action-no-target = [#EC5784] You must specify a target to perform an action.
+admin-action-target-admin = [#EC5784] You cannot perform this action against another admin.
 
 [generic.kick]
 merged = [#EC5784]This account was merged into another and thus no longer accessible.
@@ -201,16 +204,6 @@ vote.against = [#adadad]{player} voted [#EC5784]against[] playing [yellow]{map}[
 vote.commit = [#26d657]Next map is now set to [yellow]{map}[].
 vote.cancel = [#EC5784]Not enough votes to set the next map.
 
-[commands.artv]
-
-description = Force change map.
-manpage = Force change map.
-        =
-        = If map is not specified, a random one is chosen. Map list can be viewed with [#EC5784]/maps[].
-        =
-        = Unlike [#EC5784]/rtv[], this does not start a vote and is only accessible to admins.
-params = [map]
-
 [commands.sync]
 
 description = Reload the map.
@@ -230,3 +223,47 @@ params = [message...]
 description = Send message in admin chat.
 manpage = Send message in admin chat.
 params = [message...]
+
+[commands.artv]
+
+description = Force change map.
+manpage = Force change map.
+        =
+        = If map is not specified, a random one is chosen. Map list can be viewed with [#EC5784]/maps[].
+        =
+        = Unlike [#EC5784]/rtv[], this does not start a vote and is only accessible to admins.
+params = [map]
+
+[commands.kick]
+
+description = Kick a player out of the server.
+manpage = Kick a player out of the server.
+        =
+        = This acts as a ban, but specific to this particular server.
+params = [player] [duration] [reason...]
+
+dialog.title = Kick {player}
+dialog.reason = Kick reason
+dialog.duration = Kick duration
+
+[commands.ban]
+
+description = Ban a player on all servers.
+manpage = Ban a player on all servers.
+        =
+        = This acts as a ban, but specific to this particular server.
+params = [player] [duration] [reason...]
+
+dialog.title = Ban {player}
+dialog.reason = Ban reason
+dialog.duration = Ban duration
+
+[commands.mute]
+
+description = Mute a player on all servers.
+manpage = Mute a player on all servers.
+params = [player] [duration] [reason...]
+
+dialog.title = Mute {player}
+dialog.reason = Mute reason
+dialog.duration = Mute duration

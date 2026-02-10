@@ -1,44 +1,9 @@
 begin;
-
-let $key = if $key = none || $key = null { none } else { encoding::base64::decode($key) };
-
-let $process = |$x| {
-    # TODO: Process bans n stuff.
-    update $x.id set last_joined = time::now();
-    let $table = select
-        record::id(id) as id,
-        if rank = none { null } else { record::id(rank) } as rank,
-        disabled,
-        short_id,
-        key != none as key_set,
-        permission_level
-    from only $x;
-    return $table;
-};
-let $processWithKey = |$x, $y, $next| {
-    if $x.key != $y && $x.key != none {
-        return { disabled: 3, orig: $x.key };
-    };
-
-    return $next($x);
-};
-
-if $key != none {
-    let $table = select * from only mindustry_profile where key = $key;
-    if $table != none {
-        return $process($table);
-    };
-};
-
-let $table = select * from only type::thing("mindustry_user", $uuid);
-if $table = none {
-    let $user = create only user content { id: rand::uuid::v7() } return value id;
-    let $profile = create only mindustry_profile content { id: rand::uuid::v7(), user: $user, key: none } return value id;
-    let $table = create only mindustry_user content { id: $uuid, profile: $profile };
-    # TODO: Update the library to allow single return queries.
-    return $processWithKey($table.profile, $key, $process);
-} else {
-    return $processWithKey($table.profile, $key, $process);
-};
-
+return fn::mindustry_login(
+    $uuid,
+    $usid,
+    $ip,
+    $server,
+    if $key = none || $key = null { none } else { encoding::base64::decode($key) },
+    $new_name);
 commit;

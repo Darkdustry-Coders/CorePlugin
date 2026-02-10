@@ -67,10 +67,12 @@ import mindustry.content.Blocks
 import mindustry.core.NetServer
 import mindustry.game.EventType
 import mindustry.game.Team
+import mindustry.gen.AdminRequestCallPacket
 import mindustry.gen.Call
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.net.Administration
+import mindustry.net.Packets
 import net.buj.surreal.Query
 import java.util.Arrays
 import kotlin.math.ceil
@@ -149,8 +151,9 @@ object CorePlugin {
         on<EventType.PlayerLeave> {
             handleUiEvent(it)
 
+            val player = it.player
+
             Core.app.post {
-                val player = it.player
                 if (currentGlobalVote != null)
                     currentGlobalVote!!.playerLeft(SendMessage.All, player)
                 if (teamVotes[player.team().id] != null)
@@ -230,6 +233,8 @@ object CorePlugin {
 
             null
         }
+
+        modActionsInit()
 
         Consts.serverControl.gameOverListener = Cons { event ->
             val map = Gamemode.maps.next()
@@ -506,7 +511,7 @@ private fun artv(caller: Player, @Rest map: MapHandle?) {
 @ConsoleCommand
 private fun sql(@Rest query: String) = Async.run {
     try {
-        for (r in Arrays.stream(Database.abstractQuery(Query(query)).await().ok())) {
+        for (r in Arrays.stream(Database.abstractQuery(Query(query)).ok())) {
             Log.info(r.result.toString())
         }
     } catch (e: Exception) {

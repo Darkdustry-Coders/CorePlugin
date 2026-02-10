@@ -1,0 +1,2 @@
+live select * from mindustry_kick where server_name = $server_name;
+live select * from mindustry_ban where server_name = $server_name;

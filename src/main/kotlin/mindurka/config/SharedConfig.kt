@@ -15,6 +15,7 @@ data class SharedConfig(
     val serverIp: String = "127.0.0.1",
     val rabbitMqUrl: String = "",
     val surrealDbUrl: String = "",
+    val initDb: Boolean = false,
 ) {
     companion object {
         @JvmStatic

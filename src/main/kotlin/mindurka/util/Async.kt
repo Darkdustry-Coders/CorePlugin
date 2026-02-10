@@ -9,25 +9,22 @@ import java.util.concurrent.CompletableFuture
 import arc.func.Prov
 import arc.Core
 import arc.util.Log
+import arc.util.Threads
+import arc.util.io.Streams
 import kotlinx.coroutines.CancellationException
-import java.util.WeakHashMap
-import kotlinx.coroutines.future.asCompletableFuture
 import kotlinx.coroutines.internal.MainDispatcherFactory
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.MainCoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.newCoroutineContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.Continuation
-import mindustry.gen.Call
 import mindustry.Vars
 import mindustry.net.Host
+import java.net.HttpURLConnection
+import java.net.URI
 
 internal class MainMindustryDispatcher: MainCoroutineDispatcher() {
     override fun dispatch(context: CoroutineContext, block: Runnable) {
@@ -62,12 +59,19 @@ internal class MindustryDispatcherFactory: MainDispatcherFactory {
 @PublicAPI
 @OptIn(ExperimentalCoroutinesApi::class)
 object Async {
+    /**
+     * Main async scope for CorePlugin.
+     *
+     * This scope wraps over [arc.Application.post] for dispatch.
+     */
     @PublicAPI
     @JvmStatic
     val mainScope = MainScope()
 
+    /**
+     * Dispatch a `suspend fn` and obtain a `CompletableFuture` for it.
+     */
     @PublicAPI
-    @JvmName("runKtSuspend")
     fun <T> run(fn: suspend() -> T): CompletableFuture<T> {
         val future = CompletableFuture<T>()
         mainScope.launch(mainScope.newCoroutineContext(mainScope.coroutineContext)) {
@@ -78,6 +82,40 @@ object Async {
             }
         }
         return future
+    }
+
+    /**
+     * Run `fn` in a separate thread as a `suspend fn`.
+     *
+     * To be used exclusively to safely execute blocking operations.
+     */
+    @PublicAPI
+    suspend fun <T> thread(fn: Prov<T>): T = suspendCancellableCoroutine { continuation ->
+        val handle = Threads.thread {
+            try {
+                val value = fn.get()
+                Core.app.post { continuation.completeResume(value as Any) }
+            } catch (_: InterruptedException) {}
+              catch (e: Exception) {
+                Core.app.post { continuation.cancel(e) }
+            }
+        }
+
+        continuation.invokeOnCancellation {
+            handle.interrupt()
+        }
+    }
+
+    @PublicAPI
+    suspend fun fetchHttpString(req: String): String {
+        return thread {
+            // No, IDEA, this is blocking context.
+            // It's literally in the definition of `thread`.
+            val connection = URI(req).toURL().openConnection() as HttpURLConnection
+            connection.doInput = true;
+            connection.connect()
+            Streams.copyString(connection.getInputStream())
+        }
     }
 }
 

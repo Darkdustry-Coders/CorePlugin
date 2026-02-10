@@ -1,6 +1,5 @@
 package mindurka.util
 
-import arc.math.Mathf
 import arc.struct.ObjectIntMap
 import arc.util.Strings
 import arc.util.Time
@@ -11,6 +10,7 @@ import mindustry.Vars
 import mindustry.game.Team
 import mindustry.gen.Groups
 import mindustry.gen.Player
+import java.net.URLEncoder
 import java.util.WeakHashMap
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -46,9 +46,12 @@ fun days(time: Float) = time * 60f * 60f * 24f
 fun years(time: Float) = time * yearsT
 
 private const val yearsT = 60 * 60 * 24 * 365.25f
+private const val weeksT = 60 * 60 * 24f * 7
 private const val daysT = 60 * 60 * 24f
 /** Return duration as string. */
 fun durationToString(time: Float): String {
+    if (time.isInfinite()) return if (time > 0) "inf" else "-inf"
+
     val builder = StringBuilder()
     var time = time
 
@@ -67,6 +70,13 @@ fun durationToString(time: Float): String {
         time -= daysT * days
         if (!builder.isEmpty()) builder.append(" ")
         builder.append(days).append("d")
+    }
+
+    if (time >= weeksT) {
+        val weeks = floor(time % weeksT).toInt()
+        time -= weeksT * weeks
+        if (!builder.isEmpty()) builder.append(" ")
+        builder.append(weeks).append("w")
     }
 
     if (time >= 3600) {
@@ -97,6 +107,63 @@ fun durationToString(time: Float): String {
 
     return if (neg) "-$builder" else builder.toString()
 }
+@Throws(FormatException::class)
+fun stringToDuration(duration: String): Float {
+    if (duration == "inf") return Float.POSITIVE_INFINITY
+    if (duration == "-inf") return Float.NEGATIVE_INFINITY
+    if (duration == "0") return 0f
+
+    val duration = duration.trim()
+    var neg = false
+    var value = 0f
+    var ptr = 0
+
+    if (duration.isEmpty()) throw FormatException("Duration cannot be empty")
+    if (duration.startsWith("-")) {
+        ptr++
+        neg = true
+    }
+
+    while (ptr < duration.length) {
+        while (ptr < duration.length && duration[ptr].isWhitespace()) ptr++
+
+        if (ptr >= duration.length) unreachable("Reached the end of a duration string")
+        if (duration[ptr] == '~') {
+            if (++ptr >= duration.length || duration[ptr] != '0') throw FormatException("Sub-ms value must be '~0s'")
+            if (++ptr >= duration.length || duration[ptr] != 's') throw FormatException("Sub-ms value must be '~0s'")
+            ptr++
+            continue
+        }
+
+        val start = ptr
+        while (ptr < duration.length && (duration[ptr] in '0'..'9')) ptr++
+        if (ptr < duration.length && (duration[ptr] == '.')) {
+            ptr++
+            while (ptr < duration.length && (duration[ptr] in '0'..'9')) ptr++
+        }
+
+        val s = duration.substring(start, ptr)
+        if (!Strings.canParseFloat(s)) throw FormatException("'$s' is not a valid number")
+        val sv = Strings.parseFloat(s)
+
+        while (ptr < duration.length && duration[ptr].isWhitespace()) ptr++
+        if (ptr >= duration.length) throw FormatException("Missing time unit")
+        when (val timeUnit = duration[ptr++]) {
+            's' -> value += sv
+            'm' -> if (ptr < duration.length && duration[ptr] == 's') {
+                ptr++
+                value += sv / 1000
+            } else value += sv * 60
+            'h' -> value += sv * 60 * 60
+            'd' -> value += sv * daysT
+            'w' -> value += sv * weeksT
+            'y' -> value += sv * yearsT
+            else -> throw FormatException("Invalid time unit: $timeUnit")
+        }
+    }
+
+    return value * if (neg) -1 else 1
+}
 
 fun findPlayer(arg: String, checkUuid: Boolean): Player? {
     if (Strings.canParseInt(arg)) {
@@ -122,3 +189,5 @@ fun findPlayer(arg: String, checkUuid: Boolean): Player? {
 
     return null
 }
+
+fun encodeURIComponent(text: String): String = URLEncoder.encode(text, Vars.charset)

@@ -441,13 +441,11 @@ class Protocol {
     }
 
     private suspend fun login(player: Player, mods: Seq<String>) {
-        // TODO: Checks
-
         // In case a gamemode overrides that. Although idk if it should be an option. It probably should be.
         player.team(Vars.netServer.assignTeam(player))
 
         val smallData = try {
-            Database.login(player.uuid(), player.publicKey)
+            Database.login(player.uuid(), player.usid(), player.con.address, player.publicKey, player.name)
         } catch (_: MergedAccountException) {
             player.con.kick(Tl.fmt(player).done("{generic.kick.merged}"))
             return

@@ -1,0 +1,9 @@
+upsert only ip_info where
+    id = $ip
+set expires = time::now() + 7w,
+    isp = $isp,
+    as = $as,
+    as_name = $as_name,
+    proxy = $proxy,
+    hosting = $hosting,
+    mobile = $mobile;

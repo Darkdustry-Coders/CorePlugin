@@ -1,0 +1,9 @@
+let $now = time::now();
+insert into mindustry_kick content {
+    user: type::record("user", $id),
+    at: $now,
+    expires: if $expires = none { none } else { $now + duration::from::millis($expires) },
+    server_name: $server_name,
+    reason: $reason,
+    admin: if $admin = none { none } else { type::record("user", $admin) },
+};

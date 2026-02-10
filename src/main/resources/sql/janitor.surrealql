@@ -1,0 +1,4 @@
+begin;
+let $now = time::now();
+delete ip_info where expires <= $now;
+commit;

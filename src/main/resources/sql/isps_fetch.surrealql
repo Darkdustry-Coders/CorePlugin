@@ -1,0 +1,1 @@
+return select * from only type::record("ip_info", $ip) where expires > time::now();

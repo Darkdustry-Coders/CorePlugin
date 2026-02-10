@@ -2,18 +2,26 @@ package mindurka.coreplugin.database
 
 import arc.Core
 import arc.struct.ByteSeq
+import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.Log
 import arc.util.io.Streams
 import kotlinx.coroutines.future.await
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
+import mindurka.api.Cancel
 import mindurka.api.sleep
 import mindurka.config.SharedConfig
+import mindurka.coreplugin.Config
 import mindurka.coreplugin.publicKey
 import mindurka.util.Async
+import mindurka.util.UnreachableException
+import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Player
 import net.buj.surreal.Driver
 import net.buj.surreal.EventCallback
+import net.buj.surreal.LiveResponse
 import net.buj.surreal.Query
 import net.buj.surreal.Response
 import net.buj.surreal.SurrealURL
@@ -21,13 +29,16 @@ import net.buj.surreal.SimpleDebugHandler
 import java.io.OutputStream
 import java.io.PrintStream
 import java.lang.Exception
+import java.security.MessageDigest
 import java.security.PublicKey
 import java.util.WeakHashMap
 import java.util.concurrent.CompletableFuture
 import kotlin.io.encoding.Base64
 import kotlin.jvm.javaClass
+import kotlin.system.exitProcess
 
 data class PlayerSmallData (
+    val userId: String,
     val id: String,
     var keySet: Boolean,
     var shortId: Int?,
@@ -40,8 +51,8 @@ data class PlayerSmallData (
         if (permissionLevel > 1000) permissionLevel = 1000
         player.admin = permissionLevel >= 100
         Vars.netServer.admins.getInfo(player.uuid()).admin = permissionLevel >= 100
-        Database.abstractQuery(Query(Database.setpermissionlevelScript)
-            .x("permissionLevel", permissionLevel).x("id", id)).await().ok()
+        Database.abstractQuery(Query(DatabaseScripts.setpermissionlevelScript)
+            .x("permissionLevel", permissionLevel).x("id", id)).ok()
     }
 }
 
@@ -50,12 +61,40 @@ class DisabledAccountException: Exception("Unhandled disconnected account except
 class DisconnectedAccountException: Exception("Unhandled disconnected account exception")
 class SharedAccountException: Exception("Unhandled shared account exception")
 class KeyValidationFailure: Exception("Unhandled key validation failure")
+class BannedAccountException(val admin: String, val reason: String, val expires: Instant, val server: String): Exception("Unhandled ban")
+class KickedAccountException(val admin: String, val reason: String, val expires: Instant): Exception("Unhandled kick")
+class GraylistedAccountException: Exception("Unhandled graylist")
+
+data class BannedInfo(
+    val ips: Seq<String>,
+    val key: Seq<ByteArray>,
+    val admin: String,
+    val reason: String,
+    val expires: Instant,
+    val server: String
+)
+
+data class KickedInfo(
+    val ips: Seq<String>,
+    val key: Seq<ByteArray>,
+    val admin: String,
+    val reason: String,
+    val expires: Instant,
+)
+
+internal object DatabaseScripts {
+    val initScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/init.surrealql"))
+    val loaduserScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
+    val setkeyScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
+    val setpermissionlevelScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
+
+    val ispsFetchScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_fetch.surrealql"))
+    val ispsUpdateScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_update.surrealql"))
+}
 
 object Database {
-    internal val initScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/init.surrealql"))
-    internal val loaduserScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
-    internal val setkeyScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
-    internal val setpermissionlevelScript = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
+    val banCache = ObjectMap<String, BannedInfo>()
+    val kickCache = ObjectMap<String, KickedInfo>()
 
     private val playerData = WeakHashMap<Player, PlayerSmallData>()
 
@@ -86,6 +125,14 @@ object Database {
             })
         }
     }
+    private data class QueuedLive(
+        val id: String,
+        val cb: suspend (LiveResponse) -> kotlin.Unit,
+    ): Queued() {
+        override fun submit(driver: Driver) {
+            driver.onLive(id, cb)
+        }
+    }
 
     private var queue: Seq<Queued>? = Seq.with()
 
@@ -105,13 +152,20 @@ object Database {
                 }
             }
 
-            driver!!.query(Query(initScript)).await().ok()
-            Log.info("Initialized successfully")
+            try {
+                if (SharedConfig.i.initDb) {
+                    driver!!.query(Query(DatabaseScripts.initScript)).await().ok()
+                    Log.info("Initialized successfully")
+                } else Log.info("Skipping database initialization")
 
-            queue?.let { queue ->
-                for (req in queue) {
-                    req.submit(driver!!)
+                queue?.let { queue ->
+                    for (req in queue) {
+                        req.submit(driver!!)
+                    }
                 }
+            } catch (t: Throwable) {
+                Log.err("Fatal! Failed to load database", t)
+                exitProcess(1)
             }
             queue = null
         }
@@ -162,40 +216,92 @@ object Database {
         return future
     }
 
-    internal fun abstractQuery(query: Query): CompletableFuture<Array<Response>> {
+    internal suspend fun abstractQuery(query: Query): Array<Response> {
         if (queue != null) {
             val future = CompletableFuture<Array<Response>>()
             queue!!.add(QueuedMulti(query, future))
-            return future;
+            return future.await()
         } else if (driver == null) {
             val future = CompletableFuture<Array<Response>>()
-            future.completeExceptionally(IllegalStateException("'queue' and 'driver' cannot be null at the same time!"))
-            return future;
+            future.completeExceptionally(UnreachableException("'queue' and 'driver' cannot be null at the same time!"))
+            return future.await()
         } else {
-            return driver!!.query(query)
+            return driver!!.query(query).await()
         }
     }
 
-    internal fun abstractQuerySingle(query: Query): CompletableFuture<Response> {
+    internal suspend fun abstractQuerySingle(query: Query): Response {
         if (queue != null) {
             val future = CompletableFuture<Response>()
             queue!!.add(QueuedSingle(query, future))
-            return future;
+            return future.await()
         } else if (driver == null) {
             val future = CompletableFuture<Response>()
-            future.completeExceptionally(IllegalStateException("'queue' and 'driver' cannot be null at the same time!"))
-            return future;
+            future.completeExceptionally(UnreachableException("'queue' and 'driver' cannot be null at the same time!"))
+            return future.await()
         } else {
-            return driver!!.querySingle(query)
+            return driver!!.querySingle(query).await()
+        }
+    }
+
+    internal fun abstractOnLive(id: String, cb: suspend (LiveResponse) -> kotlin.Unit) {
+        if (queue != null) {
+            queue!!.add(QueuedLive(id, cb))
+        } else if (driver == null) {
+            unreachable("'queue' and 'driver' cannot be null at the same time!")
+        } else {
+            driver!!.onLive(id, cb)
+        }
+    }
+
+    internal fun abstractOffLive(id: String) {
+        if (queue != null) {
+            queue!!.remove { it is QueuedLive && it.id == id }
+        } else if (driver == null) {
+            unreachable("'queue' and 'driver' cannot be null at the same time!")
+        } else {
+            driver!!.offLive(id)
         }
     }
 
     @Throws(KeyValidationFailure::class, DisconnectedAccountException::class, MergedAccountException::class,
         SharedAccountException::class, DisabledAccountException::class)
-    suspend fun login(uuid: String, key: PublicKey?): PlayerSmallData {
-        val query = abstractQuerySingle(Query(loaduserScript).x("uuid", uuid).x("key", key?.encoded?.let(
-            Base64.withPadding(Base64.PaddingOption.ABSENT)::encode
-        ))).await().ok()
+    suspend fun login(uuid: String, usid: String, ip: String, key: PublicKey?, newName: String): PlayerSmallData {
+        val keyHash = key?.let { key -> MessageDigest.getInstance("SHA256").digest(key.encoded) }
+
+        kickCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
+            if (!entry.value.expires.minus(Clock.System.now()).isPositive()) {
+                kickCache.remove(entry.key)
+
+                return@let
+            }
+
+            throw KickedAccountException(entry.value.admin, entry.value.reason, entry.value.expires);
+        }
+        banCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
+            if (!entry.value.expires.minus(Clock.System.now()).isPositive()) {
+                banCache.remove(entry.key)
+
+                return@let
+            }
+
+            throw BannedAccountException(entry.value.admin, entry.value.reason, entry.value.expires, entry.value.server);
+        }
+
+        // What's duh SurrealDB smoking?
+        val query = run {
+            for (x in abstractQuery(Query(DatabaseScripts.loaduserScript)
+                .x("uuid", uuid)
+                .x("usid", usid)
+                .x("ip", ip)
+                .x("server", Config.i.serverName)
+                .x("key", key?.encoded?.let(Base64.withPadding(Base64.PaddingOption.ABSENT)::encode))
+                .x("new_name", newName)).ok()) {
+                if (x.result.isNull) continue
+                return@run x
+            }
+            unreachable()
+        }
 
         when (val error = query.result.at("disabled").asInteger()) {
             0 -> {}
@@ -204,12 +310,34 @@ object Database {
             3 -> throw KeyValidationFailure()
             4 -> throw DisabledAccountException()
             5 -> throw SharedAccountException()
+            8 -> {
+                val admin = query.result.at("admin").asString()
+                val reason = query.result.at("reason").asString()
+                val expires = query.result.at("expires").asLong()
+                val server = query.result.at("server").asString()
+
+                val instant = Instant.fromEpochMilliseconds(expires)
+
+                banCache.put(uuid, BannedInfo(Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, instant, server))
+                throw BannedAccountException(admin, reason, instant, server);
+            }
+            9 -> {
+                val admin = query.result.at("admin").asString()
+                val reason = query.result.at("reason").asString()
+                val expires = query.result.at("expires").asLong()
+
+                val instant = Instant.fromEpochMilliseconds(expires)
+
+                kickCache.put(uuid, KickedInfo(Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, instant))
+                throw KickedAccountException(admin, reason, instant);
+            }
             else -> {
                 throw RuntimeException("Unexpected login error: $error")
             }
         }
 
         return PlayerSmallData(
+            query.result.at("user_id").asString(),
             query.result.at("id").asString(),
             query.result.at("key_set").asBoolean(),
             if (query.result.at("short_id").isNull) null else query.result.at("short_id").asInteger(),
@@ -224,11 +352,22 @@ object Database {
     suspend fun setKey(player: Player) {
         val data = localPlayerData(player)
         val key = player.publicKey ?: throw IllegalStateException("Cannot set key if there is no key!")
-        abstractQuery(Query(setkeyScript)
+        abstractQuery(Query(DatabaseScripts.setkeyScript)
             .x("id", data.id)
-            .x("key", Base64.withPadding(Base64.PaddingOption.ABSENT).encode(key.encoded))).await().ok()
+            .x("key", Base64.withPadding(Base64.PaddingOption.ABSENT).encode(key.encoded))).ok()
         data.keySet = true
     }
+
+    // /**
+    //  * Kick a player from this server.
+    //  */
+    // @PublicAPI
+    // fun kickPlayer(player: Player, reason: String, duration: Float, admin: Player) {
+    //     val playerData = localPlayerData(player)
+    //     val adminData = localPlayerData(admin)
+    //     Vars.netServer.admins.handleKicked(player.uuid(), player.ip(),
+    //         try { duration.times(1000).toLong() } catch (_: Throwable) { Long.MAX_VALUE })
+    // }
 }
 
 fun Driver.query(query: Query): CompletableFuture<Array<Response>> {
@@ -247,6 +386,17 @@ fun Driver.querySingle(query: Query): CompletableFuture<Response> {
         override fun fail(why: Exception) = Core.app.post { future.completeExceptionally(why) }
     })
     return future
+}
+
+fun Driver.onLive(id: String, cb: suspend (LiveResponse) -> kotlin.Unit): Cancel {
+    onLive(id, object : EventCallback<LiveResponse> {
+        override fun run(p0: LiveResponse) { Async.run { cb(p0) } }
+        override fun fail(p0: Exception) {
+            Log.err(p0)
+        }
+    })
+
+    return Cancel { offLive(id) }
 }
 
 fun Array<Response>.ok(): Array<Response> {

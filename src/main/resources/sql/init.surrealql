@@ -1,67 +1,195 @@
-define table if not exists object;
+define table if not exists object schemaless;
 insert ignore into object [
-    { id: "seq" }
+    { id: "seq" },
+    { id: "schema_version", value: 0 },
+    { id: "graylist", mobile: false, hosting: false, proxy: true },
 ];
+
+let $schema_version = select value value from only object:schema_version;
+
+if $schema_version > 1 {
+    return "oh no";
+};
+
+if $schema_version < 1 {
 
 define table if not exists user schemafull;
 
-# TODO: Discord.
-# TODO: Telegram.
-# TODO: Move this out of CorePlugin, this should be applied manually on migration.
-
-define table if not exists mindustry_user schemafull;
-define field if not exists id on mindustry_user type string;
-define field if not exists profile on mindustry_user type record<mindustry_profile>;
-
-define table if not exists mindustry_profile schemafull;
-define field if not exists user on mindustry_profile type record<user>;
-define field if not exists playTime on mindustry_profile type duration default 0s;
-define field if not exists blocksPlaced on mindustry_profile type int default 0;
-define field if not exists blocksBroken on mindustry_profile type int default 0;
-define field if not exists waves on mindustry_profile type int default 0;
-define field if not exists key on mindustry_profile type option<bytes>;
-define index if not exists mindustry_key_index on mindustry_profile fields key unique;
-define field if not exists short_id on mindustry_profile type option<int> default none;
-define field if not exists last_joined on mindustry_profile type datetime default time::now();
-# 0  - normal player
+# 0   - normal player
 # 100 - moderator (mute, kick, ban)
 # 200 - admin (map editing, artv, /stalk)
 # 300 - admin overseer (no special perms)
 # 1000 - console (/js, /sql, /tl)
 # No higher levels cuz technically access to /js or /sql already allows you to escalate to any permission level.
 # Higher permission levels can set others' permission levels
-define field if not exists permission_level on mindustry_profile type int default 0;
-# If 'disabled' is non-zero, other fields may not be present.
-# 0 - enabled
-# 1 - account merge
-# 2 - account disconnected
-# 3 - key authorization failure
-# 4 - account disabled
-# 5 - shared account
-define field if not exists disabled on mindustry_profile type int default 0;
-define field if not exists ranks on mindustry_profile type array<record<rank>> default [];
-define field if not exists rank on mindustry_profile type option<record<rank>> default none;
+define field mindustry_permission_level on user type int default 0;
 
-define table if not exists mindustry_profile_gamemode schemafull;
-define field if not exists id on mindustry_profile_gamemode type [record<mindustry_profile>, string];
-define field if not exists wins on mindustry_profile_gamemode type int default 0;
-define field if not exists ovas on mindustry_profile_gamemode type int default 0;
-define field if not exists rank on mindustry_profile_gamemode type int default 0;
+# TODO: Discord.
+# TODO: Telegram.
 
-define table if not exists mindustry_punishment schemafull;
-define field if not exists user on punishment type record<user>;
-# 0 - mute
-# 1 - ban
-# 2 - kick (server name must be specified)
-define field if not exists kind on punishment type int;
-define field if not exists expires on punishment type datetime;
-define field if not exists server_name on punishment type option<string>;
-define field if not exists admin on punishment type record<user>;
+define table mindustry_abandoned_user schemafull;
+define field id on mindustry_abandoned_user type string;
+# See [doc/account-disabled-codes.md]
+define field disabled on mindustry_abandoned_user type int;
 
-define table if not exists rank;
-define field if not exists id on rank type string;
-define field if not exists prefix on rank type string;
-define field if not exists requirements on rank type option<object>;
+define table mindustry_user schemafull;
+define field id on mindustry_user type string;
+define field profile on mindustry_user type record<mindustry_profile>;
 
-define table if not exists discord_user schemafull;
-define field if not exists user on discord_user type record<user>;
+define table mindustry_profile schemafull;
+define field user on mindustry_profile type record<user>;
+define index mindustry_profile_user_index on mindustry_profile fields user;
+define field playTime on mindustry_profile type duration default 0s;
+define field blocksPlaced on mindustry_profile type int default 0;
+define field blocksBroken on mindustry_profile type int default 0;
+define field waves on mindustry_profile type int default 0;
+define field key on mindustry_profile type option<bytes>;
+define index mindustry_profile_key_index on mindustry_profile fields key unique;
+define field short_id on mindustry_profile type option<int> default none;
+define field last_joined on mindustry_profile type datetime default time::now();
+define field last_name on mindustry_profile type string default "";
+# See [doc/account-disabled-codes.md]
+define field disabled on mindustry_profile type int default 0;
+define field ranks on mindustry_profile type array<record<rank>> default [];
+define field rank on mindustry_profile type option<record<rank>> default none;
+
+define table mindustry_profile_gamemode schemafull;
+define field id on mindustry_profile_gamemode type [record<mindustry_profile>, string];
+define field wins on mindustry_profile_gamemode type int default 0;
+define field ovas on mindustry_profile_gamemode type int default 0;
+define field rank on mindustry_profile_gamemode type int default 0;
+
+define table mindustry_kick schemafull;
+define field user on mindustry_kick type record<user>;
+define field at on mindustry_kick type datetime;
+define field ip on mindustry_kick type string;
+define field expires on mindustry_kick type option<datetime>;
+define field server_name on mindustry_kick type string;
+define field reason on mindustry_kick type string;
+define field admin on mindustry_kick type option<record<user>>;
+
+define table mindustry_ban schemafull;
+define field user on mindustry_ban type record<user>;
+define field at on mindustry_ban type datetime;
+define field ip on mindustry_ban type string;
+define field expires on mindustry_ban type option<datetime>;
+define field server_name on mindustry_ban type option<string>;
+define field reason on mindustry_ban type string;
+define field admin on mindustry_ban type option<record<user>>;
+
+define table mindustry_mute schemafull;
+define field user on mindustry_mute type record<user>;
+define field at on mindustry_mute type datetime;
+define field expires on mindustry_mute type option<datetime>;
+define field server_name on mindustry_mute type option<string>;
+define field reason on mindustry_mute type string;
+define field admin on mindustry_mute type option<record<user>>;
+
+define table mindustry_graylist_isp schemafull;
+define field id on mindustry_graylist_isp type string;
+define field at on mindustry_graylist_isp type datetime;
+define field expires on mindustry_graylist_isp type option<datetime>;
+define field admin on mindustry_graylist_isp type option<record<user>>;
+
+define table mindustry_graylist_subnet schemafull;
+define field id on mindustry_graylist_subnet type string;
+define field at on mindustry_graylist_subnet type datetime;
+define field expires on mindustry_graylist_subnet type option<datetime>;
+define field admin on mindustry_graylist_subnet type option<record<user>>;
+
+define table rank;
+define field id on rank type string;
+define field prefix on rank type string;
+define field requirements on rank type option<object>;
+
+define table discord_user schemafull;
+define field user on discord_user type record<user>;
+
+define table ip_info schemafull;
+define field id on ip_info type string;
+define field expires on ip_info type datetime;
+define field isp on ip_info type string;
+define field as on ip_info type string;
+define field as_name on ip_info type string;
+define field mobile on ip_info type bool;
+define field hosting on ip_info type bool;
+define field proxy on ip_info type bool;
+
+define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $server: string, $key: option<bytes>, $new_name: string) {
+    let $tmp = select disabled from only type::record("mindustry_abandoned_user", $uuid);
+    if $tmp != none {
+        return $tmp;
+    };
+
+    let $now = time::now();
+
+    let $process = |$x: record<mindustry_profile>| {
+        select key from mindustry_profile where user = $x.user and key != none;
+
+        if $x.disabled != 0 {
+            return $x.{disabled};
+        };
+
+        let $tmp = select * from only mindustry_kick where user = $x.user and expires > $now order by expires asc limit 1;
+        if $tmp != none {
+            let $admin = (select last_name, last_joined from only mindustry_profile where user = $tmp.admin order by last_joined desc limit 1).last_name;
+            return {
+                disabled: 9,
+                admin: $admin,
+                reason: $tmp.reason,
+            };
+        };
+        let $tmp = select * from only mindustry_ban where user = $x.user and expires > $now order by expires asc limit 1;
+        if $tmp != none {
+            let $admin = (select last_name, last_joined from only mindustry_profile where user = $tmp.admin order by last_joined desc limit 1).last_name;
+            return {
+                disabled: 8,
+                admin: $admin,
+                reason: $tmp.reason,
+                server: $tmp.server,
+            };
+        };
+
+        update $x set last_joined = time::now(), last_name = $new_name;
+        return {
+            user_id: record::id($x.user),
+            id: record::id($x),
+            # rank: if $x.rank = none { null } else { record::id($x.rank) },
+            disabled: $x.disabled,
+            short_id: $x.short_id,
+            key_set: $x.key != none,
+            permission_level: $x.user.mindustry_permission_level,
+        };
+    };
+
+    let $process_with_key = |$y: record<mindustry_profile>| {
+        if $y.key != none && $y.key != $key {
+            return { disabled: 3, orig: $y.key };
+        };
+
+        return $process($y);
+    };
+
+    if $key != none {
+        let $table = select value id from only mindustry_profile where key = $key;
+        if $table != none {
+            return $process($table);
+        };
+    };
+
+    let $table = select * from only type::record("mindustry_user", $uuid);
+    if $table = none {
+        let $user = create only user content { id: rand::uuid::v7() } return value id;
+        let $profile = create only mindustry_profile content { id: rand::uuid::v7(), user: $user, key: none } return value id;
+        let $table = create only mindustry_user content { id: $uuid, profile: $profile };
+        return $process_with_key($profile);
+    } else {
+        return $process_with_key($table.profile);
+    };
+};
+
+};
+
+update only object:schema_version set value = 1;
+
+return none;
