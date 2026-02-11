@@ -3,6 +3,7 @@ package mindurka.coreplugin
 // Keeping those unwrapped for my own sanity.
 import arc.Core
 import arc.func.Cons
+import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.Seq
 import arc.util.Log
@@ -40,9 +41,11 @@ import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerInfo
 import mindurka.coreplugin.messages.ServersRefresh
+import mindurka.coreplugin.votes.KickVote
 import mindurka.coreplugin.votes.NextMapVote
 import mindurka.coreplugin.votes.RtvVote
 import mindurka.coreplugin.votes.Vote
+import mindurka.coreplugin.votes.VoteFail
 import mindurka.ui.handleUiEvent
 import mindurka.ui.openMenu
 import mindurka.util.Async
@@ -71,6 +74,7 @@ import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.net.Administration
 import net.buj.surreal.Query
+import sun.net.www.content.text.plain
 import java.util.Arrays
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -211,8 +215,10 @@ object CorePlugin {
         Vars.netServer.admins.addChatFilter chat@{ player, text ->
             if (currentGlobalVote != null) {
                 if (text == "y" || text == "n") {
-                    if (!currentGlobalVote!!.vote(SendMessage.All, player, text == "y")) {
-                        Tl.send(player).done("{generic.checks.same-vote}")
+                    when (currentGlobalVote!!.vote(SendMessage.All, player, text == "y")) {
+                        VoteFail.Ok -> {}
+                        VoteFail.SameVote -> Tl.send(player).done("{generic.checks.same-vote}")
+                        VoteFail.Filtered -> Tl.send(player).done("{generic.checks.vote-filter}")
                     }
                     return@chat null
                 }
@@ -406,7 +412,6 @@ private fun maps(caller: Player, pageInit: UInt?) = Async.run {
     data class MapsMenu(var page: UInt) : Page() {}
     val SelectPage = object : Page() {}
 
-
     val source = Gamemode.maps.maps()
     val maps = Seq<String>()
     var id = 1
@@ -577,14 +582,24 @@ private fun artv(caller: Player, @Rest map: MapHandle?) {
 }
 
 @Command
-private fun votekick(caller: Player, @Rest player: Player) {
+private fun votekick(caller: Player, player: Player, @Rest reason: String) {
     if (caller.checkOnCooldown("/votekick")) return
 
-    if (!CorePlugin.startVote(caller, NextMapVote(map, caller))) {
+    if (player === caller) {
+        Tl.send(caller).done(if (Mathf.random() < 0.8f) "{commands.votekick.errors.self}"
+            else "{commands.votekick.errors.self.special${Mathf.random(0, 2)}}")
+        return
+    }
+    if (player.admin) {
+        Tl.send(caller).done("{commands.votekick.errors.admin}")
+        return
+    }
+
+    if (!CorePlugin.startVote(caller, KickVote(caller, player, reason))) {
         Tl.send(caller).done("{generic.checks.vote}")
         return
     }
-    caller.setCooldown("/votekick", minutes(5f))
+    caller.setCooldown("/votekick", 60f)
 }
 
 /** Execute a SurrealQL query */

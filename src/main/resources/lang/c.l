@@ -35,6 +35,7 @@ vote.left = [#adadad]{player} has left the game and their vote was removed.
 
 [generic.checks]
 same-vote = [#EC5784] Your vote has not changed.
+vote-filter = [#EC5784] You cannot vote in this poll.
 cooldown = [#EC5784] Slow down! This command is on cooldown.
 vote = [#EC5784] There's already a vote ongoing.
 unknown-command = [#EC5784] Could not find command [yellow]{command}[]. Check [yellow]/help[].
@@ -210,6 +211,30 @@ vote.for = [#adadad]{player} voted [#26d657]for[] playing [yellow]{map}[] next.
 vote.against = [#adadad]{player} voted [#EC5784]against[] playing [yellow]{map}[] next.
 vote.commit = [#26d657]Next map is now set to [yellow]{map}[].
 vote.cancel = [#EC5784]Not enough votes to set the next map.
+
+[commands.votekick]
+
+description = Start a vote for kicking a player.
+manpage = Start a vote for kicking a player.
+        =
+        = If the vote succeeds, the player will be removed for 30 minutes.
+        =
+        = Specified reason must describe, shortly and concisely, what the issue is.
+        : Starting a votekick without specifying a valid reason is a bannable offense.
+params = [player] [reason..]
+
+vote.update = [#adadad]{player} wants to kick {target} for [yellow]{reason}[].
+vote.for = [#adadad]{player} voted [#26d657]for[] kicking {target}.
+vote.against = [#adadad]{player} voted [#EC5784]against[] kicking {target}.
+vote.commit = [#26d657]Kicked player {player} for {reason} for [yellow]30 minutes[].
+vote.cancel = [#EC5784]Not enough votes to kick {player}.
+
+errors.self = [#EC5784] You cannot kick yourself!
+errors.self.special0 = [#49C9C7]u[#AE58C8]w[#49C9C7]u
+errors.self.special1 = [#EC5784] Not here, thanks.
+errors.self.special2 = [#EC5784] Try specifying someone else!
+errors.admin = [#EC5784] Admins are immune to [yellow]/votekick[].
+errors.players = [#EC5784] There are not enough players to start a votekick.
 
 [commands.sync]
 

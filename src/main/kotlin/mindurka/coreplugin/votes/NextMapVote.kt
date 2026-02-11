@@ -15,5 +15,5 @@ class NextMapVote(val map: MapHandle, initiator: Player): SimpleVote("commands.v
         Gamemode.maps.setNext(map)
     }
 
-    override val cancelsIfRoundChanged: Boolean = true
+    override val cancelsIfRoundChanged = true
 }

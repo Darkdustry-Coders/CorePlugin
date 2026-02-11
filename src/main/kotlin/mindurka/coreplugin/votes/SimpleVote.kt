@@ -14,7 +14,7 @@ abstract class SimpleVote(protected val category: String, initiator: Player, tea
             .put("votes", votesForNumber.toString())
             .put("threshold", totalPlayers.toString())
             .apply(::formatParams)
-            .done("{$category.update}\n{generic.vote.${if (team == null) "global" else "local"}}")
+            .done("{$category.update}\n{generic.vote.${if (team == null) "global" else "team"}}")
     }
 
     override fun cancelled(send: SendMessage) {

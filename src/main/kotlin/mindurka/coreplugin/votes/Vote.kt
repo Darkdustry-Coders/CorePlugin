@@ -5,9 +5,16 @@ import arc.struct.Seq
 import mindurka.coreplugin.CorePlugin
 import mindurka.util.SendMessage
 import mindurka.util.isServiceTeam
+import mindurka.util.unreachable
 import mindustry.game.Team
 import mindustry.gen.Groups
 import mindustry.gen.Player
+
+enum class VoteFail {
+    Ok,
+    SameVote,
+    Filtered,
+}
 
 abstract class Vote(val initiator: Player, val team: Team?) {
     val votesFor: Seq<Player> = Seq.with(initiator)
@@ -17,7 +24,7 @@ abstract class Vote(val initiator: Player, val team: Team?) {
     var totalPlayers: Int = 0
     var votesForNumber: Int = 0
 
-    fun playerLeft(send: SendMessage, player: Player) {
+    open fun playerLeft(send: SendMessage, player: Player) {
         if (finished) return
 
         votesFor.remove(player)
@@ -40,13 +47,14 @@ abstract class Vote(val initiator: Player, val team: Team?) {
      *
      * @return `true` on success, `false` otherwise.
      */
-    fun vote(send: SendMessage, player: Player, fo: Boolean): Boolean {
-        if (finished) return false
+    fun vote(send: SendMessage, player: Player, fo: Boolean): VoteFail {
+        if (finished) unreachable()
+        if (!filter(player)) return VoteFail.Filtered
 
         val remove = if (fo) votesAgainst else votesFor
         val add = if (!fo) votesAgainst else votesFor
 
-        if (add.contains(player)) return false
+        if (add.contains(player)) return VoteFail.SameVote
 
         remove.remove(player)
         add.addUnique(player)
@@ -59,13 +67,13 @@ abstract class Vote(val initiator: Player, val team: Team?) {
             commit(SendMessage.All)
         }
 
-        return true
+        return VoteFail.Ok
     }
 
     fun refresh(commit: Boolean = true) {
         if (finished) return
 
-        val selector = Boolf<Player> { if (team == null) (!it.team().isServiceTeam || votesFor.contains(it) || votesAgainst.contains(it)) else it.team() == team }
+        val selector = Boolf<Player> { filter(it) && if (team == null) (!it.team().isServiceTeam || votesFor.contains(it) || votesAgainst.contains(it)) else it.team() == team }
         totalPlayers = Groups.player.count(selector)
         votesForNumber = votesFor.count(selector) - votesAgainst.count(selector)
 
@@ -84,6 +92,7 @@ abstract class Vote(val initiator: Player, val team: Team?) {
         sendUpdateMessage(send)
     }
 
+    open fun filter(player: Player): Boolean = true
     abstract fun sendUpdateMessage(send: SendMessage)
     abstract fun cancelled(send: SendMessage)
     abstract fun commit(send: SendMessage)
