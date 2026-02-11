@@ -256,14 +256,22 @@ private fun init() {
             write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
         }
         write.println("?:return@run null")
+
+        write.println("val maps = mindurka.api.Gamemode.maps.maps().collect(Seq())")
         if (meta.list) {
             write.println("val col = ${meta.datatype()}()")
             write.println("for (x in s.split(Regex(\", +\"))) {")
-            write.println("col.add(mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(s) } ?: return@run null)")
+            write.println("    val map = x.toIntOrNull()?.let { if (it in 1..maps.size) maps[it - 1] else null }")
+            write.println("               ?: maps.find { it.name().equals(x, ignoreCase = true) }")
+            write.println("               ?: return@run null")
+            write.println("    col.add(map)")
             write.println("}")
             write.println("col")
+        } else {
+            write.println("val map = s.toIntOrNull()?.let { if (it in 1..maps.size) maps[it - 1] else null }")
+            write.println("               ?: maps.find { it.name().equals(s, ignoreCase = true) }")
+            write.println("map")
         }
-        else write.println("mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(s) }")
         if (!meta.nullable) write.println("}?:return null")
         else write.println("}")
     }
