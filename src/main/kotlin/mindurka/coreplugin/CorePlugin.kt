@@ -4,7 +4,6 @@ package mindurka.coreplugin
 import arc.Core
 import arc.func.Cons
 import arc.struct.IntMap
-import arc.struct.ObjectIntMap
 import arc.struct.Seq
 import arc.util.Log
 import arc.util.Time
@@ -402,11 +401,74 @@ private fun help(caller: Player, command: String) {
 
 /** List maps. */
 @Command
-private fun maps(caller: Player) {
-    caller.sendMessage("De maps:")
-    for (map in Gamemode.maps.maps()) {
-        caller.sendMessage(map.name())
-    }
+private fun maps(caller: Player, pageInit: UInt?) = Async.run {
+    abstract class Page
+    data class MapsMenu(var page: UInt) : Page() {}
+    val SelectPage = object : Page() {}
+
+    val maps = Gamemode.maps.maps()
+        .map { Tl.fmt(caller)
+            .put("map", it.name())
+            .put("author", it.author())
+            .put("size", it.width().toString() + "x" + it.height().toString())
+            .done("{commands.maps.map}") }
+        .collect(Seq())
+    val maxPage = ceil(maps.size.toFloat().div(5)).roundToInt().toUInt()
+    var page: Page = MapsMenu(run {
+        var page = (pageInit ?: 1U)
+        if (page == 0U) page = 1U
+        if (page > maxPage) page = maxPage
+        page
+    })
+
+    caller.openMenu {
+        when (val currentPage = page) {
+            is MapsMenu -> {
+                title("{commands.maps.title-page}")
+                message = maps.iterator().skip((currentPage.page - 1U) * 5U).take(5U).join("\n\n")
+
+                group {
+                    optionText("") {
+                        if (currentPage.page != 1U) currentPage.page--
+                        else currentPage.page = maxPage
+                        rerenderDialog()
+                    }
+                    optionText("[white]${currentPage.page}/$maxPage") {
+                        page = SelectPage
+                        rerenderDialog()
+                    }
+                    optionText("") {
+                        if (currentPage.page != maxPage) currentPage.page++
+                        else currentPage.page = 1U
+                        rerenderDialog()
+                    }
+                }
+
+                option("{generic.close}") { K }
+            }
+            SelectPage -> {
+                title("{commands.maps.select-page.title}")
+
+                var i = 0U
+                while (i <= maxPage) {
+                    group {
+                        for (o in 0..<3) {
+                            i++
+                            val switchTo = i
+                            if (i <= maxPage) optionText("$i") {
+                                page = MapsMenu(switchTo)
+                                rerenderDialog()
+                            }
+                            else optionText("")
+                        }
+                    }
+                }
+
+                option("{generic.close}") { K }
+            }
+            else -> throw UnreachableException()
+        }
+    }.await()
 }
 
 @Command
