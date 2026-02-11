@@ -128,12 +128,19 @@ invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [ora
 
 [commands.maps]
 
-description = List of server maps.
-manpage = List of server maps.
+description = Get a list of available maps.
+manpage = Get a list of available maps.
         =
         = If [blue][[page][] is specified, open the specified page.
+
 params = [page]
-map = [orange]{id}. [accent]{map}[lightgray] by [accent]{author}\n[lightgray]{width}x{height}
+select-page.title =  Select a page
+select-page.message = Currently on page {page}
+title-page =  List of available maps
+man.title =  Command maps
+map = [orange]{id}. [accent]{map} [white]by [accent]{author}
+    = [white]{width}x{height}
+invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{max}[].
 
 [commands.setkey]
 
