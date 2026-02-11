@@ -406,13 +406,22 @@ private fun maps(caller: Player, pageInit: UInt?) = Async.run {
     data class MapsMenu(var page: UInt) : Page() {}
     val SelectPage = object : Page() {}
 
-    val maps = Gamemode.maps.maps()
-        .map { Tl.fmt(caller)
-            .put("map", it.name())
-            .put("author", it.author())
-            .put("size", it.width().toString() + "x" + it.height().toString())
-            .done("{commands.maps.map}") }
-        .collect(Seq())
+
+    val source = Gamemode.maps.maps()
+    val maps = Seq<String>()
+    var id = 1
+    for (map in source) {
+        maps.add(
+            Tl.fmt(caller)
+                .put("id", (id++).toString())
+                .put("map", map.name())
+                .put("author", map.author())
+                .put("width", map.width().toString())
+                .put("height", map.height().toString())
+                .done("{commands.maps.map}")
+        )
+    }
+
     val maxPage = ceil(maps.size.toFloat().div(5)).roundToInt().toUInt()
     var page: Page = MapsMenu(run {
         var page = (pageInit ?: 1U)

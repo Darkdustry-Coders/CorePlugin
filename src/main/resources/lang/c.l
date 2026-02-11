@@ -138,8 +138,8 @@ select-page.title =  Select a page
 select-page.message = Currently on page {page}
 title-page =  List of available maps
 man.title =  Command maps
-map = [accent]{map} [white]by [accent]{author}
-    = [white]{size}
+map = [orange]{id}. [accent]{map} [white]by [accent]{author}
+    = [white]{width}x{height}
 invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{max}[].
 
 [commands.setkey]
