@@ -16,7 +16,6 @@ import kotlinx.coroutines.internal.MainDispatcherFactory
 import kotlinx.coroutines.MainCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newCoroutineContext
 import kotlinx.coroutines.suspendCancellableCoroutine

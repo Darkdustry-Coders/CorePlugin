@@ -166,6 +166,11 @@ fun stringToDuration(duration: String): Float {
 }
 
 fun findPlayer(arg: String, checkUuid: Boolean): Player? {
+    if (arg.length > 1 && arg.startsWith('#') && Strings.canParseInt(arg.substring(1))) {
+        val id = Strings.parseInt(arg.substring(1))
+        Groups.player.find { it.id() == id }?.let { return it }
+    }
+
     if (Strings.canParseInt(arg)) {
         val shortId = Strings.parseInt(arg)
         for (player in Groups.player)

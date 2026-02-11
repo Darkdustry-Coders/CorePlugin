@@ -4,7 +4,6 @@ package mindurka.coreplugin
 import arc.Core
 import arc.func.Cons
 import arc.struct.IntMap
-import arc.struct.ObjectIntMap
 import arc.struct.Seq
 import arc.util.Log
 import arc.util.Time
@@ -503,6 +502,17 @@ private fun t(caller: Player, @Rest message: String) {
 private fun artv(caller: Player, @Rest map: MapHandle?) {
     val map = map ?: Gamemode.maps.next()
     Consts.serverControl.play(false, map::rtv)
+}
+
+@Command
+private fun votekick(caller: Player, @Rest player: Player) {
+    if (caller.checkOnCooldown("/votekick")) return
+
+    if (!CorePlugin.startVote(caller, NextMapVote(map, caller))) {
+        Tl.send(caller).done("{generic.checks.vote}")
+        return
+    }
+    caller.setCooldown("/votekick", minutes(5f))
 }
 
 /** Execute a SurrealQL query */
