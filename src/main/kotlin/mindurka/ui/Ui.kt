@@ -12,9 +12,21 @@ import arc.util.Log
 import mindustry.gen.Call
 import arc.struct.Seq
 
-/** Approximate time that is necessary to prevent flashing when opening a dialog. */
-internal val TIMER_CLOSE_TIME = 0.031f
+/**
+ * Marks the internals of dialogs.
+ *
+ * You should never opt into this, unless you're implementing a custom dialog type.
+ */
+@PublicAPI
+@RequiresOptIn(message = "This is an internal API of UI subsystem. Calling it manually may cause problems at runtime.")
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.FIELD)
+annotation class UiInternals
 
+/** Approximate time that is necessary to prevent flashing when opening a dialog. */
+const val TIMER_CLOSE_TIME = 0.031f
+
+@UiInternals
 object DialogsInternal {
     val data = WeakHashMap<Player, OpenDialogs>()
 
@@ -40,6 +52,7 @@ object DialogsInternal {
 
 interface Dialog {}
 
+@UiInternals
 data class OpenDialogs (
     var id: Int = 0,
     var openedDialogs: Seq<Dialog> = Seq(),
@@ -54,7 +67,8 @@ object Dialogs {
     fun text(player: Player, dialog: Cons<TextDialogBuilder>): CompletableFuture<String?> = player.openText { dialog.get(this) }
 }
 
-fun handleUiEvent(event: TextInputEvent) {
+@OptIn(UiInternals::class)
+internal fun handleUiEvent(event: TextInputEvent) {
     val dialogs = DialogsInternal[event.player] ?: return
 
     for (dialog in dialogs.openedDialogs) {
@@ -65,7 +79,8 @@ fun handleUiEvent(event: TextInputEvent) {
         }
     }
 }
-fun handleUiEvent(event: MenuOptionChooseEvent) {
+@OptIn(UiInternals::class)
+internal fun handleUiEvent(event: MenuOptionChooseEvent) {
     val dialogs = DialogsInternal[event.player] ?: return
 
     for (dialog in dialogs.openedDialogs) {
@@ -76,7 +91,8 @@ fun handleUiEvent(event: MenuOptionChooseEvent) {
         }
     }
 }
-fun handleUiEvent(event: PlayerLeave) {
+@OptIn(UiInternals::class)
+internal fun handleUiEvent(event: PlayerLeave) {
     val dialogs = DialogsInternal[event.player] ?: return
 
     for (dialog in dialogs.openedDialogs) {

@@ -17,11 +17,14 @@ import arc.func.Prov
 import arc.util.Timer
 import arc.struct.Seq
 import mindurka.api.Lifetime
+import mindurka.util.Ref
+import mindurka.util.UnsafeNull
 import java.util.concurrent.CompletableFuture
 
 /**
  * Button.
  */
+@UiInternals
 data class MenuUiButton<T> (
     val text: String,
     val fn: Prov<T?>?,
@@ -35,6 +38,7 @@ data class MenuUiButton<T> (
  *
  * Once `future` returns, instance of this class must not be used again.
  */
+@UiInternals
 class MenuDialog<T>(val lifetime: Lifetime): Dialog {
     var title: String = ""
     var message: String = ""
@@ -134,6 +138,7 @@ class MenuDialog<T>(val lifetime: Lifetime): Dialog {
  * A menu group builder.
  */
 @PublicAPI
+@OptIn(UiInternals::class)
 class MenuGroupBuilder<T>(private val group: Seq<MenuUiButton<T>>, val lifetime: Lifetime) {
     @JvmName("optionText")
     fun optionText(text: String) {
@@ -159,13 +164,30 @@ class MenuGroupBuilder<T>(private val group: Seq<MenuUiButton<T>>, val lifetime:
  * A menu builder.
  */
 @PublicAPI
-class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Player, val lifetime: Lifetime, private val executeAgain: Runnable) {
+@OptIn(UiInternals::class)
+class MenuBuilder<T>(
+    private val dialog: MenuDialog<T>,
+    private val player: Player,
+    val lifetime: Lifetime,
+    private val executeAgain: Runnable) {
+    /**
+     * Get or set raw title.
+     *
+     * If you want to use [buj.tl.Tl], use [title(String)] instead.
+     */
+    @PublicAPI
     var title: String
         get() = if (dialog.titleCtx == null) dialog.title else Ls(player.locale, dialog.titleCtx!!).done(dialog.title)
         set(value) {
             dialog.title = value
             dialog.titleCtx = null
         }
+    /**
+     * Set localized title.
+     *
+     * This will call into [buj.tl.Tl] subsystem. If you want to set raw text, use [val title] instead.
+     */
+    @PublicAPI
     fun title(title: String): LCtx {
         dialog.title = title
         val ctx = LCtx()
@@ -173,12 +195,26 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
         return ctx
     }
 
+    /**
+     * Get or set raw message.
+     *
+     * If [message(String)] was previously used,
+     *
+     * If you want to use [buj.tl.Tl], use [title(String)] instead.
+     */
+    @PublicAPI
     var message: String
         get() = if (dialog.messageCtx == null) dialog.message else Ls(player.locale, dialog.messageCtx!!).done(dialog.message)
         set(value) {
             dialog.message = value
             dialog.messageCtx = null
         }
+    /**
+     * Set localized message.
+     *
+     * This will call into [buj.tl.Tl] subsystem. If you want to set raw text, use [val title] instead.
+     */
+    @PublicAPI
     fun message(message: String): LCtx {
         dialog.message = message
         val ctx = LCtx()
@@ -186,26 +222,52 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
         return ctx
     }
 
+    /**
+     * Add a raw text option.
+     *
+     * If no callback is added, pressing the button will do nothing. If callback
+     * returns a value, the dialog will close.
+     *
+     * If you want to use [buj.tl.Tl], use [option] instead.
+     */
+    @PublicAPI
     @JvmName("optionText")
-    fun optionText(text: String) = optionText(text, null)
-    @JvmName("optionText")
-    fun optionText(text: String, cb: Prov<T?>?) {
+    @JvmOverloads
+    fun optionText(text: String, cb: Prov<T?>? = null) {
         dialog.options.add(Seq.with(MenuUiButton(text, cb)))
     }
+    /**
+     * Add a text option.
+     *
+     * If no callback is added, pressing the button will do nothing. If callback
+     * returns a value, the dialog will close.
+     *
+     * If you don't want text to be localized, use [optionText] instead.
+     */
+    @PublicAPI
     @JvmName("option")
-    fun option(text: String): LCtx = option(text, null)
-    @JvmName("option")
-    fun option(text: String, cb: Prov<T?>?): LCtx {
+    @JvmOverloads
+    fun option(text: String, cb: Prov<T?>? = null): LCtx {
         val ctx = LCtx()
         dialog.options.add(Seq.with(MenuUiButton(text, cb, ctx)))
         return ctx
     }
 
-    fun group(config: MenuGroupBuilder<T>.() -> kotlin.Unit) {
+    /**
+     * Add a button group.
+     *
+     * This is a Kotlin-only overload for extra convenience.
+     */
+    @PublicAPI
+    inline fun group(config: MenuGroupBuilder<T>.() -> kotlin.Unit) {
         val group = Seq<MenuUiButton<T>>()
         config(MenuGroupBuilder<T>(group, lifetime))
-        dialog.options.add(group)
+        `unsafe$getInnerDialog`().options.add(group)
     }
+    /**
+     * Add a button group.
+     */
+    @PublicAPI
     @JvmName("group")
     fun group(config: Cons<MenuGroupBuilder<T>>) {
         val group = Seq<MenuUiButton<T>>()
@@ -213,19 +275,37 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
         dialog.options.add(group)
     }
 
+    /**
+     * Set a function to run on dialog initialization.
+     */
+    @PublicAPI
     fun onInit(callback: Runnable) {
         if (dialog.menuId == null) dialog.rerender = callback;
     }
+    /**
+     * Set a function to run when dialog is closed.
+     */
+    @PublicAPI
     fun onClose(callback: Prov<T?>) {
         dialog.closeHandle = callback
     }
+    /**
+     * Set a function to run when the player has left the game.
+     */
+    @PublicAPI
     fun onExit(callback: Prov<T?>) {
         dialog.exitHandle = callback
     }
 
+    /**
+     * Close the dialog.
+     *
+     * While it can be called in button callbacks, it's not necessary.
+     */
+    @PublicAPI
     @JvmOverloads
     fun closeDialog(value: T? = null): T? {
-        if (dialog.handlingButton) throw IllegalStateException("TODO! 'closeDialog()' cannot be used in a callback.")
+        if (dialog.handlingButton) return value
 
         val id = dialog.menuId ?: throw IllegalStateException("Calling 'closeDialog()' on a dialog that is not being displayed!")
 
@@ -238,6 +318,12 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
         return null
     }
 
+    /**
+     * Rerender the dialog
+     *
+     * This will work inside and outside the dialog.
+     */
+    @PublicAPI
     fun rerenderDialog(): T? {
         dialog.menuId ?: throw IllegalStateException("Calling 'rerenderDialog()' on a dialog that is not being displayed!")
 
@@ -246,22 +332,43 @@ class MenuBuilder<T>(private val dialog: MenuDialog<T>, private val player: Play
 
         return null
     }
+
+    /**
+     * Do not use this unless you REALLY know what you're doing.
+     *
+     * You don't? Then don't touch it.
+     */
+    @UiInternals
+    fun `unsafe$getInnerDialog`(): MenuDialog<T> {
+        return dialog;
+    }
 }
 
 @PublicAPI
+@OptIn(UiInternals::class, UnsafeNull::class)
 fun <T> Player.openMenu(dialogFun: MenuBuilder<T>.() -> kotlin.Unit): CompletableFuture<T?> {
-    val lifetime = Lifetime()
+    val dialog = Ref(nodecl<MenuDialog<T>>())
+    val lifetime = object : Lifetime() {
+        override fun uponEnd() {
+            if (dialog.r.menuId == null) return
+            dialog.r.menuId = null
 
-    val dialog = MenuDialog<T>(lifetime)
-    val builder = arrayOf(nodecl<MenuBuilder<T>>())
-    builder[0] = MenuBuilder(dialog, this, lifetime) {
-        dialog.clear()
-        dialogFun(builder[0])
-        dialog.write(this)
+            Timer.schedule({ Call.hideFollowUpMenu(con, id) }, TIMER_CLOSE_TIME)
+            DialogsInternal.closeDialog(this@openMenu, dialog.r)
+            dialog.r.future.complete(null)
+        }
     }
-    dialogFun(builder[0])
-    dialog.rerender?.run()
-    dialog.rerender = null
-    dialog.write(this)
-    return dialog.future
+
+    dialog.r = MenuDialog(lifetime)
+    val builder = Ref(nodecl<MenuBuilder<T>>())
+    builder.r = MenuBuilder(dialog.r, this, lifetime) {
+        dialog.r.clear()
+        dialogFun(builder.r)
+        dialog.r.write(this)
+    }
+    dialogFun(builder.r)
+    dialog.r.rerender?.run()
+    dialog.r.rerender = null
+    dialog.r.write(this)
+    return dialog.r.future
 }

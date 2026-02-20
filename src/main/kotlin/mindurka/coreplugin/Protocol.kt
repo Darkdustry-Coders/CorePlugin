@@ -13,8 +13,6 @@ import arc.util.io.Reads
 import arc.util.io.ReusableByteOutStream
 import arc.util.serialization.Base64Coder
 import buj.tl.Tl
-import mindurka.annotations.PublicAPI
-import mindurka.api.Username
 import mindurka.api.emit
 import mindurka.api.timer
 import mindurka.config.SharedConfig
@@ -24,7 +22,11 @@ import mindurka.coreplugin.database.DisconnectedAccountException
 import mindurka.coreplugin.database.KeyValidationFailure
 import mindurka.coreplugin.database.MergedAccountException
 import mindurka.coreplugin.database.SharedAccountException
+import mindurka.coreplugin.database.VotekickedAccountException
 import mindurka.util.Async
+import mindurka.util.K
+import mindurka.util.sha256
+import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
@@ -46,7 +48,7 @@ import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.spec.X509EncodedKeySpec
-import java.util.*
+import java.util.WeakHashMap
 import javax.crypto.Cipher
 import kotlin.reflect.KClass
 
@@ -63,7 +65,7 @@ class OServerBinaryPacketReliableCallPacket: ServerBinaryPacketReliableCallPacke
     }
 
     override fun handleServer(con: NetConnection) {
-        if (con.kicked) return;
+        if (con.kicked) return
 
         val stage = CorePlugin.protocol.stages.get(type) ?: return super.handleServer(con)
         if (!stage.isInstance(CorePlugin.protocol.connectionStates[con])) {
@@ -91,7 +93,7 @@ class OServerBinaryPacketUnreliableCallPacket: ServerBinaryPacketUnreliableCallP
     }
 
     override fun handleServer(con: NetConnection) {
-        if (con.kicked) return;
+        if (con.kicked) return
 
         val stage = CorePlugin.protocol.stages.get(type) ?: return super.handleServer(con)
         if (!stage.isInstance(CorePlugin.protocol.connectionStates[con])) {
@@ -119,7 +121,7 @@ class OServerPacketReliableCallPacket: ServerPacketReliableCallPacket() {
     }
 
     override fun handleServer(con: NetConnection) {
-        if (con.kicked) return;
+        if (con.kicked) return
 
         val stage = CorePlugin.protocol.stages.get(type) ?: return super.handleServer(con)
         if (!stage.isInstance(CorePlugin.protocol.connectionStates[con])) {
@@ -147,7 +149,7 @@ class OServerPacketUnreliableCallPacket: ServerPacketUnreliableCallPacket() {
     }
 
     override fun handleServer(con: NetConnection) {
-        if (con.kicked) return;
+        if (con.kicked) return
 
         val stage = CorePlugin.protocol.stages.get(type) ?: return super.handleServer(con)
         if (!stage.isInstance(CorePlugin.protocol.connectionStates[con])) {
@@ -176,12 +178,13 @@ class Protocol {
 
     object VanillaClientState: NetState
 
-    data class VerificationState(
+    class VerificationState(
         val key: PublicKey,
         val nonce: ByteArray,
         val time: Long,
     ): NetState { override val priority: Int get() = Packet.priorityHigh }
-    data class PatchedClientState(val key: PublicKey, val mindurkaCompatVersion: Int): NetState
+    class PachedClientPreconnectState(val key: PublicKey, val mindurkaCompatVersion: Int): NetState
+    object PatchedClientState: NetState
 
     private val prioritiesMap = ObjectIntMap<KClass<out NetState>>().apply {
         put(BeginState::class, Packet.priorityHigh)
@@ -195,7 +198,7 @@ class Protocol {
     internal val binary = ObjectMap<String, Cons3<NetConnection, ByteArray, NetState>>()
     internal val text = ObjectMap<String, Cons3<NetConnection, String, NetState>>()
 
-    internal val connectionStates = WeakHashMap<NetConnection, NetState>();
+    internal val connectionStates = WeakHashMap<NetConnection, NetState>()
 
     inline fun <reified T, reified Y: T> overridePacket(prov: Prov<Y>) = overridePacket(T::class.java, Y::class.java, prov)
     fun <T, Y: T> overridePacket(klass: Class<T>, newKlass: Class<Y>, prov: Prov<Y>) {
@@ -209,28 +212,14 @@ class Protocol {
     }
 
     inline fun <reified NS: NetState> addBinaryPacketHandler(type: String, handle: Cons3<NetConnection, ByteArray, NS>) = addBinaryPacketHandler(type, NS::class, handle)
+    @Suppress("UNCHECKED_CAST")
     fun <NS: NetState> addBinaryPacketHandler(type: String, stage: KClass<out NetState>, handle: Cons3<NetConnection, ByteArray, NS>) {
         stages.put(type, stage)
         binary.put(type, handle as Cons3<NetConnection, ByteArray, NetState>)
         priorities.put(type, prioritiesMap.get(stage, Packet.priorityNormal))
     }
 
-    fun publicKeyOf(player: Player) = publicKeyOf(player.con)
-    fun publicKeyOf(con: NetConnection): PublicKey? {
-        val state = connectionStates[con] ?: return null
-        if (state is PatchedClientState) return state.key
-        return null
-    }
-
-    fun hasMindurkaCompat(player: Player) = hasMindurkaCompat(player.con)
-    fun hasMindurkaCompat(con: NetConnection): Boolean = connectionStates[con] is PatchedClientState
-
-    fun mindurkaCompatVersion(player: Player) = mindurkaCompatVersion(player.con)
-    fun mindurkaCompatVersion(con: NetConnection): Int {
-        val state = connectionStates[con] ?: return 0
-        if (state is PatchedClientState) return state.mindurkaCompatVersion
-        return 0
-    }
+    private val loggingIn = Seq<String>()
 
     init {
         overridePacket<ServerBinaryPacketReliableCallPacket, OServerBinaryPacketReliableCallPacket> { OServerBinaryPacketReliableCallPacket() }
@@ -243,7 +232,7 @@ class Protocol {
                 con.close()
                 return@handleServer
             }
-            connectionStates[con] = BeginState;
+            connectionStates[con] = BeginState
 
             val connections = Seq.with(Vars.net.connections).retainAll { it.address == con.address }
             if (connections.size >= 3) {
@@ -262,7 +251,7 @@ class Protocol {
             try {
                 val dataStream = DataInputStream(ByteArrayInputStream(packet))
 
-                val length = dataStream.readShort();
+                val length = dataStream.readShort()
                 if (length <= 0) throw IllegalArgumentException("length is too small")
                 val spec = X509EncodedKeySpec(dataStream.readNBytes(length.toInt()))
                 val factory = KeyFactory.getInstance("RSA")
@@ -305,7 +294,7 @@ class Protocol {
             try {
                 val dataStream = DataInputStream(ByteArrayInputStream(packet))
 
-                val length = dataStream.readShort();
+                val length = dataStream.readShort()
                 if (length <= 0) throw IllegalArgumentException("length is too small")
                 val encryptedData = dataStream.readNBytes(length.toInt())
                 val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
@@ -386,7 +375,12 @@ class Protocol {
                 // TODO: Replace completely with key auth and forget this exists.
                 player.admin = false
 
-                connectionStates[con] = PatchedClientState(state.key, mcversion)
+                connectionStates[con] = PachedClientPreconnectState(state.key, mcversion)
+
+                if (loggingIn.contains(con.uuid)) {
+                    con.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                    return@addBinaryPacketHandler
+                }
 
                 Async.run { login(player, mods) }
             } catch (e: Exception) {
@@ -436,73 +430,92 @@ class Protocol {
 
             if (packet.version == -1) con.modclient = true
 
+            if (loggingIn.contains(con.uuid)) {
+                con.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                return@handleServer
+            }
+
             Async.run { login(player, packet.mods) }
         }
     }
 
     private suspend fun login(player: Player, mods: Seq<String>) {
-        // In case a gamemode overrides that. Although idk if it should be an option. It probably should be.
-        player.team(Vars.netServer.assignTeam(player))
-
-        val smallData = try {
-            Database.login(player.uuid(), player.usid(), player.con.address, player.publicKey, player.name)
-        } catch (_: MergedAccountException) {
-            player.con.kick(Tl.fmt(player).done("{generic.kick.merged}"))
-            return
-        } catch (_: DisconnectedAccountException) {
-            player.con.kick(Tl.fmt(player).done("{generic.kick.disconnected}"))
-            return
-        } catch (_: KeyValidationFailure) {
-            player.con.kick(Tl.fmt(player).done("{generic.kick.key-validation-failure-${if (player.hasMindurkaCompat) "mdc" else "no-mdc"}}"))
-            return
-        } catch (_: DisabledAccountException) {
-            player.con.kick(Tl.fmt(player).done("{generic.kick.disabled}"))
-            return
-        } catch (_: SharedAccountException) {
-            player.con.kick(Tl.fmt(player).done("{generic.kick.shared}"))
-            return
-        } catch (t: Throwable) {
-            player.con.kick("Internal error.")
-            Log.err(t)
-            return
-        }
-
+        val playerUuid = player.uuid()
         try {
-            Reflect.get<ReusableByteOutStream>(Vars.netServer, "writeBuffer").reset()
-            player.write(Reflect.get(Vars.netServer, "outputBuffer"))
-        } catch (t: Throwable) {
-            player.con.kick(Packets.KickReason.nameEmpty)
-            Log.err(t)
-            return
+            val session = player.sessionData
+            (RabbitMQ.lock("player-uuid.${player.uuid()}") ?: run {
+                session.releaseLocks()
+                player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                return@login
+            }).let { session.locks.add(it); K }
+
+            val state = connectionStates[player.con] ?: unreachable()
+            if (state is PachedClientPreconnectState) {
+                session.publicKey = state.key
+                session.mindurkaCompatVersion = state.mindurkaCompatVersion
+                (RabbitMQ.lock("player-key.${sha256(state.key.encoded)}") ?: run {
+                    session.releaseLocks()
+                    player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                    return@login
+                }).let { session.locks.add(it); K }
+            }
+
+            // In case a gamemode overrides that. Although idk if it should be an option. It probably should be.
+            player.team(Vars.netServer.assignTeam(player))
+
+            try {
+                Database.login(player.uuid(), player.usid(), player.con.address, session.publicKey, player.coloredName(), session)
+            } catch (_: MergedAccountException) {
+                player.con.kick(Tl.fmt(player).done("{generic.kick.merged}"))
+                return
+            } catch (_: DisconnectedAccountException) {
+                player.con.kick(Tl.fmt(player).done("{generic.kick.disconnected}"))
+                return
+            } catch (_: KeyValidationFailure) {
+                player.con.kick(Tl.fmt(player).done("{generic.kick.key-validation-failure-${if (player.hasMindurkaCompat) "mdc" else "no-mdc"}}"))
+                return
+            } catch (_: DisabledAccountException) {
+                player.con.kick(Tl.fmt(player).done("{generic.kick.disabled}"))
+                return
+            } catch (_: SharedAccountException) {
+                player.con.kick(Tl.fmt(player).done("{generic.kick.shared}"))
+                return
+            } catch (kick: VotekickedAccountException) {
+                Database.votekickConnection(player.con, kick.votekickId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
+                return
+            } catch (t: Throwable) {
+                player.con.kick("Internal error.")
+                Log.err(t)
+                return
+            }
+
+            (RabbitMQ.lock("player-profile.${sha256(session.profileId)}") ?: run {
+                session.releaseLocks()
+                player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                return@login
+            }).let { session.locks.add(it); K }
+
+            try {
+                Reflect.get<ReusableByteOutStream>(Vars.netServer, "writeBuffer").reset()
+                player.write(Reflect.get(Vars.netServer, "outputBuffer"))
+            } catch (t: Throwable) {
+                player.con.kick(Packets.KickReason.nameEmpty)
+                Log.err(t)
+                return
+            }
+
+            val info = Vars.netServer.admins.getInfo(player.uuid())
+            Vars.netServer.admins.updatePlayerJoined(player.uuid(), player.con.address, player.name)
+
+            player.admin = session.permissionLevel > 100 && (session.keySet || Vars.netServer.admins.isAdmin(player.uuid(), player.usid()))
+
+            if (!info.admin && !player.admin) info.adminUsid = player.usid()
+
+            Call.hideHudText(player.con) // holy annoying otherwise
+            Vars.netServer.sendWorldData(player)
+            emit(EventType.PlayerConnect(player))
+        } finally {
+            loggingIn.remove(playerUuid)
         }
-
-        val info = Vars.netServer.admins.getInfo(player.uuid())
-        Vars.netServer.admins.updatePlayerJoined(player.uuid(), player.con.address, player.name)
-
-        player.admin = smallData.permissionLevel > 100 && (smallData.keySet || Vars.netServer.admins.isAdmin(player.uuid(), player.usid()))
-
-        if (!info.admin && !player.admin) info.adminUsid = player.usid()
-
-        Username.of(player).id = smallData.id
-        Database.setPlayerData(player, smallData)
-
-        Call.hideHudText(player.con) // holy annoying otherwise
-        Vars.netServer.sendWorldData(player)
-        emit(EventType.PlayerConnect(player))
     }
 }
-
-/**
- * Obtain player's public key.
- *
- * Will only be present if the player has MindurkaCompat installed.
- */
-@PublicAPI val Player.publicKey get() = CorePlugin.protocol.publicKeyOf(this)
-/**
- * Check if player has MindurkaCompat installed
- */
-@PublicAPI val Player.hasMindurkaCompat get() = CorePlugin.protocol.hasMindurkaCompat(this)
-/**
- * Check if player has MindurkaCompat installed
- */
-@PublicAPI val Player.mindurkaCompatVersion get() = CorePlugin.protocol.mindurkaCompatVersion(this)

@@ -1,18 +1,23 @@
 package mindurka.api
 
-import kotlinx.coroutines.CancellationException
 import mindurka.annotations.PublicAPI
 import mindurka.util.K
 import java.util.concurrent.CompletableFuture
 import arc.util.Timer as ArcTimer
 
+/**
+ * Sleep for a duration of time.
+ *
+ * All durations are provided in seconds.
+ */
 @PublicAPI
 fun sleep(seconds: Float, lifetime: Lifetime = Lifetime.Forever): CompletableFuture<K> = object : CompletableFuture<K>() {
-    val cancel: Cancel = timer(seconds, lifetime) { complete(K) }
+    var cancel: Cancel? = timer(seconds, lifetime) { complete(K) }
 
     override fun cancel(mayInterruptIfRunning: Boolean): Boolean {
-        completeExceptionally(CancellationException())
-        cancel.cancel()
+        val oldcancel = cancel
+        cancel = null
+        oldcancel?.release()
         return super.cancel(mayInterruptIfRunning)
     }
 }
@@ -27,7 +32,7 @@ fun timer(seconds: Float, lifetime: Lifetime = Lifetime.Forever, run: Runnable):
     = Timer.timer(seconds, lifetime, run)
 
 /**
- * Repeat task until it's cancelled.
+ * Repeat task until it's canceled.
  *
  * All durations are provided in seconds.
  */
@@ -41,13 +46,13 @@ object Timer {
     @JvmStatic
     fun schedule(runnable: Runnable, delaySeconds: Float): Cancel {
         val task = ArcTimer.schedule(runnable, delaySeconds)
-        return Cancel { task.cancel() }
+        return Cancel.get { task.cancel() }
     }
     @PublicAPI
     @JvmStatic
     fun schedule(runnable: Runnable, delaySeconds: Float, intervalSeconds: Float): Cancel {
         val task = ArcTimer.schedule(runnable, delaySeconds, intervalSeconds)
-        return Cancel { task.cancel() }
+        return Cancel.get { task.cancel() }
     }
 
     /**
@@ -60,12 +65,12 @@ object Timer {
     @JvmOverloads
     fun timer(seconds: Float, lifetime: Lifetime = Lifetime.Forever, run: Runnable): Cancel {
         val timer = schedule(run, seconds)
-        lifetime.bind(timer)
+        lifetime.alsoCancel(timer)
         return timer
     }
 
     /**
-     * Repeat task until it's cancelled.
+     * Repeat task until it's canceled.
      *
      * All durations are provided in seconds.
      */
@@ -74,7 +79,7 @@ object Timer {
     @JvmOverloads
     fun interval(interval: Float, delay: Float = 0f, lifetime: Lifetime = Lifetime.Forever, run: Runnable): Cancel {
         val timer = schedule(run, delay, interval)
-        lifetime.bind(timer)
+        lifetime.alsoCancel(timer)
         return timer
     }
 }

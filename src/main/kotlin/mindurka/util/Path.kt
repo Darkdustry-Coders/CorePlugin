@@ -5,13 +5,12 @@ import arc.files.Fi
 @JvmInline
 value class SafeFilename(val self: String) {
     companion object {
-        fun create(path: String): SafeFilename? {
+        fun create(path: String): SafeFilename? =
             try {
-                return SafeFilename(path)
+                SafeFilename(path)
             } catch (_: Exception) {
-                return null
+                null
             }
-        }
     }
 
     init {

@@ -6,6 +6,7 @@ import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.Log
 import arc.util.io.Streams
+import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -13,12 +14,18 @@ import mindurka.api.Cancel
 import mindurka.api.sleep
 import mindurka.config.SharedConfig
 import mindurka.coreplugin.Config
-import mindurka.coreplugin.publicKey
+import mindurka.coreplugin.PlayerData
+import mindurka.coreplugin.sessionData
 import mindurka.util.Async
 import mindurka.util.UnreachableException
+import mindurka.util.collect
+import mindurka.util.durationToTlString
+import mindurka.util.map
+import mindurka.util.random
 import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Player
+import mindustry.net.NetConnection
 import net.buj.surreal.Driver
 import net.buj.surreal.EventCallback
 import net.buj.surreal.LiveResponse
@@ -35,7 +42,11 @@ import java.util.WeakHashMap
 import java.util.concurrent.CompletableFuture
 import kotlin.io.encoding.Base64
 import kotlin.jvm.javaClass
+import kotlin.math.max
 import kotlin.system.exitProcess
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 data class PlayerSmallData (
     val userId: String,
@@ -64,6 +75,8 @@ class KeyValidationFailure: Exception("Unhandled key validation failure")
 class BannedAccountException(val admin: String, val reason: String, val expires: Instant, val server: String): Exception("Unhandled ban")
 class KickedAccountException(val admin: String, val reason: String, val expires: Instant): Exception("Unhandled kick")
 class GraylistedAccountException: Exception("Unhandled graylist")
+class AnotherLocationException: Exception("Unhandled double login")
+class VotekickedAccountException(val votekickId: String, val reason: String, val expires: Instant, val initiator: String, val votes: Seq<String>): Exception("Unhandled votekick")
 
 data class BannedInfo(
     val ips: Seq<String>,
@@ -82,21 +95,33 @@ data class KickedInfo(
     val expires: Instant,
 )
 
+data class VotekickedInfo(
+    val id: String,
+    val ips: Seq<String>,
+    val key: Seq<ByteArray>,
+    val reason: String,
+    val expires: Instant,
+    val initiator: String,
+    val votes: Seq<String>,
+)
+
 internal object DatabaseScripts {
     val initScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/init.surrealql"))
+    val liveScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/live.surrealql"))
     val loaduserScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
     val setkeyScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
     val setpermissionlevelScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
 
     val ispsFetchScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_fetch.surrealql"))
     val ispsUpdateScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_update.surrealql"))
+
+    val votekickScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/votekick.surrealql"))
 }
 
 object Database {
     val banCache = ObjectMap<String, BannedInfo>()
     val kickCache = ObjectMap<String, KickedInfo>()
-
-    private val playerData = WeakHashMap<Player, PlayerSmallData>()
+    val votekickCache = ObjectMap<String, VotekickedInfo>()
 
     private var driver: Driver? = null
 
@@ -157,6 +182,14 @@ object Database {
                     driver!!.query(Query(DatabaseScripts.initScript)).await().ok()
                     Log.info("Initialized successfully")
                 } else Log.info("Skipping database initialization")
+
+                val liveQueries = driver!!.query(Query(DatabaseScripts.liveScript)
+                    .x("server_name", Config.i.serverName)).await().ok()
+                Log.info(liveQueries[0].result.asString())
+                driver!!.onLive(liveQueries[0].result.asString()) { update ->
+                    val votekickId = update.data.at("id").asString()
+                    votekickCache.removeAll { it.value.id == votekickId }
+                }
 
                 queue?.let { queue ->
                     for (req in queue) {
@@ -266,9 +299,18 @@ object Database {
 
     @Throws(KeyValidationFailure::class, DisconnectedAccountException::class, MergedAccountException::class,
         SharedAccountException::class, DisabledAccountException::class)
-    suspend fun login(uuid: String, usid: String, ip: String, key: PublicKey?, newName: String): PlayerSmallData {
+    suspend fun login(uuid: String, usid: String, ip: String, key: PublicKey?, newName: String, session: PlayerData) {
         val keyHash = key?.let { key -> MessageDigest.getInstance("SHA256").digest(key.encoded) }
 
+        votekickCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
+            if (!entry.value.expires.minus(Clock.System.now()).isPositive()) {
+                votekickCache.remove(entry.key)
+
+                return@let
+            }
+
+            throw VotekickedAccountException(entry.value.reason, entry.value.id, entry.value.expires, entry.value.initiator, entry.value.votes);
+        }
         kickCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
             if (!entry.value.expires.minus(Clock.System.now()).isPositive()) {
                 kickCache.remove(entry.key)
@@ -304,13 +346,13 @@ object Database {
         }
 
         when (val error = query.result.at("disabled").asInteger()) {
-            0 -> {}
-            1 -> throw MergedAccountException()
-            2 -> throw DisconnectedAccountException()
-            3 -> throw KeyValidationFailure()
-            4 -> throw DisabledAccountException()
-            5 -> throw SharedAccountException()
-            8 -> {
+            DisableCodes.enabled -> {}
+            DisableCodes.merged -> throw MergedAccountException()
+            DisableCodes.disconnected -> throw DisconnectedAccountException()
+            DisableCodes.keyValidationFailure -> throw KeyValidationFailure()
+            DisableCodes.disabled -> throw DisabledAccountException()
+            DisableCodes.shared -> throw SharedAccountException()
+            DisableCodes.banned -> {
                 val admin = query.result.at("admin").asString()
                 val reason = query.result.at("reason").asString()
                 val expires = query.result.at("expires").asLong()
@@ -318,44 +360,100 @@ object Database {
 
                 val instant = Instant.fromEpochMilliseconds(expires)
 
+                if (banCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 banCache.put(uuid, BannedInfo(Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, instant, server))
                 throw BannedAccountException(admin, reason, instant, server);
             }
-            9 -> {
+            DisableCodes.kicked -> {
                 val admin = query.result.at("admin").asString()
                 val reason = query.result.at("reason").asString()
                 val expires = query.result.at("expires").asLong()
 
                 val instant = Instant.fromEpochMilliseconds(expires)
 
+                if (kickCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 kickCache.put(uuid, KickedInfo(Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, instant))
                 throw KickedAccountException(admin, reason, instant);
+            }
+            DisableCodes.votekicked -> {
+                val initiator = query.result.at("initiator").asString()
+                val votes = query.result.at("votes").asList().iterator().map {
+                    if (it !is String) unreachable("'votes' is not a string list")
+                    it
+                }.collect(Seq())
+                val reason = query.result.at("reason").asString()
+                val expires = Instant.fromEpochMilliseconds(query.result.at("expires").asLong())
+                val id = query.result.at("id").asString()
+
+                if (votekickCache.size > 128) votekickCache.remove(votekickCache.keys().random())
+                votekickCache.put(uuid, VotekickedInfo(id, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), reason, expires, initiator, votes))
+                throw VotekickedAccountException(id, reason, expires, initiator, votes);
             }
             else -> {
                 throw RuntimeException("Unexpected login error: $error")
             }
         }
 
-        return PlayerSmallData(
-            query.result.at("user_id").asString(),
-            query.result.at("id").asString(),
-            query.result.at("key_set").asBoolean(),
-            if (query.result.at("short_id").isNull) null else query.result.at("short_id").asInteger(),
-            query.result.at("permission_level").asInteger(),
-        )
+        session.userId = query.result.at("user_id").asString()
+        session.profileId = query.result.at("id").asString()
+        session.keySet = query.result.at("key_set").asBoolean()
+        session.shortId = if (query.result.at("short_id").isNull) null else query.result.at("short_id").asLong()
+        session.permissionLevel = query.result.at("permission_level").asInteger()
     }
 
-    internal fun setPlayerData(player: Player, data: PlayerSmallData) { playerData[player] = data }
-    fun localPlayerData(player: Player): PlayerSmallData = playerData[player] ?: throw NullPointerException("Player data must not be null!")
-    fun localPlayerDataOrNull(player: Player): PlayerSmallData? = playerData[player]
+    internal suspend fun setPermissionLevel(profileId: String, level: Int) {
+        abstractQuery(Query(DatabaseScripts.setpermissionlevelScript)
+            .x("permissionLevel", level)
+            .x("id", profileId)).ok()
+    }
 
     suspend fun setKey(player: Player) {
-        val data = localPlayerData(player)
-        val key = player.publicKey ?: throw IllegalStateException("Cannot set key if there is no key!")
+        val data = player.sessionData
+        val key = data.publicKey ?: throw IllegalStateException("Cannot set key if there is no key!")
         abstractQuery(Query(DatabaseScripts.setkeyScript)
-            .x("id", data.id)
+            .x("id", data.profileId)
             .x("key", Base64.withPadding(Base64.PaddingOption.ABSENT).encode(key.encoded))).ok()
         data.keySet = true
+    }
+
+    fun votekickConnection(con: NetConnection, votekickId: String, locale: String, reason: String, expires: Instant, initiator: String, votes: Seq<String>) {
+        val votesS = run {
+            val builder = StringBuilder(run {
+                var i = 0
+                for (x in votes) {
+                    if (i != 0) i++
+                    i += x.length
+                }
+                i
+            })
+            for (x in votes) {
+                if (!builder.isEmpty()) builder.append("\n")
+                builder.append(x)
+            }
+            builder
+        }
+
+        val remaining = durationToTlString(max((expires - Clock.System.now()).inWholeMilliseconds, 0) / 1000f)
+
+        con.kick(Tl.fmt(locale)
+            .put("id", votekickId)
+            .put("initiator", initiator)
+            .put("votes", votesS.toString())
+            .put("remaining", remaining)
+            .put("reason", reason)
+            .done("{generic.kick.votekick}"))
+    }
+
+    suspend fun votekick(player: Player, initiator: Player, votes: Seq<Player>, reason: String) {
+        val id = abstractQuerySingle(Query(DatabaseScripts.votekickScript)
+            .x("user", player.sessionData.userId)
+            .x("initiator", player.sessionData.userId)
+            .x("votes", votes.iterator().map { it.sessionData.userId }.collect(ArrayList()))
+            .x("ip", player.con.address)
+            .x("reason", reason)
+            .x("server", Config.i.serverName)).ok().result.at("id").asString()
+        votekickConnection(player.con, id, player.locale, reason, Clock.System.now() + 30.minutes,
+            initiator.sessionData.simpleName(), votes.map { it.sessionData.simpleName() })
     }
 
     // /**

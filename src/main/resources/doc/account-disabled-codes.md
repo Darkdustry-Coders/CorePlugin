@@ -24,16 +24,18 @@ Account was disabled as its UUID was leaked.
 ## 7 - Graylisted
 
 ## 8 - Banned
-User is banned from the server. Bans apply globally.
+User was banned from the server. Bans apply globally.
 
+- `id`: The ID of this ban.
 - `reason`: Reason for why the account is banned.
 - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
 - `admin`: Last username of an admin that issues a ban.
 - `server`: Server name on which the ban was issued.
 
 ## 9 - Kicked
-User is kicked from the server. Kicks apply per-server.
+User was kicked from the server. Kicks apply per-server.
 
+- `id`: The ID of this kick.
 - `reason`: Reason for why the account is banned.
 - `expires`: Unix timestamp before which the kick is valid. `null` if permanent.
 - `admin`: Last username of an admin that issues a ban.
@@ -42,3 +44,12 @@ User is kicked from the server. Kicks apply per-server.
 User is already logged in from a different location.
 
 This code is usually not issued by the database.
+
+## 11 - Votekicked
+User was votekicked from the server. Votekicks apply per-server.
+
+- `id`: The ID of this votekick.
+- `reason`: Reason for why the account is banned.
+- `expires`: Unix timestamp before which the kick is valid. `null` if permanent.
+- `initiator`: Last username of the person who initiated the votekick.
+- `votes`: Last usernames of people who voted in favor of this votekick.

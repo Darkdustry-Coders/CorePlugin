@@ -801,7 +801,7 @@ object Tl {
 }
 
 object Tlu {
-    fun <R, T : L<R>> list(l: T, list: Iterable<String>, key: String, sep: String = ","): T {
+    fun <R: T, T : L<R>> list(l: T, list: Iterable<String>, key: String, sep: String = ","): T {
         l.put(key, list.joinToString(sep))
         l.put("${key}.len", list.count().toString())
         return l

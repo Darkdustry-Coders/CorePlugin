@@ -1,3 +1,5 @@
+begin;
+
 define table if not exists object schemaless;
 insert ignore into object [
     { id: "seq" },
@@ -59,6 +61,17 @@ define field wins on mindustry_profile_gamemode type int default 0;
 define field ovas on mindustry_profile_gamemode type int default 0;
 define field rank on mindustry_profile_gamemode type int default 0;
 
+define table mindustry_votekick schemafull;
+define field user on mindustry_votekick type record<user>;
+define field initiator on mindustry_votekick type record<user>;
+define field at on mindustry_votekick type datetime;
+define field ip on mindustry_votekick type string;
+define field expires on mindustry_votekick type option<datetime>;
+define field server_name on mindustry_votekick type string;
+define field reason on mindustry_votekick type string;
+define field votes on mindustry_votekick type array<record<user>>;
+define field pardoned on mindustry_votekick type bool default false;
+
 define table mindustry_kick schemafull;
 define field user on mindustry_kick type record<user>;
 define field at on mindustry_kick type datetime;
@@ -67,6 +80,7 @@ define field expires on mindustry_kick type option<datetime>;
 define field server_name on mindustry_kick type string;
 define field reason on mindustry_kick type string;
 define field admin on mindustry_kick type option<record<user>>;
+define field pardoned on mindustry_kick type bool default false;
 
 define table mindustry_ban schemafull;
 define field user on mindustry_ban type record<user>;
@@ -76,6 +90,7 @@ define field expires on mindustry_ban type option<datetime>;
 define field server_name on mindustry_ban type option<string>;
 define field reason on mindustry_ban type string;
 define field admin on mindustry_ban type option<record<user>>;
+define field pardoned on mindustry_ban type bool default false;
 
 define table mindustry_mute schemafull;
 define field user on mindustry_mute type record<user>;
@@ -84,6 +99,7 @@ define field expires on mindustry_mute type option<datetime>;
 define field server_name on mindustry_mute type option<string>;
 define field reason on mindustry_mute type string;
 define field admin on mindustry_mute type option<record<user>>;
+define field pardoned on mindustry_mute type bool default false;
 
 define table mindustry_graylist_isp schemafull;
 define field id on mindustry_graylist_isp type string;
@@ -115,6 +131,21 @@ define field mobile on ip_info type bool;
 define field hosting on ip_info type bool;
 define field proxy on ip_info type bool;
 
+define function fn::mindustry_last_name($user: record<user>) {
+    let $x = select *
+        from only mindustry_profile
+        where
+            user = $user
+        order by last_joined
+        desc limit 1;
+    let $id_string = if $x.shortId != none { type::string($x.shortId) }
+                     else {
+                         let $s = type::string(record::id($x.id));
+                         $s.slice($s.len() - 6);
+                     };
+    return $x.last_name + " [#dadada][[" + $id_string + "]";
+};
+
 define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $server: string, $key: option<bytes>, $new_name: string) {
     let $tmp = select disabled from only type::record("mindustry_abandoned_user", $uuid);
     if $tmp != none {
@@ -130,23 +161,40 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
             return $x.{disabled};
         };
 
-        let $tmp = select * from only mindustry_kick where user = $x.user and expires > $now order by expires asc limit 1;
+        let $tmp = select * from only mindustry_votekick where user = $x.user and expires > $now and server_name = $server and !pardoned order by expires asc limit 1;
         if $tmp != none {
-            let $admin = (select last_name, last_joined from only mindustry_profile where user = $tmp.admin order by last_joined desc limit 1).last_name;
+            let $initiator = fn::mindustry_last_name($tmp.initiator);
+            let $votes = $tmp.votes.map(|$x| fn::mindustry_last_name($x));
             return {
-                disabled: 9,
-                admin: $admin,
+                disabled: 11,
+                id: record::id($tmp.id),
+                initiator: $initiator,
+                votes: $votes,
                 reason: $tmp.reason,
+                expires: if $tmp.expires = none { none } else { $tmp.expires.millis() },
             };
         };
-        let $tmp = select * from only mindustry_ban where user = $x.user and expires > $now order by expires asc limit 1;
+        let $tmp = select * from only mindustry_kick where user = $x.user and expires > $now and server_name = $server and !pardoned order by expires asc limit 1;
         if $tmp != none {
-            let $admin = (select last_name, last_joined from only mindustry_profile where user = $tmp.admin order by last_joined desc limit 1).last_name;
+            let $admin = fn::mindustry_last_name($tmp.admin);
+            return {
+                disabled: 9,
+                id: record::id($tmp.id),
+                admin: $admin,
+                reason: $tmp.reason,
+                expires: if $tmp.expires = none { none } else { $tmp.expires.millis() },
+            };
+        };
+        let $tmp = select * from only mindustry_ban where user = $x.user and expires > $now and !pardoned order by expires asc limit 1;
+        if $tmp != none {
+            let $admin = fn::mindustry_last_name($tmp.admin);
             return {
                 disabled: 8,
+                id: record::id($tmp.id),
                 admin: $admin,
                 reason: $tmp.reason,
                 server: $tmp.server,
+                expires: if $tmp.expires = none { none } else { $tmp.expires.millis() },
             };
         };
 
@@ -193,3 +241,4 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
 update only object:schema_version set value = 1;
 
 return none;
+commit;

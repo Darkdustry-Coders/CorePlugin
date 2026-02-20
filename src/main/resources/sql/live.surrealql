@@ -1,2 +1,1 @@
-live select * from mindustry_kick where server_name = $server_name;
-live select * from mindustry_ban where server_name = $server_name;
+live select <string> record::id(id) as id from mindustry_votekick where server_name = $server_name and pardoned = true;

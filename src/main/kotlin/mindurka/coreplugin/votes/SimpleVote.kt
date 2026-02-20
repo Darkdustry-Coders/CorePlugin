@@ -1,6 +1,7 @@
 package mindurka.coreplugin.votes
 
 import buj.tl.L
+import mindurka.coreplugin.sessionData
 import mindurka.util.SendMessage
 import mindustry.game.Team
 import mindustry.gen.Player
@@ -10,7 +11,7 @@ abstract class SimpleVote(protected val category: String, initiator: Player, tea
     protected abstract fun done()
 
     override fun sendUpdateMessage(send: SendMessage) {
-        send.send().put("player", initiator.coloredName())
+        send.send().put("player", initiator.sessionData.simpleName())
             .put("votes", votesForNumber.toString())
             .put("threshold", totalPlayers.toString())
             .apply(::formatParams)
@@ -27,10 +28,10 @@ abstract class SimpleVote(protected val category: String, initiator: Player, tea
     }
 
     override fun voted(send: SendMessage, player: Player, fo: Boolean) {
-        send.send().put("player", player.coloredName())
+        send.send().put("player", player.sessionData.simpleName())
             .put("votes", votesForNumber.toString())
             .put("threshold", totalPlayers.toString())
             .apply(::formatParams)
-            .done("{$category.${if (fo) "for" else "against"}}\n{generic.vote.${if (team == null) "global" else "local"}}")
+            .done("{$category.${if (fo) "for" else "against"}}\n{generic.vote.${if (team == null) "global" else "team"}}")
     }
 }

@@ -81,7 +81,7 @@ dependencies {
 
 jar {
     from ({ configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }) {
-        exclude 'natives/**'
+        exclude 'doc/**'
     }
 
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

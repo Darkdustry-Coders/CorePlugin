@@ -48,8 +48,6 @@ internal fun modActionsInit() {
                         return@run
                     }
                     if (adminChecks(target)) return@run
-
-
                 }
             }
             else -> {}

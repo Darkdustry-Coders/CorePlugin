@@ -3,6 +3,7 @@ package mindurka.coreplugin.votes
 import arc.func.Boolf
 import arc.struct.Seq
 import mindurka.coreplugin.CorePlugin
+import mindurka.coreplugin.sessionData
 import mindurka.util.SendMessage
 import mindurka.util.isServiceTeam
 import mindurka.util.unreachable
@@ -31,10 +32,10 @@ abstract class Vote(val initiator: Player, val team: Team?) {
         votesAgainst.remove(player)
 
         refresh(false)
-        send.send().put("player", player.coloredName())
+        send.send().put("player", player.sessionData.simpleName())
             .put("votes", votesForNumber.toString())
             .put("threshold", totalPlayers.toString())
-            .done("{generic.vote.left}\n{generic.vote.${if (team == null) "global" else "local"}}")
+            .done("{generic.vote.left}\n{generic.vote.${if (team == null) "global" else "team"}}")
         if (finished) {
             if (team == null) CorePlugin.currentGlobalVote = null
             else CorePlugin.teamVotes.remove(team.id)

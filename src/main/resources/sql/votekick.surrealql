@@ -1,0 +1,11 @@
+let $now = time::now();
+return create only mindustry_votekick content {
+    user: type::record("user", <uuid> $user),
+    at: $now,
+    ip: $ip,
+    expires: $now + 30m,
+    server_name: $server,
+    reason: $reason,
+    initiator: type::record("user", <uuid> $initiator),
+    votes: $votes.map(|$x| type::record("user", <uuid> $x)),
+} return <string> record::id(id) as id;

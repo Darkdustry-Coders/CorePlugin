@@ -1,5 +1,6 @@
 package mindurka.coreplugin
 
+import arc.Core
 import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.Channel
@@ -21,13 +22,42 @@ import arc.math.Mathf
 import arc.util.Log
 import arc.util.Timer
 import mindurka.annotations.PublicAPI
+import mindurka.util.Async
 import java.util.concurrent.CompletableFuture
 import mindurka.util.Ref
+import mindurka.util.UnsafeNull
 import mindurka.util.nodecl
+import mindurka.util.sha256
+import java.io.IOException
 
 class TookTooLongExeption(message: String): Exception(message)
 
+// TODO: Move the whole thing to a separate thread and make everything 'suspend'.
 object RabbitMQ {
+    /**
+     * Distributed exclusive+temporary queue-based lock.
+     */
+    @PublicAPI
+    class Lock internal constructor(name: String) {
+        var name: String? = name
+
+        /**
+         * Release this lock.
+         *
+         * Calling this method multiple times does nothing.
+         */
+        @PublicAPI
+        fun release() {
+            val name = name ?: return
+            this.name = null
+
+            channel.queueDelete(name, false, false)
+        }
+
+        /** Create a [Cancel] for this lock. */
+        fun cancellable() = Cancel { Async.run(::release) }
+    }
+
     private val connection: Connection
     private val channel: Channel
     private val queues = HashSet<String>()
@@ -131,7 +161,7 @@ object RabbitMQ {
             sentBy[`object`] = msg.properties.appId
             correlationId[`object`] = msg.properties.correlationId
 
-            cb(`object`)
+            Core.app.run { cb(`object`) }
         }, {}, { _, _ -> })
 
         return Cancel {
@@ -148,6 +178,7 @@ object RabbitMQ {
 
     @PublicAPI
     @JvmStatic
+    @Throws(TookTooLongExeption::class)
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     fun<R, T> request(`object`: T, timeout: Float, recv: Cons<R>) {
         val networkEvent = `object`?.javaClass?.annotations?.
@@ -190,9 +221,11 @@ object RabbitMQ {
 
     @PublicAPI
     @JvmStatic
+    @Throws(TookTooLongExeption::class)
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     fun<T, R> requestOnce(`object`: T, timeout: Float): CompletableFuture<R> {
         val future = CompletableFuture<R>()
+        @OptIn(UnsafeNull::class)
         val timer = Ref<Timer.Task>(nodecl())
         val networkEvent = `object`?.javaClass?.annotations?.
                                    find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
@@ -256,9 +289,18 @@ object RabbitMQ {
         publish(queueName, body, props = PropertiesBuilder().replyTo(sentBy).correlationId(correlationId))
     }
 
+    fun lock(data: String): Lock? {
+        val queueName = "lock.${sha256(data)}"
+        try {
+            channel.queueDeclare(queueName, /*durable=*/false, /*exclusive=*/true, /*autoDelete=*/true, emptyMap())
+            return Lock(queueName)
+        } catch (_: IOException) {
+            return null
+        }
+    }
+
     @PublicAPI
     fun flush() {
-        // TODO: Somehow make this work properly, idk
-        Thread.sleep(200);
+        // TODO: Wait for RabbitMQ thread once that is implemented.
     }
 }

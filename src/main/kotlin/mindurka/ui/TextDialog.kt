@@ -15,7 +15,9 @@ import arc.func.Func
 import arc.func.Prov
 import arc.util.Log
 import mindurka.util.Ref
+import mindurka.util.UnsafeNull
 
+@UiInternals
 class TextDialog: Dialog {
     var title: String = ""
     var message: String = ""
@@ -80,6 +82,7 @@ class TextDialog: Dialog {
     }
 }
 
+@OptIn(UiInternals::class)
 class TextDialogBuilder(private val dialog: TextDialog, private val player: Player, private val executeAgain: Runnable) {
     var title: String
         get() = if (dialog.titleCtx == null) dialog.title else Ls(player.locale, dialog.titleCtx!!).done(dialog.title)
@@ -152,6 +155,7 @@ class TextDialogBuilder(private val dialog: TextDialog, private val player: Play
 }
 
 @PublicAPI
+@OptIn(UiInternals::class, UnsafeNull::class)
 fun Player.openText(builder: TextDialogBuilder.() -> Unit): CompletableFuture<String?> {
     val d = TextDialog()
     val b: Ref<TextDialogBuilder> = Ref(nodecl())

@@ -68,19 +68,18 @@ object Async {
     val mainScope = MainScope()
 
     /**
-     * Dispatch a `suspend fn` and obtain a `CompletableFuture` for it.
+     * Dispatch a `suspend fn`.
      */
     @PublicAPI
-    fun <T> run(fn: suspend() -> T): CompletableFuture<T> {
-        val future = CompletableFuture<T>()
+    fun run(fn: suspend() -> kotlin.Unit) {
         mainScope.launch(mainScope.newCoroutineContext(mainScope.coroutineContext)) {
             try {
-                future.complete(fn())
+                fn()
             } catch (why: Throwable) {
-                future.completeExceptionally(why)
+                Log.err(why)
+                Runtime.getRuntime().exit(1)
             }
         }
-        return future
     }
 
     /**

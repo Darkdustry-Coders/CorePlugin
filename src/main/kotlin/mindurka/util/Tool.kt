@@ -3,14 +3,17 @@ package mindurka.util
 import arc.struct.ObjectIntMap
 import arc.util.Strings
 import arc.util.Time
+import buj.tl.Script
 import buj.tl.Tl
 import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.database.Database
+import mindurka.coreplugin.sessionData
 import mindustry.Vars
 import mindustry.game.Team
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.WeakHashMap
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -35,9 +38,23 @@ fun Player.checkOnCooldown(name: String): Boolean {
     return true
 }
 val Player.permissionLevel: Int get() {
-    val data = Database.localPlayerData(this)
+    val data = sessionData
     if (!data.keySet && !Vars.netServer.admins.isAdmin(uuid(), usid())) return 0
     return data.permissionLevel
+}
+
+fun sha256(data: String) = sha256(data.toByteArray(Vars.charset))
+fun sha256(data: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(data)
+    val hash = StringBuilder(digest.size)
+    for (x in digest) {
+        val most = x.div(16)
+        val least = x.rem(16)
+
+        hash.append((if (most >= 10) most + 'a'.code - 10 else most + '0'.code).toChar())
+        hash.append((if (least >= 10) least + 'a'.code - 10 else least + '0'.code).toChar())
+    }
+    return hash.toString()
 }
 
 fun minutes(time: Float) = time * 60f
@@ -60,34 +77,34 @@ fun durationToString(time: Float): String {
 
     // An approximation ofc.
     if (time >= yearsT) {
-        val years = floor(time % yearsT).toInt()
+        val years = floor(time / yearsT).toInt()
         time -= yearsT * years
         builder.append(years).append("y")
     }
 
-    if (time >= daysT) {
-        val days = floor(time % daysT).toInt()
-        time -= daysT * days
-        if (!builder.isEmpty()) builder.append(" ")
-        builder.append(days).append("d")
-    }
-
     if (time >= weeksT) {
-        val weeks = floor(time % weeksT).toInt()
+        val weeks = floor(time / weeksT).toInt()
         time -= weeksT * weeks
         if (!builder.isEmpty()) builder.append(" ")
         builder.append(weeks).append("w")
     }
 
+    if (time >= daysT) {
+        val days = floor(time / daysT).toInt()
+        time -= daysT * days
+        if (!builder.isEmpty()) builder.append(" ")
+        builder.append(days).append("d")
+    }
+
     if (time >= 3600) {
-        val hours = floor(time % 3600).toInt()
+        val hours = floor(time / 3600).toInt()
         time -= 3600f * hours
         if (!builder.isEmpty()) builder.append(" ")
         builder.append(hours).append("h")
     }
 
     if (time >= 60) {
-        val minutes = floor(time % 60).toInt()
+        val minutes = floor(time / 60).toInt()
         time -= 60f * minutes
         if (!builder.isEmpty()) builder.append(" ")
         builder.append(minutes).append("m")
@@ -102,10 +119,58 @@ fun durationToString(time: Float): String {
         if (time >= 0.001f) {
             time.times(1000).toInt()
             builder.append(ceil(time).toInt()).append("ms")
-        } else if (time <= 0f) builder.append("0s") else builder.append("~0").append("s")
+        } else if (time <= 0f) builder.append("0s") else builder.append("~0s")
     }
 
     return if (neg) "-$builder" else builder.toString()
+}
+fun durationToTlString(time: Float): Script {
+    if (time.isInfinite()) return Tl.parse(if (time > 0) "{generic.duration.inf}" else "-{generic.duration.inf}")
+
+    var time = time
+
+    val neg = time < 0
+    if (neg) time *= -1
+
+    val nt = if (neg) "-" else ""
+
+    // An approximation ofc.
+    if (time >= yearsT - 1000f) {
+        val years = floor(time / yearsT + 1000f).toInt()
+        return Tl.parse("$nt$years {generic.duration.year${if (years == 1) "" else "s"}}")
+    }
+
+    if (time >= weeksT) {
+        val weeks = floor(time / weeksT).toInt()
+        return Tl.parse("$nt$weeks {generic.duration.week${if (weeks == 1) "" else "s"}}")
+    }
+
+    if (time >= daysT) {
+        val days = floor(time / daysT).toInt()
+        return Tl.parse("$nt$days {generic.duration.day${if (days == 1) "" else "s"}}")
+    }
+
+    if (time >= 3600) {
+        val hours = floor(time / 3600).toInt()
+        return Tl.parse("$nt$hours {generic.duration.hour${if (hours == 1) "" else "s"}}")
+    }
+
+    if (time >= 60) {
+        val minutes = floor(time / 60).toInt()
+        return Tl.parse("$nt$minutes {generic.duration.minute${if (minutes == 1) "" else "s"}}")
+    }
+
+    if (time >= 0.5f) {
+        val seconds = ceil(time).toInt()
+        return Tl.parse("$nt$seconds {generic.duration.second${if (seconds == 1) "" else "s"}}")
+    }
+
+    return Tl.parse(if (time >= 0.001f) {
+        time.times(1000).toInt()
+        val ms = ceil(time).toInt()
+
+        "$nt$ms {generic.duration.milli${if (ms == 1) "" else "s"}}"
+    } else "~0 {generic.duration.seconds}")
 }
 @Throws(FormatException::class)
 fun stringToDuration(duration: String): Float {
@@ -166,26 +231,29 @@ fun stringToDuration(duration: String): Float {
 }
 
 fun findPlayer(arg: String, checkUuid: Boolean): Player? {
+    if (checkUuid) {
+        for (player in Groups.player) {
+            if (arg == player.uuid()) return player
+        }
+        for (player in Groups.player) {
+            if (arg == player.usid()) return player
+        }
+    }
+
     if (arg.length > 1 && arg.startsWith('#') && Strings.canParseInt(arg.substring(1))) {
         val id = Strings.parseInt(arg.substring(1))
         Groups.player.find { it.id() == id }?.let { return it }
     }
 
-    if (Strings.canParseInt(arg)) {
-        val shortId = Strings.parseInt(arg)
+    arg.toLongOrNull()?.let { shortId ->
         for (player in Groups.player)
-            if (Database.localPlayerData(player).shortId == shortId)
+            if (player.sessionData.shortId == shortId)
                 return player
     }
 
     for (player in Groups.player) {
-        val id = Database.localPlayerData(player).id
+        val id = player.sessionData.profileId
         if (id.endsWith(arg)) return player
-    }
-
-    for (player in Groups.player) {
-        val id = Database.localPlayerData(player).id
-        if (id.contains(arg)) return player
     }
 
     for (player in Groups.player) {

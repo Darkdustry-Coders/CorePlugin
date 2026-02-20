@@ -7,7 +7,9 @@ import mindurka.annotations.PublicAPI
 import mindurka.annotations.NetworkEvent
 import mindurka.coreplugin.RabbitMQ
 import mindurka.util.Ref
+import mindurka.util.UnsafeNull
 import mindurka.util.nodecl
+import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.content.Blocks
 import mindustry.world.Block
@@ -16,6 +18,7 @@ import mindustry.game.Team
 import mindustry.gen.Player
 import mindustry.gen.Unit
 import mindustry.world.blocks.environment.Floor
+import org.jline.utils.Log
 
 /**
  * A player is having their team assigned.
@@ -112,64 +115,150 @@ object BuildEventPost {
     lateinit var tile: Tile
 }
 
+/**
+ * Marks the internals of [Cancellable].
+ *
+ * Generally, only the implementors of [Cancellable] will ever need to opt into this.
+ */
+@PublicAPI
+@RequiresOptIn(message = "This is an internal API. Calling it manually may cause problems at runtime.")
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+annotation class CancellableInternals
+
 /** A cancellable object. */
 @PublicAPI
 interface Cancellable {
     /**
-     * Bind a cancel event.
-     *
-     * It will be called alongside this cancel event.
-     *
-     * Calling this twice with the same arguments does nothing.
+     * Cancel another [Cancellable] when this [Cancellable] gets canceled.
      */
     @PublicAPI
-    fun bind(cancel: Cancellable)
+    fun alsoCancel(other: Cancellable)
     /**
-     * Unbind a cancel event.
+     * Unbind a [Cancellable].
      *
-     * Calling this twice with the same arguments does nothing.
+     * This removes both forwards and backwards binds. Caller should always set [recursive]
+     * to `true` or use the method without the extra argument.
+     *
+     * @param cancel [Cancellable] to unbind from.
+     * @param recursive If `true`, must call [Cancellable.unbind] on [cancel].
      */
     @PublicAPI
-    fun unbind(cancel: Cancellable)
+    @CancellableInternals
+    fun unbind(cancel: Cancellable, recursive: Boolean)
 
     /**
-     * Called by the binder upon [Cancellable.bind].
+     * Unbind a [Cancellable].
      *
-     * When binders cancels, it should call [Cancellable.unbind]
-     * on all backwards-bound cancellables.
+     * This removes both forwards and backwards binds.
+     *
+     * @param cancel [Cancellable] to unbind from.
+     */
+    @PublicAPI
+    @OptIn(CancellableInternals::class)
+    fun unbind(cancel: Cancellable) = unbind(cancel, true)
+
+    /**
+     * Called by the binder upon [Cancellable.alsoCancel].
+     *
+     * When a binder cancels, it should call [Cancellable.unbind]
+     * on all backwards-bound [Cancellable]s.
+     *
+     * This is used for optimization purposes.
+     *
+     * This method should not be called manually.
      *
      * Forwards- and backwards- binding to a cancellable is a logic bug.
      */
     @PublicAPI
+    @CancellableInternals
     fun backwardsBind(cancel: Cancellable)
 
+    /**
+     * Check if this [Cancellable] is cancelled.
+     *
+     * If `true`, [Cancellable.cancel] will do nothing.
+     */
     @PublicAPI
     fun cancelled(): Boolean
+    /**
+     * Cancel this [Cancellable].
+     *
+     * Implementors must ensure that calling this method multiple times only
+     * cancels once.
+     */
     @PublicAPI
     fun cancel()
 }
 
-/** A cancel callback. */
+/**
+ * A cancel callback.
+ *
+ * Instances of [Cancel] are internally cached.
+ */
 @PublicAPI
-class Cancel(private val callback: Runnable) : Cancellable, Runnable {
-    private var cancelled = false
+class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
+    companion object {
+        private var bigCacheWarning = false
+        private val cache = Seq<Cancel>()
+        private val nullRunnable = Runnable { unreachable("This callback should have never been called") }
+
+        /**
+         * Obtain a new [Cancel] from the cache.
+         */
+        @PublicAPI
+        @JvmStatic
+        fun get(callback: Runnable): Cancel {
+            if (cache.isEmpty) return Cancel(callback)
+
+            val cancel = cache.pop()
+            cancel.callback = callback
+
+            return cancel
+        }
+
+        /**
+         * Obtain a new [Cancel] from the cache.
+         */
+        @PublicAPI
+        @JvmStatic
+        fun get(parent: Cancellable, callback: Runnable): Cancel {
+            if (cache.isEmpty) return Cancel(callback)
+
+            val cancel = cache.pop()
+            cancel.callback = callback
+            parent.alsoCancel(cancel)
+
+            return cancel
+        }
+
+        operator fun invoke(callback: Runnable) = get(callback)
+        operator fun invoke(parent: Cancellable, callback: Runnable) = get(parent, callback)
+    }
+
+    /** Callback. `null` state is reserved for canceled state. */
+    private var callback: Runnable? = callback
     private val alsoCancel = Seq<Cancellable>()
     private val backwardsBound = Seq<Cancellable>()
 
-    override fun bind(cancel: Cancellable) {
+    @OptIn(CancellableInternals::class)
+    override fun alsoCancel(other: Cancellable) {
         if (cancelled())
             throw IllegalStateException("cannot bind to a cancelled cancellable")
-        if (backwardsBound.contains(cancel))
+        if (backwardsBound.contains(other))
             throw IllegalArgumentException("having a cancellable both forwards- and backwards- bound is a logic error")
 
-        alsoCancel.addUnique(cancel)
-        cancel.backwardsBind(this)
+        alsoCancel.addUnique(other)
+        other.backwardsBind(this)
     }
-    override fun unbind(cancel: Cancellable) {
+    @CancellableInternals
+    override fun unbind(cancel: Cancellable, recursive: Boolean) {
         alsoCancel.remove(cancel)
         backwardsBound.remove(cancel)
+        if (recursive) cancel.unbind(this, false)
     }
 
+    @CancellableInternals
     override fun backwardsBind(cancel: Cancellable) {
         if (cancelled())
             throw IllegalStateException("cannot backwards bind to a cancelled cancellable")
@@ -178,15 +267,47 @@ class Cancel(private val callback: Runnable) : Cancellable, Runnable {
         backwardsBound.add(cancel)
     }
 
-    override fun cancelled(): Boolean = cancelled
+    override fun cancelled(): Boolean = callback == null
+    /**
+     * Cancel this [Cancellable].
+     *
+     * Implementors must ensure that calling this method multiple times only
+     * cancels once.
+     *
+     * If you can ensure that
+     */
     override fun cancel() {
-        if (!cancelled) cancelled = true else return
+        val cbold = callback ?: return
 
-        callback.run()
+        cbold.run()
+        callback = null
+
         alsoCancel.each(Cancellable::cancel)
         backwardsBound.each { it.unbind(this) }
+
+        alsoCancel.clear()
+        backwardsBound.clear()
+        callback = nullRunnable
     }
     override fun run() = cancel()
+
+    /**
+     * Release this [Cancel].
+     *
+     * Caller must ensure that nothing holds a reference to this object before
+     * calling this method. If this cannot be guaranteed, [Cancel.cancel] should
+     * be used instead.
+     *
+     * Calls [Cancel.cancel] under the hood.
+     */
+    fun release() {
+        cancel()
+        if (cache.size < 64) cache.add(this)
+        else if (!bigCacheWarning) {
+            bigCacheWarning = true
+            Log.warn("Attempted to cache more than 64 `Cancel`s, is there a memory leak?")
+        }
+    }
 }
 
 @PublicAPI
@@ -210,14 +331,30 @@ enum class Priority {
     After,
 }
 
+/**
+ * Lifetimes of long-lived objects.
+ *
+ * For short-lived durations use [Cancel].
+ */
 @PublicAPI
-open class Lifetime(): Cancellable {
+open class Lifetime(parent: Cancellable? = null): Cancellable {
     companion object {
-        /** Lasts forever. */
+        /**
+         * Lasts for the entire lifetime of the application.
+         *
+         * May get cancelled before the application quits, but not necessarily so.
+         */
         @PublicAPI
         @JvmField
         val Forever = Lifetime()
-        /** Lasts until round ends. */
+        /**
+         * Lasts until round ends.
+         *
+         * Importantly, this does not guarantee availability of the world in which
+         * this lifetime had been started.
+         *
+         * The object is reused for all rounds.
+         */
         @PublicAPI
         @JvmField
         val Round = object : Lifetime() {
@@ -238,6 +375,7 @@ open class Lifetime(): Cancellable {
     private val backwardsBound = Seq<Cancellable>()
 
     init {
+        parent?.let(::alsoCancel)
         uponStart()
     }
 
@@ -246,32 +384,41 @@ open class Lifetime(): Cancellable {
     @PublicAPI
     protected open fun uponEnd() {}
 
-    override fun bind(cancel: Cancellable) {
+    @OptIn(CancellableInternals::class)
+    override fun alsoCancel(other: Cancellable) {
         if (cancelled())
             throw IllegalStateException("cannot bind to a cancelled cancellable")
-        if (backwardsBound.contains(cancel))
+        if (backwardsBound.contains(other))
             throw IllegalArgumentException("having a cancellable both forwards- and backwards- bound is a logic error")
 
-        alsoCancel.addUnique(cancel)
-        cancel.backwardsBind(this)
+        this.alsoCancel.addUnique(other)
+        other.backwardsBind(this)
     }
-    override fun unbind(cancel: Cancellable) {
-        alsoCancel.remove(cancel)
+    @CancellableInternals
+    override fun unbind(cancel: Cancellable, recursive: Boolean) {
+        this.alsoCancel.remove(cancel)
         backwardsBound.remove(cancel)
+        if (recursive) cancel.unbind(this, false)
     }
 
+    @CancellableInternals
     override fun backwardsBind(cancel: Cancellable) {
         if (cancelled())
             throw IllegalStateException("cannot backwards bind to a cancelled cancellable")
-        if (alsoCancel.contains(cancel))
+        if (this.alsoCancel.contains(cancel))
             throw IllegalArgumentException("having a cancellable both forwards- and backwards- bound is a logic error")
         backwardsBound.add(cancel)
     }
 
     override fun cancel() {
         cancelled = true
-        alsoCancel.each(Cancellable::cancel)
+
+        this.alsoCancel.each(Cancellable::cancel)
         backwardsBound.each { it.unbind(this) }
+
+        this.alsoCancel.clear()
+        backwardsBound.clear()
+
         uponEnd()
     }
 
@@ -360,6 +507,7 @@ object Events {
                 a[priority.ordinal] = s
                 s
             }
+        @OptIn(UnsafeNull::class)
         val container = Ref<EventContainer>(nodecl())
         val cancel = Cancel {
             b.remove(container.r)
@@ -370,7 +518,7 @@ object Events {
             cancel,
         )
         b.add(container.r)
-        lifetime.bind(cancel)
+        lifetime.alsoCancel(cancel)
 
         return cancel
     }

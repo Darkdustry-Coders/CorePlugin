@@ -2,6 +2,11 @@ package mindurka.util
 
 import mindurka.annotations.PublicAPI
 
+@RequiresOptIn(message = "'nodecl' allows bypassing Kotlin's null safety. This may cause problems at runtime.")
+@Retention(AnnotationRetention.BINARY)
+annotation class UnsafeNull
+
+@UnsafeNull
 @PublicAPI
 @Suppress("UNCHECKED_CAST")
 fun <T> nodecl(): T = null as T

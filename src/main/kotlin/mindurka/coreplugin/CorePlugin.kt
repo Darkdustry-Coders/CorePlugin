@@ -74,7 +74,6 @@ import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.net.Administration
 import net.buj.surreal.Query
-import sun.net.www.content.text.plain
 import java.util.Arrays
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -153,6 +152,8 @@ object CorePlugin {
             handleUiEvent(it)
 
             val player = it.player
+
+            player.sessionData.releaseLocks()
 
             Core.app.post {
                 if (currentGlobalVote != null)
@@ -327,7 +328,7 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
     data class HelpMenu(var page: UInt) : Page() {}
     val SelectPage = object : Page() {}
 
-    val permissionLevel = Database.localPlayerData(caller).permissionLevel
+    val permissionLevel = caller.sessionData.permissionLevel
 
     val commands = Vars.netServer.clientCommands.commandList.iterator()
         .filter {
@@ -492,7 +493,7 @@ private fun setkey(caller: Player) = Async.run {
         return@run
     }
 
-    if (Database.localPlayerData(caller).keySet) {
+    if (caller.sessionData.keySet) {
         Tl.send(caller).done("{commands.setkey.error}")
         return@run
     }
@@ -616,7 +617,7 @@ private fun sql(@Rest query: String) = Async.run {
 
 /** Localize a string */
 @ConsoleCommand
-private fun tl(locale: String, @Rest query: String) = Async.run {
+private fun tl(locale: String, @Rest query: String) {
     try {
         Log.info(Tl.fmt(locale).done(query))
     } catch (e: Exception) {
@@ -627,7 +628,7 @@ private fun tl(locale: String, @Rest query: String) = Async.run {
 /** Set permission */
 @ConsoleCommand
 private fun setpermlevel(player: Player, level: Int) = Async.run {
-    val data = Database.localPlayerData(player)
-    data.setPermissionLevel(player, level)
+    val data = player.sessionData
+    data.setPermissionLevel(level)
     Log.info("Set permission level of ${player.plainName()} to ${data.permissionLevel}")
 }

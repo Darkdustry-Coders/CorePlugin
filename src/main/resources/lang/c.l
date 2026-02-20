@@ -76,6 +76,24 @@ shared = [#EC5784]This account was found to be shared between several players an
        = [accent]This decision cannot be appealed. For more information see the FAQ section in [cyan]#help[] channel on our
        : [#4c59e0]Discord Server[].
        = [cyan]{generic.discord}
+another-location = [#EC5784]You are already logged in from another location.
+         =
+         = [accent]If you believe this is a mistake, create a post in [cyan]#help[] channel on our
+         : [#4c59e0]Discord Server[].
+         = [cyan]{generic.discord}
+votekick = [#EC5784]You were votekicked from this server.
+         =
+         = [accent]Votekick ID: [yellow]{id}
+         = [accent]Initiator: {initiator}
+         = [accent]Reason: [#EC5784]{reason}
+         = [accent]Remaining: [yellow]{remaining}
+         =
+         = [accent]Votes for:
+         = {each {vote} in {votes} ([gray]- {vote}) split (\n) join (\n)}
+         =
+         = [accent]If you believe there was a mistake, create a post in [cyan]#appeals[] channel on our
+         : [#4c59e0]Discord Server[].
+         = [cyan]{generic.discord}
 
 [generic.gameover]
 
@@ -102,6 +120,24 @@ attackLose = [accent]Game over! All cores have been destroyed.
 unexpected = [accent]Game over! All cores have been destroyed.
            =
            = Next map: [yellow]{map}[]
+
+[generic.duration]
+years = years
+year = year
+weeks = weeks
+week = week
+days = days
+day = day
+hours = hours
+hour = hour
+minutes = minutes
+minute = minute
+seconds = seconds
+second = second
+millis = milliseconds
+milli = millisecond
+subsecond = less than a second
+inf = infinity
 
 # Commands
 
@@ -226,7 +262,7 @@ params = [player] [reason..]
 vote.update = [#adadad]{player} wants to kick {target} for [yellow]{reason}[].
 vote.for = [#adadad]{player} voted [#26d657]for[] kicking {target}.
 vote.against = [#adadad]{player} voted [#EC5784]against[] kicking {target}.
-vote.commit = [#26d657]Kicked player {player} for {reason} for [yellow]30 minutes[].
+vote.commit = [#26d657]Kicked player {player} for [yellow]{reason}[] for [yellow]30 minutes[].
 vote.cancel = [#EC5784]Not enough votes to kick {player}.
 
 errors.self = [#EC5784] You cannot kick yourself!
