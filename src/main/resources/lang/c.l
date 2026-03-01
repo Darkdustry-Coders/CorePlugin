@@ -39,7 +39,8 @@ vote-filter = [#EC5784] You cannot vote in this poll.
 cooldown = [#EC5784] Slow down! This command is on cooldown.
 vote = [#EC5784] There's already a vote ongoing.
 unknown-command = [#EC5784] Could not find command [yellow]{command}[]. Check [yellow]/help[].
-invalid-arguments = [#EC5784] Arguments provided for [yellow]{command}[] are incorrect. Try [yellow]/help {command}[]!
+invalid-arguments = [#EC5784] {cause}. Try [yellow]/help {command}[]!
+invalid-arguments-console = {cause}. Usage: {command} {commands.{command}.params}
 permission = [#EC5784] You don't have permission to execute this command.
 admin-action-permission = [#EC5784] You don't have permission to perform this action.
 admin-action-no-target = [#EC5784] You must specify a target to perform an action.
@@ -139,6 +140,28 @@ milli = millisecond
 subsecond = less than a second
 inf = infinity
 
+[generic.command]
+missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
+missing-console = Missing parameter '{commands.{command}.params.{param}}'
+missing = Invalid parameter [yellow]'{commands.{command}.params.{param}}'[]
+missing-console = Missing parameter '{commands.{command}.params.{param}}'
+string-termination = Parameter [yellow]'{commands.{command}.params.{param}}'[] is not correctly enclosed
+string-termination-console = Parameter '{commands.{command}.params.{param}}' is not correctly enclosed
+end-of-input = Not enough input
+end-of-input-console = Not enough input
+not-a-number = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be a number
+not-a-number-console = Parameter '{commands.{command}.params.{param}}' must be a number
+not-a-boolean = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be [#26d657]yes[] or [#EC5784]no[]
+not-a-boolean-console = Parameter '{commands.{command}.params.{param}}' must be a boolean
+invalid-map-id = Unknown map ID
+invalid-map-id-console = Unknown map ID
+zero-map-id = But it refused
+zero-map-id-console = But it refused
+unknown-map = Could not find the map
+unknown-map-console = Could not find the map
+unknown-player = Could not find the player
+unknown-player-console = Could not find the player
+
 # Commands
 
 [commands.help]
@@ -150,6 +173,9 @@ manpage = Get a list of available commands.
         =
         = If [blue][[command][] is specified, give its extended description.
 params = [page-or-command]
+params.page = page
+params.command = command
+
 select-page.title =  Select a page
 select-page.message = Currently on page {page}
 title-page =  List of available commands
@@ -171,6 +197,8 @@ manpage = Get a list of available maps.
         = If [blue][[page][] is specified, open the specified page.
 
 params = [page]
+params.page = page
+
 select-page.title =  Select a page
 select-page.message = Currently on page {page}
 title-page =  List of available maps
@@ -207,6 +235,7 @@ message = [accent]Do you want to enable public key authorization?
 
 ok = [#26d657] Successfully enabled public key authorization.
 error = [#EC5784] Already enabled.
+admin-protection = [#EC5784] You must log in before enabling key authorization on an admin account.
 no-mdc = [#EC5784] No public key was shared.
        =
        = Install or enable [#4c59e0]MindurkaCompat[] and repeat the command.
@@ -218,7 +247,8 @@ manpage = Vote in a team-specific poll.
         =
         = While global votes are to be responded to with y/n, team-specific polls are handled with /vote y/n to allow
         : both votes to proceed at the same time.
-params = [map]
+params = [y/n/c]
+params.vote = y/n/c
 
 [commands.rtv]
 
@@ -227,6 +257,7 @@ manpage = Start a vote for map change.
         =
         = If map is not specified, a random one is chosen. Map list can be viewed with [#EC5784]/maps[].
 params = [map]
+params.map = map
 
 vote.update = [#adadad]{player} wants to change the current map to [yellow]{map}[].
 vote.for = [#adadad]{player} voted [#26d657]for[] changing the map to [yellow]{map}[].
@@ -241,6 +272,7 @@ manpage = Start a vote for next map.
         =
         = If map is not specified, a random one is chosen. Map list can be viewed with [#EC5784]/maps[].
 params = [map]
+params.map = map
 
 vote.update = [#adadad]{player} wants to play [yellow]{map}[] next.
 vote.for = [#adadad]{player} voted [#26d657]for[] playing [yellow]{map}[] next.
@@ -257,7 +289,9 @@ manpage = Start a vote for kicking a player.
         =
         = Specified reason must describe, shortly and concisely, what the issue is.
         : Starting a votekick without specifying a valid reason is a bannable offense.
-params = [player] [reason..]
+params = <player> <reason..>
+params.player = player
+params.reason = reason
 
 vote.update = [#adadad]{player} wants to kick {target} for [yellow]{reason}[].
 vote.for = [#adadad]{player} voted [#26d657]for[] kicking {target}.
@@ -284,13 +318,15 @@ params =
 
 description = Send message in team chat.
 manpage = Send message in team chat.
-params = [message...]
+params = <message...>
+params.message = message
 
 [commands.a]
 
 description = Send message in admin chat.
 manpage = Send message in admin chat.
-params = [message...]
+params = <message...>
+params.message = message
 
 [commands.artv]
 
@@ -301,6 +337,7 @@ manpage = Force change map.
         =
         = Unlike [#EC5784]/rtv[], this does not start a vote and is only accessible to admins.
 params = [map]
+params.map = map
 
 [commands.kick]
 
@@ -308,7 +345,10 @@ description = Kick a player out of the server.
 manpage = Kick a player out of the server.
         =
         = This acts as a ban, but specific to this particular server.
-params = [player] [duration] [reason...]
+params = <player> <duration> <reason...>
+params.player = player
+params.duration = duration
+params.reason = reason
 
 dialog.title = Kick {player}
 dialog.reason = Kick reason
@@ -320,7 +360,10 @@ description = Ban a player on all servers.
 manpage = Ban a player on all servers.
         =
         = This acts as a ban, but specific to this particular server.
-params = [player] [duration] [reason...]
+params = <player> <duration> <reason...>
+params.player = player
+params.duration = duration
+params.reason = reason
 
 dialog.title = Ban {player}
 dialog.reason = Ban reason
@@ -330,7 +373,10 @@ dialog.duration = Ban duration
 
 description = Mute a player on all servers.
 manpage = Mute a player on all servers.
-params = [player] [duration] [reason...]
+params = <player> <duration> <reason...>
+params.player = player
+params.duration = duration
+params.reason = reason
 
 dialog.title = Mute {player}
 dialog.reason = Mute reason

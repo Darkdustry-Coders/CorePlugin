@@ -1,12 +1,12 @@
 package mindurka.util
 
 import arc.struct.ObjectIntMap
+import arc.struct.ObjectMap
 import arc.util.Strings
 import arc.util.Time
 import buj.tl.Script
 import buj.tl.Tl
 import mindurka.coreplugin.CorePlugin
-import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.sessionData
 import mindustry.Vars
 import mindustry.game.Team
@@ -18,6 +18,7 @@ import java.util.WeakHashMap
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.min
 
 @JvmOverloads
 fun unreachable(message: String = "Unreachable reached!"): Nothing = throw UnreachableException(message)
@@ -231,18 +232,19 @@ fun stringToDuration(duration: String): Float {
 }
 
 fun findPlayer(arg: String, checkUuid: Boolean): Player? {
-    if (checkUuid) {
-        for (player in Groups.player) {
-            if (arg == player.uuid()) return player
-        }
-        for (player in Groups.player) {
-            if (arg == player.usid()) return player
-        }
+    if (arg.isBlank()) return null
+
+    if (arg.startsWith('#')) arg.substring(1).toIntOrNull()?.let { id ->
+        Groups.player.find { it.id == id }?.let { return it }
     }
 
-    if (arg.length > 1 && arg.startsWith('#') && Strings.canParseInt(arg.substring(1))) {
-        val id = Strings.parseInt(arg.substring(1))
-        Groups.player.find { it.id() == id }?.let { return it }
+    if (checkUuid) {
+        for (player in Groups.player) {
+            if (arg == player.con.uuid) return player
+        }
+        for (player in Groups.player) {
+            if (arg == player.con.usid) return player
+        }
     }
 
     arg.toLongOrNull()?.let { shortId ->
@@ -264,3 +266,11 @@ fun findPlayer(arg: String, checkUuid: Boolean): Player? {
 }
 
 fun encodeURIComponent(text: String): String = URLEncoder.encode(text, Vars.charset)
+inline fun <T, Y> ObjectMap<T, Y>.getOrPut(key: T, supplier: () -> Y): Y = run {
+    if (containsKey(key)) this[key]
+    else {
+        val x = supplier()
+        put(key, x)
+        x
+    }
+}

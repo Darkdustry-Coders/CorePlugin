@@ -38,15 +38,12 @@ import java.io.PrintStream
 import java.lang.Exception
 import java.security.MessageDigest
 import java.security.PublicKey
-import java.util.WeakHashMap
 import java.util.concurrent.CompletableFuture
 import kotlin.io.encoding.Base64
 import kotlin.jvm.javaClass
 import kotlin.math.max
 import kotlin.system.exitProcess
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 data class PlayerSmallData (
     val userId: String,
@@ -97,6 +94,7 @@ data class KickedInfo(
 
 data class VotekickedInfo(
     val id: String,
+    val user: String,
     val ips: Seq<String>,
     val key: Seq<ByteArray>,
     val reason: String,
@@ -111,9 +109,12 @@ internal object DatabaseScripts {
     val loaduserScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
     val setkeyScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
     val setpermissionlevelScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
+    val pardonScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/pardon.surrealql"))
 
     val ispsFetchScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_fetch.surrealql"))
     val ispsUpdateScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_update.surrealql"))
+
+    val playerFetchScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/player_fetch.surrealql"))
 
     val votekickScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/votekick.surrealql"))
 }
@@ -185,7 +186,7 @@ object Database {
 
                 val liveQueries = driver!!.query(Query(DatabaseScripts.liveScript)
                     .x("server_name", Config.i.serverName)).await().ok()
-                Log.info(liveQueries[0].result.asString())
+
                 driver!!.onLive(liveQueries[0].result.asString()) { update ->
                     val votekickId = update.data.at("id").asString()
                     votekickCache.removeAll { it.value.id == votekickId }
@@ -384,9 +385,10 @@ object Database {
                 val reason = query.result.at("reason").asString()
                 val expires = Instant.fromEpochMilliseconds(query.result.at("expires").asLong())
                 val id = query.result.at("id").asString()
+                val userId = query.result.at("user").asString()
 
                 if (votekickCache.size > 128) votekickCache.remove(votekickCache.keys().random())
-                votekickCache.put(uuid, VotekickedInfo(id, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), reason, expires, initiator, votes))
+                votekickCache.put(uuid, VotekickedInfo(id, userId, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), reason, expires, initiator, votes))
                 throw VotekickedAccountException(id, reason, expires, initiator, votes);
             }
             else -> {
@@ -454,6 +456,11 @@ object Database {
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         votekickConnection(player.con, id, player.locale, reason, Clock.System.now() + 30.minutes,
             initiator.sessionData.simpleName(), votes.map { it.sessionData.simpleName() })
+    }
+
+    suspend fun pardon(userId: String) {
+        votekickCache.removeAll { it.value.user == userId }
+        abstractQuery(Query(DatabaseScripts.pardonScript).x("user", userId))
     }
 
     // /**

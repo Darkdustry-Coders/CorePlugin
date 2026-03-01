@@ -7,7 +7,6 @@ import mindurka.coreplugin.CorePlugin
 import mindurka.util.SafeFilename
 import mindurka.util.child
 import mindurka.util.map
-import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.game.MapObjectives.FlagObjective
 import mindustry.game.Team

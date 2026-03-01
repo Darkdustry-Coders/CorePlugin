@@ -22,6 +22,31 @@ interface Note
 
 data class AddAnnotationNote(val annotation: String)
 
+class Indented(val stream: PrintWriter) {
+    private var level = 0
+    private var newLine = true
+
+    fun enter() { level++ }
+    fun leave() { if (--level < 0) throw IllegalStateException("Invalid indentation") }
+    fun indent() = "    ".repeat(level)
+
+    fun print(s: String) {
+        stream.print("${if (newLine) indent() else ""}${s.replace(Regex("\n"), "\n${indent()}")}")
+        newLine = false
+    }
+    fun println(s: String) {
+        stream.println("${if (newLine) indent() else ""}${s.replace(Regex("\n"), "\n${indent()}")}")
+        newLine = true
+    }
+    fun println() {
+        stream.println()
+        newLine = true
+    }
+
+    fun flush() = stream.flush()
+    fun close() = stream.close()
+}
+
 fun goodError(sym: KSNode, error: String, notes: Array<String>): String {
     val builder = StringBuilder()
     builder.appendLine(error)
@@ -60,7 +85,7 @@ private val PARAM_TYPES: Map<String, Int> = mapOf(
     "kotlin.Float" to 2, "kotlin.Double" to 2,
 
     "mindurka.api.MapHandle" to 1, "mindustry.game.Team" to 1, "mindustry.gen.Player" to 1, "mindustry.gen.Unit" to 1,
-    "mindustry.type.UnitType" to 1,
+    "mindustry.type.UnitType" to 1, "mindurka.api.OfflinePlayer" to 1,
 
     "kotlin.String" to 0, "java.lang.String" to 0,
 )
@@ -87,6 +112,7 @@ private val REMAP_TYPES_NULLABLE: Map<String, String> = mapOf(
 
 private data class ArgMeta (
     val type: String,
+    val name: String,
     val subtype: String?,
 
     val originalType: String,
@@ -99,6 +125,7 @@ private data class ArgMeta (
     val resolvedType get() = subtype ?: type
 
     fun datatype(replace: String? = null): String = "${replace ?: originalType}${if (list) "<$subtype>" else ""}${if (nullable) "?" else ""}"
+    fun nooptdt(replace: String? = null): String = "${replace ?: originalType}${if (list) "<$subtype>" else ""}"
 }
 
 /**
@@ -106,195 +133,525 @@ private data class ArgMeta (
  *
  * Pre-set variables:
  * - args (StringPtr): Arguments string.
+ * - result (CommandResult): Parsing result.
  *
  * Upon failure, the parser should exit with `return null`.
  *
  * By the end, a correctly typed variable must exist.
  */
-private val ARG_PARSERS = HashMap<String, (PrintWriter, String, ArgMeta) -> Unit>()
+private val ARG_PARSERS = HashMap<String, (Indented, String, ArgMeta) -> Unit>()
+
+private fun missing(name: String) = "CommandResult.Missing(\"${escapeString(name)}\")"
+private fun invalid(name: String, message: String) = "CommandResult.Invalid(\"${escapeString(name)}\", \"${
+    escapeString(message)}\")"
+
+private fun createParser(stringKind: Boolean,
+                         transform: (Indented, String, ArgMeta) -> Unit):
+        (Indented, String, ArgMeta) -> Unit {
+    return { write, varr, meta ->
+        write.println("val $varr: ${meta.datatype()} = run parser@{")
+        write.enter()
+
+        if (meta.list) {
+            write.println("val list = ${meta.nooptdt()}()")
+
+            write.println("when (mindurka.build.list${if (stringKind) "" else "No"}Strings(args, ${!meta.spread}) { source ->")
+            write.enter()
+
+            write.println("list.add(")
+            write.enter()
+
+            transform(write, varr, meta)
+
+            write.leave() // list.add
+            write.println(")")
+
+            write.leave() // listStrings
+            write.println("}) {")
+            write.enter()
+
+            if (meta.nullable) {
+                write.println("ParserError.Ok -> {}")
+                write.println("else -> return@parser null")
+            } else {
+                write.println("ParserError.String -> return ${invalid(meta.name, "{generic.command.string-termination}")}")
+                write.println("ParserError.Eof -> return ${invalid(meta.name, "{generic.command.end-of-input}")}")
+                write.println("ParserError.Empty -> return ${missing(meta.name)}")
+            }
+
+            write.leave() // when (..)
+            write.println("}")
+
+            if (meta.nullable) write.println("if (list.isEmpty()) null else list")
+            else {
+                write.println("if (list.isEmpty()) return ${missing(meta.name)}")
+                write.println("list")
+            }
+        } else if (meta.spread) {
+            write.println("val source = args.rest() ${
+                if (meta.nullable) "?: return@parser null" else "?: return ${missing(meta.name)}"}")
+            transform(write, varr, meta)
+        } else if (stringKind) {
+            write.println("mindurka.build.nextString(args).select({ source ->")
+            write.enter()
+
+            transform(write, varr, meta)
+
+            write.leave() // select ..
+            write.println("}, { error -> when (error) {")
+            write.enter()
+
+            write.println("ParserError.Ok -> unreachable()")
+
+            if (meta.nullable) {
+                write.println("else -> return@parser null")
+            } else {
+                write.println("ParserError.String -> return ${invalid(meta.name, "{generic.command.string-termination}")}")
+                write.println("ParserError.Eof -> return ${invalid(meta.name, "{generic.command.end-of-input}")}")
+                write.println("ParserError.Empty -> return ${missing(meta.name)}")
+            }
+
+            write.leave() // when (it)
+            write.println("}})")
+        } else {
+            write.println("val source = args.takeUntil { it.isWhitespace() } ${
+                if (meta.nullable) "?: return@parser null" else "?: return ${missing(meta.name)}"}")
+            transform(write, varr, meta)
+        }
+
+        write.leave() // run parser@
+        write.println("}")
+    }
+}
 
 private var INIT = false
 private fun init() {
     if (INIT) return
     INIT = true
 
-    ARG_PARSERS["java.lang.String"] = { write, varr, meta ->
-        write.print("val $varr: ${meta.datatype()} = ")
-        if (meta.list) write.print("(")
-        if (meta.spread) {
-            write.print("args.rest()")
-        } else {
-            write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
-        }
-        if (!meta.nullable) write.print("?:return null")
-        if (meta.list) {
-            write.print(")")
-            if (meta.nullable) write.print("?")
-            write.print(".apply{Seq.with(this.split('${if (meta.spread) ' ' else ','}'))}")
-        }
-        write.println()
-    }
+    ARG_PARSERS["java.lang.String"] = createParser(true) { write, _, _ -> write.println("source") }
 
-    ARG_PARSERS["int"] = { write, varr, meta ->
-        when (meta.originalType) {
-            "kotlin.UInt", "kotlin.UShort", "kotlin.UByte", "kotlin.ULong",
-            "kotlin.Int", "kotlin.Short", "kotlin.Byte", "kotlin.Long",
-            "kotlin.Float", "kotlin.Double" -> {
-                val convert = meta.originalType.substring("kotlin.".length)
-                if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
-                else write.print("val $varr: ${meta.datatype()} = ")
-                if (meta.list) write.print("val s = ")
-                if (meta.spread) {
-                    write.print("args.rest()")
-                } else {
-                    write.print("args.takeUntil { it == ' ' }")
-                }
-                if (!meta.list) write.print("?.to${convert}OrNull()")
-                if (!meta.nullable) write.print("?:return null")
-                if (meta.list) {
-                    write.println()
-                    if (meta.nullable) write.print("?")
-                    write.println("val col = ${meta.datatype()}()")
-                    write.println("for (x in s.split(${if (meta.spread) "Regex(\" *\")" else "Regex(\", *\")"}))")
-                    write.println("if (!x.isEmpty())")
-                    write.println("col.add(x.to${convert}OrNull()?:return@run null)")
-                    write.println("col")
-                    write.print("}")
-                    if (!meta.nullable) write.print("?:return null")
-                }
-                write.println()
+    for (baseType in arrayOf("int", "long", "short", "float", "double", "byte")) {
+        val upper = baseType.replaceFirstChar(Char::uppercase)
+        ARG_PARSERS[baseType] = createParser(false) { write, _, meta ->
+            when (meta.originalType) {
+                baseType,
+                "java.lang.$upper${if (baseType == "int") "eger" else ""}",
+                "kotlin.$upper" -> write.println("source.to${upper}OrNull() ?: " +
+                    if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.not-a-number}")}")
+                "kotlin.U$upper" -> write.println("source.toU${upper}OrNull() ?: " +
+                    if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.not-a-number}")}")
+                else -> throw IllegalStateException("Unsupported type.")
             }
-            else -> write.println("val $varr: ${meta.datatype()} = TODO()")
+        }
+        ARG_PARSERS["kotlin.$upper"] = createParser(false) { write, _, meta ->
+            write.println("source.to${upper}OrNull() ?: " +
+                if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.not-a-number}")}")
+        }
+        ARG_PARSERS["java.lang.$upper${if (baseType == "int") "eger" else ""}"] = ARG_PARSERS["kotlin.$upper"]!!
+        ARG_PARSERS["kotlin.U$upper"] = createParser(false) { write, _, meta ->
+            write.println("source.toU${upper}OrNull() ?: " +
+                if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.not-a-number}")}")
         }
     }
 
-    for (intType in arrayOf(
-        "kotlin.UInt", "kotlin.UShort", "kotlin.UByte", "kotlin.ULong",
-        "kotlin.Int", "kotlin.Short", "kotlin.Byte", "kotlin.Long",
-        "kotlin.Float", "kotlin.Double",
-    )) {
-        val convert = intType.substring("kotlin.".length)
-        ARG_PARSERS[intType] = { write, varr, meta ->
-            if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
-            else write.print("val $varr: ${meta.datatype()} = ")
-            if (meta.list) write.print("val s = ")
-            if (meta.spread) {
-                write.print("args.rest()")
-            } else {
-                write.print("args.takeUntil { it == ' ' }")
-            }
-            if (!meta.list) write.print("?.to${convert}OrNull()")
-            if (!meta.nullable) write.print("?:return null")
-            if (meta.list) {
-                write.println()
-                if (meta.nullable) write.print("?")
-                write.println("val col = ${meta.datatype()}()")
-                write.println("for (x in s.split(${if (meta.spread) "Regex(\" *\")" else "Regex(\", *\")"}))")
-                write.println("if (!x.isEmpty())")
-                write.println("col.add(x.to${convert}OrNull()?:return@run null)")
-                write.println("col")
-                write.print("}")
-                if (!meta.nullable) write.print("?:return null")
-            }
-            write.println()
-        }
+    ARG_PARSERS["mindurka.api.MapHandle"] = createParser(true) { write, _, meta ->
+        write.println("source.toUIntOrNull()?.let {")
+        write.enter()
+
+        write.println("it.ifCheckedSub(1U) {")
+        write.enter()
+
+        write.print("mindurka.api.Gamemode.maps.maps().nth(it) ?: ")
+        if (meta.nullable) write.println("return@parser null")
+        else write.println("return ${invalid(meta.name, "{generic.command.invalid-map-id}")}")
+
+        write.leave() // .ifCheckedSub
+        write.println("} ?: return ${invalid(meta.name, "{generic.command.zero-map-id}")}")
+
+        write.leave() // toUIntOrNull()?.let
+        write.print("} ?: mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(source) } ?: ")
+        if (meta.nullable) write.println("return@parser null")
+        else write.println("return ${invalid(meta.name, "{genetic.command.unknown-map}")}")
     }
 
-    for (intType in arrayOf(
-        "int", "long", "short", "float", "double", "byte",
-    )) {
-        val convert = intType.replaceFirstChar { it.uppercase() }
-        ARG_PARSERS[intType] = { write, varr, meta ->
-            if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
-            else write.print("val $varr: ${meta.datatype()} = ")
-            if (meta.list) write.print("val s = ")
-            if (meta.spread) {
-                write.print("args.rest()")
-            } else {
-                write.print("args.takeUntil { it == ' ' }")
-            }
-            if (!meta.list) write.print("?.to${convert}OrNull()")
-            if (!meta.nullable) write.print("?:return null")
-            if (meta.list) {
-                write.println()
-                if (meta.nullable) write.print("?")
-                write.println("val col = ${meta.datatype()}()")
-                write.println("for (x in s.split(${if (meta.spread) "Regex(\" *\")" else "Regex(\", *\")"}))")
-                write.println("if (!x.isEmpty())")
-                write.println("col.add(x.to${convert}OrNull()?:return@run null)")
-                write.println("col")
-                write.print("}")
-                if (!meta.nullable) write.print("?:return null")
-            }
-            write.println()
-        }
+    ARG_PARSERS["mindustry.gen.Player"] = createParser(true) { write, _, meta ->
+        write.println("findPlayer(source, ${meta.consoleCommand}) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-player}")}")
     }
 
-    for (boolType in arrayOf("kotlin.Boolean", "boolean", "java.lang.Boolean")) {
-        ARG_PARSERS[boolType] =  { write, varr, meta ->
-            write.println("val $varr: ${meta.datatype()} = run {\nval possibleBool = ")
-            if (meta.spread) {
-                write.println("args.rest()")
-            } else {
-                write.println("args.takeUntil { it == ' ' }")
-            }
-            write.println("when (possibleBool) {")
-            write.println("\"true\",\"ye\",\"yes\",\"y\",\"1\",\"on\"->true")
-            write.println("\"false\",\"nah\",\"na\",\"n\",\"0\",\"no\",\"off\"->false")
-            write.println("else->null")
-            write.print("}}")
-            if (!meta.nullable) write.print("?:return null")
-            write.println("")
-        }
+    ARG_PARSERS["mindurka.api.OfflinePlayer"] = createParser(true) { write, _, meta ->
+        write.println("mindurka.api.OfflinePlayer.resolve(source, ${meta.consoleCommand}) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-player}")}")
     }
 
-    ARG_PARSERS["mindurka.api.MapHandle"] = { write, varr, meta ->
-        write.println("val $varr: ${meta.datatype()} = run {\nval s = ")
-        if (meta.spread) {
-            write.print("args.rest()")
-        } else {
-            write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
-        }
-        write.println("?:return@run null")
+    // ARG_PARSERS["java.lang.String"] = { write, varr, meta ->
+    //     write.print("val $varr: ${meta.datatype()} = ")
+    //     if (meta.list) write.print("(")
+    //     if (meta.spread) {
+    //         write.print("args.rest()")
+    //     } else {
+    //         write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
+    //     }
+    //     if (!meta.nullable) write.print("?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //     if (meta.list) {
+    //         write.print(")")
+    //         if (meta.nullable) write.print("?")
+    //         write.print(".apply{Seq.with(this.split('${if (meta.spread) ' ' else ','}'))}")
+    //     }
+    //     write.println()
+    // }
 
-        write.println("val maps = mindurka.api.Gamemode.maps.maps().collect(Seq())")
-        if (meta.list) {
-            write.println("val col = ${meta.datatype()}()")
-            write.println("for (x in s.split(Regex(\", +\"))) {")
-            write.println("    val map = x.toIntOrNull()?.let { if (it in 1..maps.size) maps[it - 1] else null }")
-            write.println("               ?: maps.find { it.name().equals(x, ignoreCase = true) }")
-            write.println("               ?: return@run null")
-            write.println("    col.add(map)")
-            write.println("}")
-            write.println("col")
-        } else {
-            write.println("val map = s.toIntOrNull()?.let { if (it in 1..maps.size) maps[it - 1] else null }")
-            write.println("               ?: maps.find { it.name().equals(s, ignoreCase = true) }")
-            write.println("map")
-        }
-        if (!meta.nullable) write.println("}?:return null")
-        else write.println("}")
-    }
+    // ARG_PARSERS["int"] = { write, varr, meta ->
+    //     when (meta.originalType) {
+    //         "kotlin.UInt", "kotlin.UShort", "kotlin.UByte", "kotlin.ULong",
+    //         "kotlin.Int", "kotlin.Short", "kotlin.Byte", "kotlin.Long",
+    //         "kotlin.Float", "kotlin.Double" -> {
+    //             val convert = meta.originalType.substring("kotlin.".length)
+    //             write.println("val $varr: ${meta.datatype()} = run {")
+    //             write.enter()
 
-    ARG_PARSERS["mindustry.gen.Player"] = { write, varr, meta ->
-        write.println("val $varr: ${meta.datatype()} = run {\nval s = ")
-        if (meta.spread) {
-            write.print("args.rest()")
-        } else {
-            write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
-        }
-        write.println("?:return@run null")
-        if (meta.list) {
-            write.println("val col = ${meta.datatype()}()")
-            write.println("for (x in s.split(Regex(\", +\"))) {")
-            write.println("col.add(findPlayer(s, false) ?: return@run null)")
-            write.println("}")
-            write.println("col")
-        }
-        else write.println("findPlayer(s, false)")
-        if (!meta.nullable) write.println("}?:return null")
-        else write.println("}")
-    }
+    //             captureNoStringsList("s", write, varr, meta)
+
+    //             if (meta.nullable) write.println("if (s == null || s.isEmpty()) return@run null")
+    //             else write.println("if (s == null || s.isEmpty()) return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+
+    //             if (meta.list) {
+    //                 write.println("val seq = ${meta.datatype()}()")
+    //                 write.println("for (val seg in s.split(\",\")) {")
+    //                 write.enter()
+    //             }
+
+    //             write.println("try {")
+    //             write.enter()
+
+    //             if (meta.list) write.println("seq.add(seg.to$convert())")
+    //             else write.println("s.to$convert()")
+
+    //             write.leave()
+    //             write.println("} catch (_: Exception) {")
+    //             write.enter()
+
+    //             if (meta.nullable) write.println("return@run null")
+    //             else write.println("return CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //                 if (meta.consoleCommand) "Could not parse ${convert.lowercase()}" else "{generic.command.not-a-number}"
+    //             }\")")
+
+    //             write.leave()
+    //             write.println("}") // try ... catch
+
+    //             if (meta.list) {
+    //                 write.leave()
+    //                 write.println("}")
+    //                 write.println("seq")
+    //             }
+
+    //             write.leave()
+    //             write.println("}") // run
+
+    //             // if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
+    //             // else write.print("val $varr: ${meta.datatype()} = ")
+    //             // if (meta.list) write.print("val s = ")
+    //             // if (meta.spread) {
+    //             //     write.print("args.rest()")
+    //             // } else {
+    //             //     write.print("args.takeUntil { it == ' ' }")
+    //             // }
+    //             // if (!meta.list) write.print("?.to${convert}OrNull()")
+    //             // if (!meta.nullable) write.print("?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //             // if (meta.list) {
+    //             //     write.println()
+    //             //     if (meta.nullable) write.print("?")
+    //             //     write.println("val col = ${meta.datatype()}()")
+    //             //     write.println("for (x in s.split(${if (meta.spread) "Regex(\" *\")" else "Regex(\", *\")"}))")
+    //             //     write.println("if (!x.isEmpty())")
+    //             //     write.println("col.add(x.to${convert}OrNull()?:return@run CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //             //         if (meta.consoleCommand) "Could not parse ${convert.lowercase()}" else "{generic.command.not-a-number}"}\"))")
+    //             //     write.println("col")
+    //             //     write.print("}")
+    //             //     if (!meta.nullable) write.print("?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //             // }
+    //             // write.println()
+    //         }
+    //         else -> write.println("val $varr: ${meta.datatype()} = TODO()")
+    //     }
+    // }
+
+    // for (intType in arrayOf(
+    //     "kotlin.UInt", "kotlin.UShort", "kotlin.UByte", "kotlin.ULong",
+    //     "kotlin.Int", "kotlin.Short", "kotlin.Byte", "kotlin.Long",
+    //     "kotlin.Float", "kotlin.Double",
+    // )) {
+    //     val convert = intType.substring("kotlin.".length)
+    //     ARG_PARSERS[intType] = { write, varr, meta ->
+    //         write.println("val $varr: ${meta.datatype()} = run {")
+    //         write.enter()
+
+    //         captureNoStringsList("s", write, varr, meta)
+
+    //         if (meta.nullable) write.println("if (s == null || s.isEmpty()) return@run null")
+    //         else write.println("if (s == null || s.isEmpty()) return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+
+    //         if (meta.list) {
+    //             write.println("val seq = ${meta.datatype()}()")
+    //             write.println("for (val seg in s.split(\",\")) {")
+    //             write.enter()
+    //         }
+
+    //         write.println("try {")
+    //         write.enter()
+
+    //         if (meta.list) write.println("seq.add(seg.to$convert())")
+    //         else write.println("s.to$convert()")
+
+    //         write.leave()
+    //         write.println("} catch (_: Exception) {")
+    //         write.enter()
+
+    //         if (meta.nullable) write.println("return@run null")
+    //         else write.println("return CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //             if (meta.consoleCommand) "Could not parse ${convert.lowercase()}" else "{generic.command.not-a-number}"
+    //         }\")")
+
+    //         write.leave()
+    //         write.println("}") // try ... catch
+
+    //         if (meta.list) {
+    //             write.leave()
+    //             write.println("}")
+    //             write.println("seq")
+    //         }
+
+    //         write.leave()
+    //         write.println("}") // run
+
+    //         // if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
+    //         // else write.print("val $varr: ${meta.datatype()} = ")
+    //         // if (meta.list) write.print("val s = ")
+    //         // if (meta.spread) {
+    //         //     write.print("args.rest()")
+    //         // } else {
+    //         //     write.print("args.takeUntil { it == ' ' }")
+    //         // }
+    //         // if (!meta.list) write.print("?.to${convert}OrNull()")
+    //         // if (!meta.nullable) write.print("?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //         // if (meta.list) {
+    //         //     write.println()
+    //         //     if (meta.nullable) write.print("?")
+    //         //     write.println("val col = ${meta.datatype()}()")
+    //         //     write.println("for (x in s.split(${if (meta.spread) "Regex(\" *\")" else "Regex(\", *\")"}))")
+    //         //     write.println("if (!x.isEmpty())")
+    //         //     write.println("col.add(x.to${convert}OrNull()?:return@run CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //         //             if (meta.consoleCommand) "Could not parse ${convert.lowercase()}" else "{generic.command.not-a-number}"}\"))")
+    //         //     write.println("col")
+    //         //     write.print("}")
+    //         //     if (!meta.nullable) write.print("?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //         // }
+    //         // write.println()
+    //     }
+    // }
+
+    // for (intType in arrayOf(
+    //     "int", "long", "short", "float", "double", "byte",
+    // )) {
+    //     val convert = intType.replaceFirstChar { it.uppercase() }
+    //     ARG_PARSERS[intType] = { write, varr, meta ->
+    //         write.println("val $varr: ${meta.datatype()} = run {")
+    //         write.enter()
+
+    //         captureNoStringsList("s", write, varr, meta)
+
+    //         if (meta.nullable) write.println("if (s == null || s.isEmpty()) return@run null")
+    //         else write.println("if (s == null || s.isEmpty()) return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+
+    //         if (meta.list) {
+    //             write.println("val seq = ${meta.datatype()}()")
+    //             write.println("for (val seg in s.split(\",\")) {")
+    //             write.enter()
+    //         }
+
+    //         write.println("try {")
+    //         write.enter()
+
+    //         if (meta.list) write.println("seq.add(seg.to$convert())")
+    //         else write.println("s.to$convert()")
+
+    //         write.leave()
+    //         write.println("} catch (_: Exception) {")
+    //         write.enter()
+
+    //         if (meta.nullable) write.println("return@run null")
+    //         else write.println("return CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //             if (meta.consoleCommand) "Could not parse ${convert.lowercase()}" else "{generic.command.not-a-number}"
+    //         }\")")
+
+    //         write.leave()
+    //         write.println("}") // try ... catch
+
+    //         if (meta.list) {
+    //             write.leave()
+    //             write.println("}")
+    //             write.println("seq")
+    //         }
+
+    //         write.leave()
+    //         write.println("}") // run
+
+    //         // if (meta.list) write.println("val $varr: ${meta.datatype()} = run {")
+    //         // else write.print("val $varr: ${meta.datatype()} = ")
+    //         // if (meta.list) write.print("val s = ")
+    //         // if (meta.spread) {
+    //         //     write.print("args.rest()")
+    //         // } else {
+    //         //     write.print("args.takeUntil { it == ' ' }")
+    //         // }
+    //         // if (!meta.list) write.print("?.to${convert}OrNull()")
+    //         // if (!meta.nullable) write.print("?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //         // if (meta.list) {
+    //         //     write.println()
+    //         //     if (meta.nullable) write.print("?")
+    //         //     write.println("val col = ${meta.datatype()}()")
+    //         //     write.println("for (x in s.split(${if (meta.spread) "Regex(\" *\")" else "Regex(\", *\")"}))")
+    //         //     write.println("if (!x.isEmpty())")
+    //         //     write.println("col.add(x.to${convert}OrNull()?:return@run CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //         //             if (meta.consoleCommand) "Could not parse ${convert.lowercase()}" else "{generic.command.not-a-number}"}\"))")
+    //         //     write.println("col")
+    //         //     write.print("}")
+    //         //     if (!meta.nullable) write.print("?:return null")
+    //         // }
+    //         // write.println()
+    //     }
+    // }
+
+    // for (boolType in arrayOf("kotlin.Boolean", "boolean", "java.lang.Boolean")) {
+    //     ARG_PARSERS[boolType] =  { write, varr, meta ->
+    //         write.println("val $varr: ${meta.datatype()} = run {")
+    //         write.enter()
+
+    //         captureNoStringsList("s", write, varr, meta)
+
+    //         if (meta.nullable) write.println("if (s == null || s.isEmpty()) return@run null")
+    //         else write.println("if (s == null || s.isEmpty()) return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+
+    //         if (meta.list) {
+    //             write.println("val seq = ${meta.datatype()}()")
+    //             write.println("for (val seg in s.split(\",\")) {")
+    //             write.enter()
+    //         }
+
+    //         write.println("when (${if (meta.list) "seg" else "s"}) {")
+    //         write.enter()
+
+    //         write.print("\"true\",\"ye\",\"yes\",\"y\",\"1\",\"on\" -> ")
+    //         if (meta.list) write.println("seq.add(true)")
+    //         else write.println("true")
+
+    //         write.print("\"false\",\"nah\",\"na\",\"n\",\"0\",\"no\",\"off\" -> ")
+    //         if (meta.list) write.println("seq.add(false)")
+    //         else write.println("false")
+
+    //         write.print("else -> ")
+    //         if (meta.nullable) write.println("return@run null")
+    //         else write.println("return CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //             if (meta.consoleCommand) "Could not parse boolean" else "{generic.command.not-a-boolean}"
+    //         }\")")
+
+    //         write.leave()
+    //         write.println("}") // when (seg)
+
+    //         if (meta.list) {
+    //             write.leave()
+    //             write.println("}")
+    //             write.println("seq")
+    //         }
+
+    //         write.leave()
+    //         write.println("}") // run
+
+    //         // write.println("val $varr: ${meta.datatype()} = run {\nval possibleBool = ")
+    //         // if (meta.spread) {
+    //         //     write.println("args.rest()")
+    //         // } else {
+    //         //     write.println("args.takeUntil { it == ' ' }")
+    //         // }
+    //         // write.println("when (possibleBool) {")
+    //         // write.println("\"true\",\"ye\",\"yes\",\"y\",\"1\",\"on\"->true")
+    //         // write.println("\"false\",\"nah\",\"na\",\"n\",\"0\",\"no\",\"off\"->false")
+    //         // write.println("else->return CommandResult.Invalid(\"${escapeString(meta.name)}\", \"${
+    //         //             if (meta.consoleCommand) "Could not parse boolean" else "{generic.command.not-a-boolean}"}\")")
+    //         // write.print("}}")
+    //         // if (!meta.nullable) write.print("?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //         // write.println("")
+    //     }
+    // }
+
+    // ARG_PARSERS["mindurka.api.MapHandle"] = { write, varr, meta ->
+    //     write.println("val $varr: ${meta.datatype()} = run {\nval s = ")
+    //     if (meta.spread) {
+    //         write.print("args.rest()")
+    //     } else {
+    //         write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
+    //     }
+    //     write.println("?:return@run CommandResult.Missing(\"${escapeString(meta.name)}\")")
+
+    //     write.println("val maps = mindurka.api.Gamemode.maps.maps().collect(Seq())")
+    //     if (meta.list) {
+    //         write.println("val col = ${meta.datatype()}()")
+    //         write.println("for (x in s.split(Regex(\", +\"))) {")
+    //         write.println("    val map = x.toIntOrNull()?.let { if (it in 1..maps.size) maps[it - 1] else null }")
+    //         write.println("               ?: maps.find { it.name().equals(x, ignoreCase = true) }")
+    //         write.println("               ?: return@run null")
+    //         write.println("    col.add(map)")
+    //         write.println("}")
+    //         write.println("col")
+    //     } else {
+    //         write.println("val map = s.toIntOrNull()?.let { if (it in 1..maps.size) maps[it - 1] else null }")
+    //         write.println("               ?: maps.find { it.name().equals(s, ignoreCase = true) }")
+    //         write.println("map")
+    //     }
+    //     if (!meta.nullable) write.println("}?:return CommandResult.Missing(\"${escapeString(meta.name)}\")")
+    //     else write.println("}")
+    // }
+
+    // ARG_PARSERS["mindustry.gen.Player"] = { write, varr, meta ->
+    //     write.println("val $varr: ${meta.datatype()} = run {\nval s = ")
+    //     if (meta.spread) {
+    //         write.print("args.rest()")
+    //     } else {
+    //         write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
+    //     }
+    //     write.println("?:return@run null")
+    //     if (meta.list) {
+    //         write.println("val col = ${meta.datatype()}()")
+    //         write.println("for (x in s.split(Regex(\", +\"))) {")
+    //         write.println("col.add(findPlayer(s, ${meta.consoleCommand}) ?: return@run null)")
+    //         write.println("}")
+    //         write.println("col")
+    //     }
+    //     else write.println("findPlayer(s, false)")
+    //     if (!meta.nullable) write.println("}?:return null")
+    //     else write.println("}")
+    // }
+
+    // ARG_PARSERS["mindurka.api.OfflinePlayer"] = { write, varr, meta ->
+    //     write.println("val $varr: ${meta.datatype()} = run {\nval s = ")
+    //     if (meta.spread) {
+    //         write.print("args.rest()")
+    //     } else {
+    //         write.print("(if (args.peek() == '\"') args.takeUntil { it == '\"' } else if (args.peek() == '\\'') args.takeUntil { it == '\\'' } else args.takeUntil { it == ' ' })")
+    //     }
+    //     write.println("?:return@run null")
+    //     if (meta.list) {
+    //         write.println("val col = ${meta.datatype()}()")
+    //         write.println("for (x in s.split(Regex(\", +\"))) {")
+    //         write.println("col.add(mindurka.api.OfflinePlayer.resolve(s, ${meta.consoleCommand}) ?: return@run null)")
+    //         write.println("}")
+    //         write.println("col")
+    //     }
+    //     else write.println("mindurka.api.OfflinePlayer.resolve(s, false)")
+    //     if (!meta.nullable) write.println("}?:return null")
+    //     else write.println("}")
+    // }
 }
 
 private fun obtainClass(classname: String): String =
@@ -362,10 +719,11 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
             val type: CommandType,
             val firstParam: String?,
             val tag: Char,
+            val consoleCommand: Boolean,
         )
         for (f in arrayOf(
-            FunctionAnnotationDecl(annotation = Command::class, type = CommandType.Player, firstParam = "mindustry.gen.Player", tag = 'P'),
-            FunctionAnnotationDecl(annotation = ConsoleCommand::class, type = CommandType.Console, firstParam = null, tag = 'C'),
+            FunctionAnnotationDecl(annotation = Command::class, type = CommandType.Player, firstParam = "mindustry.gen.Player", tag = 'P', false),
+            FunctionAnnotationDecl(annotation = ConsoleCommand::class, type = CommandType.Console, firstParam = null, tag = 'C', true),
         )) {
             syms@for (sym in resolver.getSymbolsWithAnnotation(f.annotation.java.canonicalName)) {
                 val isJava = sym.containingFile?.filePath?.endsWith(".java") == true;
@@ -418,16 +776,22 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                 val commandClassName = "CommandClass_${UUID.randomUUID().toString().replace("-", "")}"
                 val commandName: Array<String> = run {
                     val annotation = sym.annotations.first { it.annotationType.resolve().declaration.qualifiedName!!.asString() == f.annotation.java.canonicalName }
-                    val name = annotation.arguments.first().value as String
+
+                    val name = annotation.arguments.find { it.name!!.asString() == "value" }!!.value as String
                     if (name == "<infer>") arrayOf(sym.simpleName.getShortName())
                     else name.split(" ").toTypedArray()
                 }
 
-                val classFile = PrintWriter(environment.codeGenerator.createNewFile(
+                val commandSetUsage: String? = sym.annotations
+                    .first { it.annotationType.resolve().declaration.qualifiedName!!.asString() == f.annotation.java.canonicalName }
+                    .arguments
+                    .find { it.name!!.asString() == "usage" }?.value as String?
+
+                val classFile = Indented(PrintWriter(environment.codeGenerator.createNewFile(
                     dependencies = Dependencies(aggregating = true, sources = arrayOf(sym.containingFile!!)),
                     packageName  = "_gen.mindurka.commands",
                     fileName     = commandClassName,
-                ))
+                )))
 
                 val cooldown = sym.annotations
                     .find { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Cooldown::class.java.canonicalName }
@@ -436,20 +800,29 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                     .find { it.annotationType.resolve().declaration.qualifiedName!!.asString() == RequiresPermission::class.java.canonicalName }
                     ?.let { it.arguments[0].value as Int } ?: 0
 
+                val usage = if (f.consoleCommand && commandSetUsage == null) StringBuilder() else null
+
                 classFile.println("package _gen.mindurka.commands")
                 classFile.println("import mindurka.build.StringPtr")
+                classFile.println("import mindurka.build.CommandResult")
+                classFile.println("import mindurka.build.ParserError")
                 classFile.println("import kotlin.reflect.*")
                 classFile.println("import kotlin.reflect.jvm.*")
                 classFile.println("import kotlin.reflect.full.*")
                 classFile.println("import mindurka.util.*")
                 classFile.println("import arc.struct.*")
+
                 classFile.println("class $commandClassName: mindurka.build.CommandImpl() {")
+                classFile.enter()
+
                 classFile.println("override val doc: String = ${if (sym.docString == null) "\"I'm a goofy goober error\"" else "\"${escapeString(sym.docString!!)}\""}")
+
                 classFile.print("override val command: Array<String> = arrayOf(")
                 for (part in commandName) {
                     classFile.print("\"${escapeString(part)}\",")
                 }
                 classFile.println(")")
+
                 classFile.println("override val type: mindurka.build.CommandType = mindurka.build.CommandType.${f.type.name}")
                 classFile.println("override val hidden: Boolean = ${sym.annotations.any { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Hidden::class.java.canonicalName }}")
                 classFile.println("override val cooldown = ${cooldown}f")
@@ -470,14 +843,23 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                             ), sym)
                             continue
                         }
+
                     val ty = param.type.resolve()
                     val nullable = if (isJava) ty.annotations.any { isNullableAnnotation(it.annotationType.resolve().declaration.qualifiedName!!.asString()) } else ty.nullability == Nullability.NULLABLE
+
+                    usage?.let { usage ->
+                        if (!usage.isEmpty()) usage.append(" ")
+                        usage.append(if (nullable) "[" else "<")
+                            .append(param.name?.asString() ?: "_")
+                            .append(if (nullable) "]" else ">")
+                    }
+
                     val strParam = ty.declaration.qualifiedName!!.asString()
                     val remapped = (if (nullable) null else REMAP_TYPES_NULLABLE[strParam]) ?: REMAP_TYPES[strParam] ?: strParam
                     val prio = PARAM_TYPES[strParam]
                     if (prio != null) {
                         classFile.print("$prio,")
-                        paramTypes.add(ArgMeta(remapped, null, strParam, rest, nullable, f.type == CommandType.Console))
+                        paramTypes.add(ArgMeta(remapped, param.name?.asString() ?: "_", null, strParam, rest, nullable, f.type == CommandType.Console))
                         continue
                     }
                     if (strParam in LIST_TYPES) {
@@ -485,7 +867,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                         val remappedArg = REMAP_TYPES[strParam2] ?: strParam2
                         val prio = PARAM_TYPES[strParam2]
                         if (prio != null) {
-                            paramTypes.add(ArgMeta(remapped, remappedArg, strParam, rest, nullable, f.type == CommandType.Console))
+                            paramTypes.add(ArgMeta(remapped, param.name?.asString() ?: "_", remappedArg, strParam, rest, nullable, f.type == CommandType.Console))
                             classFile.print("${prio + LIST_TYPES_PRIORITY},")
                             continue
                         }
@@ -505,17 +887,31 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                 }
                 classFile.println(")")
 
+                classFile.println("override val usage: String = \"${escapeString(commandSetUsage ?: usage?.toString() ?: "[args...]")}\"")
+
                 classFile.println("private val method: KFunction<*>")
                 classFile.println("init {")
+                classFile.enter()
+
                 classFile.println("val klass = Class.forName(\"${escapeString(implClassName)}\")")
-                classFile.println("method = klass.getDeclaredMethod(\"${escapeString(implMethodName)}\"")
-                for (param in paramTypes) classFile.print(",${obtainClass(param.type)}")
+                classFile.println("method = klass.getDeclaredMethod(\"${escapeString(implMethodName)}\",")
+                classFile.enter()
+
+                for (param in paramTypes) classFile.println("${obtainClass(param.type)},")
+
+                classFile.leave()
                 classFile.println(").kotlinFunction!!")
                 classFile.println("method.isAccessible = true")
-                classFile.println("}")
 
-                classFile.println("override fun parse(caller: Any?, raw: String): (() -> Unit)? {")
+                classFile.leave()
+                classFile.println("}") // init
+
+                classFile.println("override suspend fun parse(caller: Any?, raw: String): CommandResult {")
+                classFile.enter()
+
                 classFile.println("val args = StringPtr(raw)")
+                if (paramTypes.any { it.nullable }) classFile.println("var tempArgsPtr = 0")
+
                 for (i in (if (f.firstParam == null) 0 else 1)..<paramTypes.size) {
                     val name = "arg$i"
                     val meta = paramTypes[i]
@@ -528,29 +924,38 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                         ), sym)
                         continue@syms
                     }
-                    if (meta.nullable) classFile.println("val tempArgsPtr$i = args.index\nargs.takeUntil { it != ' ' }")
+                    classFile.println()
+                    if (meta.nullable) classFile.println("tempArgsPtr = args.index\nargs.takeUntil { it != ' ' }")
                     parser(classFile, name, meta)
-                    if (meta.nullable) classFile.println("if ($name == null) args.index = tempArgsPtr$i\nelse args.takeUntil { it != ' ' }")
+                    if (meta.nullable) classFile.println("if ($name == null) args.index = tempArgsPtr\nelse args.takeUntil { it != ' ' }")
                     classFile.println("args.trimStart()")
                 }
-                classFile.println("if (!args.isEmpty()) return null")
-                classFile.println("return cb@{")
-                val awaits = sym.annotations.any { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Awaits::class.java.canonicalName }
-                if (awaits) classFile.println("Async.run {")
+                classFile.println()
+                classFile.println("if (!args.isEmpty()) return CommandResult.TooMuchData")
+                // val awaits = sym.annotations.any { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Awaits::class.java.canonicalName }
+                // if (awaits) classFile.println("Async.run {")
 
                 if (f.firstParam != null) classFile.println("val firstParam = caller as ${f.firstParam}")
 
                 if (f.type == CommandType.Player) {
                     if (permissionLevel != 0) {
                         classFile.println("if (firstParam.permissionLevel < $permissionLevel) {")
+                        classFile.enter()
+
                         classFile.println("buj.tl.Tl.send(firstParam).done(\"{generic.checks.permission}\")")
-                        classFile.println("return@cb")
+                        classFile.println("return CommandResult.Complete")
+
+                        classFile.leave()
                         classFile.println("}")
                     }
                     if (cooldown != 0f) {
                         classFile.println("if (firstParam.checkOnCooldown(\"$commandClassName\")) {")
+                        classFile.enter()
+
                         classFile.println("buj.tl.Tl.send(firstParam).done(\"{generic.checks.cooldown}\")")
-                        classFile.println("return@cb")
+                        classFile.println("return CommandResult.Complete")
+
+                        classFile.leave()
                         classFile.println("}")
                         classFile.println("firstParam.setCooldown(\"$commandClassName\", ${cooldown}f)")
                     }
@@ -559,12 +964,19 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                 classFile.print("method.call(")
                 if (f.firstParam != null) classFile.print("firstParam,")
                 for (i in (if (f.firstParam == null) 0 else 1)..<paramTypes.size) {
-                    val meta = paramTypes[i]
+                    // val meta = paramTypes[i]
                     classFile.print("arg$i,")
                 }
-                classFile.print(")")
-                if (awaits) classFile.print("}")
-                classFile.println("}}}")
+                classFile.println(")")
+                // if (awaits) classFile.print("}")
+
+                classFile.println("return CommandResult.Complete")
+
+                classFile.leave()
+                classFile.println("}") // suspend fun parse(caller: Any?, raw: String): CommandResult
+
+                classFile.leave()
+                classFile.println("}") // class commandName
 
                 classFile.flush()
                 classFile.close()

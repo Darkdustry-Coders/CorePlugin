@@ -1,11 +1,8 @@
 package mindurka.util
 
-import mindurka.util.empty
 import arc.files.Fi
-import mindurka.util.map
 import java.util.jar.JarFile
 import java.net.URLDecoder
-import arc.util.Log
 
 fun ClassLoader.listResources(path: String): Iterator<String> {
     val url = getResource(path) ?: return empty()

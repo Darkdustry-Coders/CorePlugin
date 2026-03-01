@@ -2,7 +2,6 @@ package buj.tl
 
 import arc.struct.ObjectMap
 import arc.struct.Seq
-import arc.util.Log
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import java.io.IOException

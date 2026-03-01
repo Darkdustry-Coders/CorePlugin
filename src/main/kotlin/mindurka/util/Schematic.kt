@@ -1,7 +1,6 @@
 package mindurka.util
 
 import arc.struct.Seq
-import arc.util.Log
 import mindurka.util.Schematic.Options
 import mindustry.Vars
 import mindustry.content.Blocks

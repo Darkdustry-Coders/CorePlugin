@@ -31,6 +31,7 @@ object DisableCodes {
      *
      * ## Parameters
      * - `id`: The ID of this ban.
+     * - `user`: The ID of the user.
      * - `reason`: Reason for why the account is banned.
      * - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
      * - `admin`: Last username of an admin that issues a ban.
@@ -42,6 +43,7 @@ object DisableCodes {
      *
      * ## Parameters
      * - `id`: The ID of this kick.
+     * - `user`: The ID of the user.
      * - `reason`: Reason for why the account is kicked.
      * - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
      * - `admin`: Last username of an admin that issues a ban.
@@ -54,6 +56,7 @@ object DisableCodes {
      *
      * ## Parameters
      * - `id`: The ID of this kick.
+     * - `user`: The ID of the user.
      * - `reason`: Reason for why the account is kicked.
      * - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
      * - `initiator`: Last username of a player that started the votekick.

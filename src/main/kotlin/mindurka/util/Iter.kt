@@ -8,7 +8,6 @@ import arc.func.Boolf2
 import arc.func.Floatf
 import arc.func.Func2
 import arc.struct.Seq
-import kotlinx.coroutines.flow.callbackFlow
 
 @PublicAPI
 fun <T> Iterator<T>.collect(collection: Seq<T>): Seq<T> {
@@ -184,16 +183,37 @@ fun <T> Iterator<T>.join(sep: String = "", start: String = "", end: String = "")
 }
 
 @PublicAPI
+fun <T> Iterator<T>.nth(pos: Int): T? {
+    if (pos < 0) return null
+    return nth(pos.toUInt())
+}
+@PublicAPI
+fun <T> Iterator<T>.nth(pos: UInt): T? {
+    var pos = pos
+
+    while (hasNext()) {
+        val o = next()
+        if (pos == 0U) return o
+        pos--
+    }
+
+    return null
+}
+
+@PublicAPI
 fun <T> Iterator<T>.random(): T? {
     if (!hasNext()) return null
     
     var item = next()
-    var i = 1
+    var score = Mathf.random()
 
     while (hasNext()) {
         val o = next()
-        if (Mathf.random(0, i) == 0) item = o
-        i += 1
+        val newScore = Mathf.random()
+        if (newScore > score) {
+            item = o
+            score = newScore
+        }
     }
 
     return item
@@ -227,4 +247,7 @@ object Iterators {
     @PublicAPI
     @JvmStatic
     fun <T> random(iter: Iterator<T>): T? = iter.random()
+    @PublicAPI
+    @JvmStatic
+    fun <T> nth(iter: Iterator<T>, at: Int): T? = iter.nth(at)
 }

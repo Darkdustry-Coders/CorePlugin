@@ -131,6 +131,40 @@ define field mobile on ip_info type bool;
 define field hosting on ip_info type bool;
 define field proxy on ip_info type bool;
 
+define function fn::mindustry_fetch_user($search: string, $check_uuid: bool) {
+    let $x = select * from only mindustry_profile where type::string(record::id(id)).ends_with($search) order by last_joined desc limit 1;
+    if $x != none {
+        return {
+            user_id: <string> record::id($x.user),
+            profile_id: <string> record::id($x.id),
+            uuid: select value <string> record::id(id) from only mindustry_user where profile = $x limit 1,
+        };
+    };
+
+    let $x = select * from only type::record("user", $search);
+    if $x != none {
+        let $y = select * from only mindustry_profile where user = $x order by last_joined desc limit 1;
+        return {
+            user_id: <string> record::id($y.user),
+            profile_id: <string> record::id($y.id),
+            uuid: select value <string> record::id(id) from only mindustry_user where profile = $y limit 1,
+        };
+    };
+
+    if !$check_uuid { return none; };
+
+    let $x = select value profile from only type::record("mindustry_user", $search);
+    if $x != none {
+        return {
+            user_id: <string> record::id($x.user),
+            profile_id: <string> record::id($x.id),
+            uuid: select value <string> record::id(id) from only mindustry_user where profile = $x limit 1,
+        };
+    };
+
+    return none;
+};
+
 define function fn::mindustry_last_name($user: record<user>) {
     let $x = select *
         from only mindustry_profile
@@ -167,7 +201,8 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
             let $votes = $tmp.votes.map(|$x| fn::mindustry_last_name($x));
             return {
                 disabled: 11,
-                id: record::id($tmp.id),
+                id: <string> record::id($tmp.id),
+                user: <string> record::id($tmp.user),
                 initiator: $initiator,
                 votes: $votes,
                 reason: $tmp.reason,
@@ -179,7 +214,8 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
             let $admin = fn::mindustry_last_name($tmp.admin);
             return {
                 disabled: 9,
-                id: record::id($tmp.id),
+                id: <string> record::id($tmp.id),
+                user: <string> record::id($tmp.user),
                 admin: $admin,
                 reason: $tmp.reason,
                 expires: if $tmp.expires = none { none } else { $tmp.expires.millis() },
@@ -190,7 +226,8 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
             let $admin = fn::mindustry_last_name($tmp.admin);
             return {
                 disabled: 8,
-                id: record::id($tmp.id),
+                id: <string> record::id($tmp.id),
+                user: <string> record::id($tmp.user),
                 admin: $admin,
                 reason: $tmp.reason,
                 server: $tmp.server,
