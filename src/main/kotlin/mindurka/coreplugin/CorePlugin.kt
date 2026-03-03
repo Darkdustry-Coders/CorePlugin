@@ -182,32 +182,8 @@ object CorePlugin {
             emit(BuildEventPost)
         }
 
-        Vars.netServer.admins.addChatFilter chat@{ player, text ->
-            if (currentGlobalVote != null) {
-                if (text == "y" || text == "n") {
-                    when (currentGlobalVote!!.vote(SendMessage.All, player, text == "y")) {
-                        VoteFail.Ok -> {}
-                        VoteFail.SameVote -> Tl.send(player).done("{generic.checks.same-vote}")
-                        VoteFail.Filtered -> Tl.send(player).done("{generic.checks.vote-filter}")
-                    }
-                    return@chat null
-                }
-            }
-
-            text
-        }
-        Vars.netServer.chatFormatter = formatter@{ player, text ->
-            // TODO: Translator.
-
-            for (recv in Groups.player) {
-                Call.sendMessage(recv.con, Tl.fmt(recv)
-                    .put("player", player.coloredName()).put("message", text).done("{generic.chat}"), text, player)
-            }
-
-            null
-        }
-
         modActionsInit()
+        chatInit()
 
         Consts.serverControl.gameOverListener = Cons { event ->
             val map = Gamemode.maps.next()

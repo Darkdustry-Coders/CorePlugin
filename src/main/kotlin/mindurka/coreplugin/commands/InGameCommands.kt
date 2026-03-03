@@ -44,7 +44,7 @@ import kotlin.math.roundToInt
 
 /** List commands */
 @Command
-private fun help(caller: Player, pageInit: UInt?) = Async.run {
+private fun help(caller: Player, pageInit: Int?) = Async.run async@{
     abstract class Page
     data class HelpMenu(var page: UInt) : Page() {}
     val SelectPage = object : Page() {}
@@ -60,10 +60,19 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
         .collect(Seq())
     val maxPage = ceil(commands.size.toFloat().div(5)).roundToInt().toUInt()
     var page: Page = HelpMenu(run {
-        var page = (pageInit ?: 1U)
-        if (page == 0U) page = 1U
-        if (page > maxPage) page = maxPage
-        page
+        var page = (pageInit ?: 1)
+        if (page == 0) page = 1
+
+        if (page > maxPage.toInt()) {
+            Tl.send(caller).done("{commands.help.invalid-page}")
+            return@async
+        }
+        if (page < 0) {
+            Tl.send(caller).done("{commands.help.negative-page}")
+            return@async
+        }
+
+        page.toUInt()
     })
 
     caller.openMenu {
@@ -119,6 +128,13 @@ private fun help(caller: Player, pageInit: UInt?) = Async.run {
 /** List commands. */
 @Command
 private fun help(caller: Player, command: String) {
+    if (Vars.netServer.clientCommands.commandList.none { it.text == command }) {
+        Tl.send(caller)
+            .put("command", command)
+            .done("{commands.help.unknown-command}")
+        return
+    }
+
     caller.openMenu {
         title("{commands.help.man.title}")
         message("{commands.help.man.message}").put(
@@ -132,7 +148,7 @@ private fun help(caller: Player, command: String) {
 
 /** List maps. */
 @Command
-private fun maps(caller: Player, pageInit: UInt?) = Async.run {
+private fun maps(caller: Player, pageInit: Int?) = Async.run async@{
     abstract class Page
     data class MapsMenu(var page: UInt) : Page() {}
     val SelectPage = object : Page() {}
@@ -153,11 +169,21 @@ private fun maps(caller: Player, pageInit: UInt?) = Async.run {
     }
 
     val maxPage = ceil(maps.size.toFloat().div(5)).roundToInt().toUInt()
+
     var page: Page = MapsMenu(run {
-        var page = (pageInit ?: 1U)
-        if (page == 0U) page = 1U
-        if (page > maxPage) page = maxPage
-        page
+        var page = (pageInit ?: 1)
+        if (page == 0) page = 1
+
+        if (page > maxPage.toInt()) {
+            Tl.send(caller).done("{commands.help.invalid-page}")
+            return@async
+        }
+        if (page < 0) {
+            Tl.send(caller).done("{commands.help.negative-page}")
+            return@async
+        }
+
+        page.toUInt()
     })
 
     caller.openMenu {

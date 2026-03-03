@@ -38,13 +38,38 @@ same-vote = [#EC5784] Your vote has not changed.
 vote-filter = [#EC5784] You cannot vote in this poll.
 cooldown = [#EC5784] Slow down! This command is on cooldown.
 vote = [#EC5784] There's already a vote ongoing.
-unknown-command = [#EC5784] Could not find command [yellow]{command}[]. Check [yellow]/help[].
+unknown-command = [#EC5784] Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check [yellow]/help[].) else (Did you mean [yellow]/{suggestion}[]?)}
+unknown-command-console =  Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check /help) else (Did you mean /{suggestion}?)}
 invalid-arguments = [#EC5784] {cause}. Try [yellow]/help {command}[]!
 invalid-arguments-console = {cause}. Usage: {command} {commands.{command}.params}
 permission = [#EC5784] You don't have permission to execute this command.
 admin-action-permission = [#EC5784] You don't have permission to perform this action.
 admin-action-no-target = [#EC5784] You must specify a target to perform an action.
 admin-action-target-admin = [#EC5784] You cannot perform this action against another admin.
+
+[generic.command]
+missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
+missing-console = Missing parameter '{commands.{command}.params.{param}}'
+invalid = Invalid parameter [yellow]'{commands.{command}.params.{param}}'[]
+invalid-console = Missing parameter '{commands.{command}.params.{param}}'
+string-termination = Parameter [yellow]'{commands.{command}.params.{param}}'[] is not correctly enclosed
+string-termination-console = Parameter '{commands.{command}.params.{param}}' is not correctly enclosed
+end-of-input = Not enough input
+end-of-input-console = Not enough input
+too-many-arguments = Too many arguments
+too-many-arguments-console = Too many arguments
+not-a-number = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be a number
+not-a-number-console = Parameter '{commands.{command}.params.{param}}' must be a number
+not-a-boolean = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be [#26d657]yes[] or [#EC5784]no[]
+not-a-boolean-console = Parameter '{commands.{command}.params.{param}}' must be a boolean
+invalid-map-id = Unknown map ID
+invalid-map-id-console = Unknown map ID
+zero-map-id = But it refused
+zero-map-id-console = But it refused
+unknown-map = Could not find the map
+unknown-map-console = Could not find the map
+unknown-player = Could not find the player
+unknown-player-console = Could not find the player
 
 [generic.kick]
 merged = [#EC5784]This account was merged into another and thus no longer accessible.
@@ -140,28 +165,6 @@ milli = millisecond
 subsecond = less than a second
 inf = infinity
 
-[generic.command]
-missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
-missing-console = Missing parameter '{commands.{command}.params.{param}}'
-missing = Invalid parameter [yellow]'{commands.{command}.params.{param}}'[]
-missing-console = Missing parameter '{commands.{command}.params.{param}}'
-string-termination = Parameter [yellow]'{commands.{command}.params.{param}}'[] is not correctly enclosed
-string-termination-console = Parameter '{commands.{command}.params.{param}}' is not correctly enclosed
-end-of-input = Not enough input
-end-of-input-console = Not enough input
-not-a-number = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be a number
-not-a-number-console = Parameter '{commands.{command}.params.{param}}' must be a number
-not-a-boolean = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be [#26d657]yes[] or [#EC5784]no[]
-not-a-boolean-console = Parameter '{commands.{command}.params.{param}}' must be a boolean
-invalid-map-id = Unknown map ID
-invalid-map-id-console = Unknown map ID
-zero-map-id = But it refused
-zero-map-id-console = But it refused
-unknown-map = Could not find the map
-unknown-map-console = Could not find the map
-unknown-player = Could not find the player
-unknown-player-console = Could not find the player
-
 # Commands
 
 [commands.help]
@@ -187,7 +190,10 @@ man.message = [accent]/{command} [white]{commands.{command}.params}
             = {commands.{command}.manpage}
 command = [accent]/{command} [white]{commands.{command}.params}
         = [lightgray]{commands.{command}.description}
-invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{max}[]. There are no secret commands behind there. We promise.
+invalid-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
+unknown-command = [scarlet] [yellow]/{command} [#EC5784]is not a known command. I'm a teapot.
+# ⚠
 
 [commands.maps]
 
@@ -205,7 +211,8 @@ title-page =  List of available maps
 man.title =  Command maps
 map = [orange]{id}. [accent]{map} [white]by [accent]{author}
     = [white]{width}x{height}
-invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{max}[].
+invalid-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
 
 [commands.setkey]
 
@@ -302,7 +309,7 @@ vote.cancel = [#EC5784]Not enough votes to kick {player}.
 errors.self = [#EC5784] You cannot kick yourself!
 errors.self.special0 = [#49C9C7]u[#AE58C8]w[#49C9C7]u
 errors.self.special1 = [#EC5784] Not here, thanks.
-errors.self.special2 = [#EC5784] Try specifying someone else!
+errors.self.special2 = [#EC5784] Try specifying somebody else!
 errors.admin = [#EC5784] Admins are immune to [yellow]/votekick[].
 errors.players = [#EC5784] There are not enough players to start a votekick.
 

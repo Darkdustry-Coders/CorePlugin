@@ -9,7 +9,7 @@ enum class ParserError {
     String,
     /// Reached the end of input.
     Eof,
-    /// Output was empty.
+    /// There was no output.
     Empty,
 
     ;
@@ -131,15 +131,15 @@ inline fun listStrings(ptr: StringPtr, breakOnSpace: Boolean, newItem: (String) 
 
 fun nextString(ptr: StringPtr): Result<String, ParserError> {
     val builder = StringBuilder()
-    val stringTerm = run { when (val x = ptr.peek() ?: return Result.Err(ParserError.Eof)) {
+    val stringTerm = run { when (val x = ptr.peek() ?: return Result.Err(ParserError.Empty)) {
         '"', '\'', '`' -> x
         else -> ' '
     } }
     var backslash = false
 
-    if (stringTerm != ' ') ptr.index++
+    if (stringTerm != ' ') ptr.next()
 
-    while (!ptr.isEmpty() && (backslash || ptr.peek()?.let { chr -> if (stringTerm == ' ') !chr.isWhitespace() else chr == stringTerm } == true)) {
+    while (ptr.peek()?.let { chr -> backslash || if (stringTerm == ' ') !chr.isWhitespace() else chr != stringTerm } == true) {
         val x = ptr.next() ?: throw IllegalStateException()
 
         if (backslash) {
@@ -163,5 +163,6 @@ fun nextString(ptr: StringPtr): Result<String, ParserError> {
     }
 
     if (stringTerm != ' ' && stringTerm != ptr.peek()) return Result.Err(ParserError.String)
-    return Result.Ok(stringTerm.toString().ifEmpty { return Result.Err(ParserError.Empty) })
+    if (stringTerm != ' ') ptr.next()
+    return Result.Ok(builder.toString().ifEmpty { return Result.Err(ParserError.Empty) })
 }

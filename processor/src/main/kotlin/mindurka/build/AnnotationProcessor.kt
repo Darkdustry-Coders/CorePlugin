@@ -95,8 +95,6 @@ private val LIST_TYPES: Array<String> = arrayOf(
 )
 private val REMAP_TYPES: Map<String, String> = mapOf(
     "kotlin.String" to "java.lang.String",
-)
-private val REMAP_TYPES_NULLABLE: Map<String, String> = mapOf(
     "kotlin.UInt" to "int",
     "kotlin.UShort" to "short",
     "kotlin.ULong" to "long",
@@ -108,6 +106,16 @@ private val REMAP_TYPES_NULLABLE: Map<String, String> = mapOf(
     "kotlin.Boolean" to "boolean",
     "kotlin.Float" to "float",
     "kotlin.Double" to "double",
+)
+private val REMAP_TYPES_NULLABLE: Map<String, String> = mapOf(
+    "kotlin.String" to "java.lang.String",
+    "kotlin.Int" to "java.lang.Integer",
+    "kotlin.Short" to "java.lang.Short",
+    "kotlin.Long" to "java.lang.Long",
+    "kotlin.Byte" to "java.lang.Byte",
+    "kotlin.Boolean" to "java.lang.Boolean",
+    "kotlin.Float" to "java.lang.Float",
+    "kotlin.Double" to "java.lang.Double",
 )
 
 private data class ArgMeta (
@@ -171,8 +179,9 @@ private fun createParser(stringKind: Boolean,
             write.enter()
 
             if (meta.nullable) {
-                write.println("ParserError.Ok -> {}")
-                write.println("else -> return@parser null")
+                write.println("ParserError.String -> return ${invalid(meta.name, "{generic.command.string-termination}")}")
+                write.println("ParserError.Eof -> return ${invalid(meta.name, "{generic.command.end-of-input}")}")
+                write.println("ParserError.Empty -> return@parser null")
             } else {
                 write.println("ParserError.String -> return ${invalid(meta.name, "{generic.command.string-termination}")}")
                 write.println("ParserError.Eof -> return ${invalid(meta.name, "{generic.command.end-of-input}")}")
@@ -855,7 +864,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                     }
 
                     val strParam = ty.declaration.qualifiedName!!.asString()
-                    val remapped = (if (nullable) null else REMAP_TYPES_NULLABLE[strParam]) ?: REMAP_TYPES[strParam] ?: strParam
+                    val remapped = (if (nullable) REMAP_TYPES_NULLABLE[strParam] else null) ?: REMAP_TYPES[strParam] ?: strParam
                     val prio = PARAM_TYPES[strParam]
                     if (prio != null) {
                         classFile.print("$prio,")
@@ -864,7 +873,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                     }
                     if (strParam in LIST_TYPES) {
                         val strParam2 = ty.arguments.first().type!!.resolve().declaration.qualifiedName!!.asString()
-                        val remappedArg = REMAP_TYPES[strParam2] ?: strParam2
+                        val remappedArg = REMAP_TYPES_NULLABLE[strParam2] ?: strParam2
                         val prio = PARAM_TYPES[strParam2]
                         if (prio != null) {
                             paramTypes.add(ArgMeta(remapped, param.name?.asString() ?: "_", remappedArg, strParam, rest, nullable, f.type == CommandType.Console))
@@ -925,9 +934,9 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                         continue@syms
                     }
                     classFile.println()
-                    if (meta.nullable) classFile.println("tempArgsPtr = args.index\nargs.takeUntil { it != ' ' }")
+                    if (meta.nullable) classFile.println("tempArgsPtr = args.index\nargs.takeUntil { !it.isWhitespace() }")
                     parser(classFile, name, meta)
-                    if (meta.nullable) classFile.println("if ($name == null) args.index = tempArgsPtr\nelse args.takeUntil { it != ' ' }")
+                    if (meta.nullable) classFile.println("if ($name == null) args.index = tempArgsPtr\nelse args.takeUntil { !it.isWhitespace() }")
                     classFile.println("args.trimStart()")
                 }
                 classFile.println()

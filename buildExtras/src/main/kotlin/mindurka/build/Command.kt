@@ -63,9 +63,9 @@ abstract class CommandImpl {
     abstract suspend fun parse(caller: Any?, raw: String): CommandResult
 }
 
-abstract class CommandResult {
-    class Missing(val argument: String) : CommandResult()
-    class Invalid(val argument: String, val message: String) : CommandResult()
-    object TooMuchData : CommandResult()
-    object Complete : CommandResult()
+abstract class CommandResult(@JvmField val ordinal: Int) {
+    class Missing(val argument: String) : CommandResult(0)
+    class Invalid(val argument: String, val message: String) : CommandResult(1)
+    object TooMuchData : CommandResult(2)
+    object Complete : CommandResult(3)
 }

@@ -55,27 +55,26 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
                 for (cmd in commandList.iterator().filter { it.command[0] == command.command[0] }) {
                     when (val result = cmd.parse(caller, if (args.size > 0) args[0] else "")) {
                         CommandResult.Complete -> return@run
-                        CommandResult.TooMuchData -> if (cause == null) cause = result
-                        is CommandResult.Missing -> if (cause === CommandResult.TooMuchData) cause = result
-                        is CommandResult.Invalid -> cause = result
+                        else -> if (cause?.let { it.ordinal > result.ordinal } != false) cause = result
                     }
                 }
 
                 val suffix = if (caller is Player) "" else "-console"
                 val message = run {
                     val formatter = Tl.fmt(if (caller is Player) caller.locale else "c")
+                    formatter.put("command", command.command[0])
                     when (cause) {
                         null -> {}
                         CommandResult.Complete -> unreachable()
-                        CommandResult.TooMuchData -> formatter.put("cause", Tl.parse("{generic.command.end-of-input}"))
+                        CommandResult.TooMuchData -> {
+                            formatter.put("cause", Tl.parse("{generic.command.too-many-arguments}"))
+                        }
                         is CommandResult.Missing -> {
                             formatter.put("cause", Tl.parse("{generic.command.missing}"))
-                            formatter.put("command", command.command[0])
                             formatter.put("param", cause.argument)
                         }
                         is CommandResult.Invalid -> {
                             formatter.put("cause", Tl.parse(if (caller == null) cause.message.replace("}", "-console}") else cause.message))
-                            formatter.put("command", command.command[0])
                             formatter.put("param", cause.argument)
                         }
                     }
