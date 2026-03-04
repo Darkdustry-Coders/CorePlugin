@@ -17,7 +17,7 @@ import net.buj.surreal.Query
  * This object is to be used by command handlers.
  */
 @PublicAPI
-class OfflinePlayer internal constructor(val uuid: String, val usid: String?, val userId: String, val profileId: String) {
+class OfflinePlayer internal constructor(var lastName: String?, val uuid: String, val usid: String?, val userId: String, val profileId: String) {
     companion object {
         private val cache = ObjectMap<String, OfflinePlayer?>()
 
@@ -57,9 +57,16 @@ class OfflinePlayer internal constructor(val uuid: String, val usid: String?, va
             if (cache.size > 128)
                 cache.remove(cache.entries().find { it.value == null }?.key ?: cache.keys().random())
 
+            for (x in cache) {
+                if (x.value?.userId == search) return@sup x.value
+                if (x.value?.profileId?.endsWith(search) == true) return@sup x.value
+                if (checkUuid && x.value?.uuid == search) return@sup x.value
+            }
+
             Groups.player.forEach {
                 if (it.name.contains(search, true))
                     return@sup OfflinePlayer(
+                        it.coloredName(),
                         it.uuid(),
                         it.usid(),
                         it.sessionData.userId,
@@ -71,6 +78,7 @@ class OfflinePlayer internal constructor(val uuid: String, val usid: String?, va
                 Groups.player.forEach {
                     if (it.uuid() == search || it.usid() == search)
                         return@sup OfflinePlayer(
+                            it.coloredName(),
                             it.uuid(),
                             it.usid(),
                             it.sessionData.userId,
@@ -83,6 +91,7 @@ class OfflinePlayer internal constructor(val uuid: String, val usid: String?, va
                 .x("search", search).x("check_uuid", checkUuid)).ok()
             return@sup if (result.result.isNull) null
             else OfflinePlayer(
+                result.result.at("name").asString(),
                 result.result.at("uuid").asString(),
                 null,
                 result.result.at("user_id").asString(),

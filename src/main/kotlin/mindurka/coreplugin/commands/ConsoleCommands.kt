@@ -1,6 +1,7 @@
 package mindurka.coreplugin.commands
 
 import arc.util.Log
+import arc.util.Strings
 import buj.tl.Tl
 import mindurka.annotations.ConsoleCommand
 import mindurka.annotations.Rest
@@ -57,6 +58,8 @@ private fun help(command: String?) {
 /** Pardon a player */
 @ConsoleCommand
 private fun pardon(player: OfflinePlayer) = Async.run {
+    Database.pardon(player.userId)
+    Log.info("Pardoned player ${Strings.stripColors(player.lastName)}")
 }
 
 /** Execute a SurrealQL query */

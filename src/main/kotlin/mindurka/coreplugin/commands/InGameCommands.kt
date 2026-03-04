@@ -302,13 +302,25 @@ private fun fuck(caller: Player) {
 
 @Command
 private fun vote(caller: Player, vote: String) {
-    if (vote != "y" && vote != "n") {
-        Tl.send(caller).done("{commands.vote.invalid-vote}")
+    if (!CorePlugin.teamVotes.containsKey(caller.team().id)) {
+        Tl.send(caller).done("{commands.vote.no-vote}")
         return
     }
 
-    if (!CorePlugin.teamVotes.containsKey(caller.team().id)) {
-        Tl.send(caller).done("{commands.vote.no-vote}")
+    if (vote == "c") {
+        if (!caller.admin) Tl.send(caller).done("{generic.checks.admin-action-permission}")
+        else {
+            for (x in Groups.player.iterator().filter { it.team() == caller.team() }) {
+                Tl.send(x).put("admin", caller.coloredName()).done("{generic.vote.team.cancelled}")
+            }
+            CorePlugin.teamVotes[caller.team().id].finished = true
+            CorePlugin.teamVotes.remove(caller.team().id)
+        }
+        return
+    }
+
+    if (vote != "y" && vote != "n") {
+        Tl.send(caller).done("{commands.vote.invalid-vote}")
         return
     }
 

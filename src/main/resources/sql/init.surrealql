@@ -135,6 +135,7 @@ define function fn::mindustry_fetch_user($search: string, $check_uuid: bool) {
     let $x = select * from only mindustry_profile where type::string(record::id(id)).ends_with($search) order by last_joined desc limit 1;
     if $x != none {
         return {
+            name: $x.last_name,
             user_id: <string> record::id($x.user),
             profile_id: <string> record::id($x.id),
             uuid: select value <string> record::id(id) from only mindustry_user where profile = $x limit 1,
@@ -145,6 +146,7 @@ define function fn::mindustry_fetch_user($search: string, $check_uuid: bool) {
     if $x != none {
         let $y = select * from only mindustry_profile where user = $x order by last_joined desc limit 1;
         return {
+            name: $y.last_name,
             user_id: <string> record::id($y.user),
             profile_id: <string> record::id($y.id),
             uuid: select value <string> record::id(id) from only mindustry_user where profile = $y limit 1,
@@ -156,8 +158,9 @@ define function fn::mindustry_fetch_user($search: string, $check_uuid: bool) {
     let $x = select value profile from only type::record("mindustry_user", $search);
     if $x != none {
         return {
+            name: $x.profile.last_name,
             user_id: <string> record::id($x.user),
-            profile_id: <string> record::id($x.id),
+            profile_id: <string> record::id($x.profile),
             uuid: select value <string> record::id(id) from only mindustry_user where profile = $x limit 1,
         };
     };

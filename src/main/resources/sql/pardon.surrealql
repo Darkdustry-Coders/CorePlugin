@@ -1,1 +1,1 @@
-update mindustry_votekick set pardoned = true where user = type::record("user", $user);
+update mindustry_votekick set pardoned = true where user = type::record("user", <uuid> $user);

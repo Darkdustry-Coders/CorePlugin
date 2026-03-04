@@ -8,6 +8,7 @@ import mindurka.build.CommandType
 import mindurka.coreplugin.commands.metadataForCommand
 import mindurka.coreplugin.votes.VoteFail
 import mindurka.util.SendMessage
+import mindurka.util.filter
 import mindurka.util.permissionLevel
 import mindustry.Vars
 import mindustry.gen.Call
@@ -29,6 +30,16 @@ internal fun chatInit() {
                     VoteFail.Ok -> {}
                     VoteFail.SameVote -> Tl.send(player).done("{generic.checks.same-vote}")
                     VoteFail.Filtered -> Tl.send(player).done("{generic.checks.vote-filter}")
+                }
+                return@chat null
+            }
+
+            if (text == "c") {
+                if (!player.admin) Tl.send(player).done("{generic.checks.admin-action-permission}")
+                else {
+                    Tl.broadcast().put("admin", player.coloredName()).done("{generic.vote.global.cancelled}")
+                    CorePlugin.currentGlobalVote!!.finished = true
+                    CorePlugin.currentGlobalVote = null
                 }
                 return@chat null
             }

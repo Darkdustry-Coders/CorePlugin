@@ -33,6 +33,9 @@ vote.global = [#adadad]Type [#26d657]y[] or [#EC5784]n[] to vote. {if {votes} < 
 vote.team = [#adadad]Type [#26d657]/vote y[] or [#EC5784]/vote n[] to vote. {if {votes} < 0 then [#EC5784] else [#26d657]}{votes}/{threshold}
 vote.left = [#adadad]{player} has left the game and their vote was removed.
 
+vote.global.cancelled = [#EC5784]⚠ Vote was cancelled by admin {admin}.
+vote.team.cancelled = [#EC5784]⚠ Team vote was cancelled by admin {admin}.
+
 [generic.checks]
 same-vote = [#EC5784] Your vote has not changed.
 vote-filter = [#EC5784] You cannot vote in this poll.
