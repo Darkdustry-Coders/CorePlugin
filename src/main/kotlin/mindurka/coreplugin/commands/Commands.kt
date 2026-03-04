@@ -68,16 +68,31 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
                         null -> {}
                         CommandResult.Complete -> unreachable()
                         CommandResult.TooMuchData -> {
-                            formatter.put("cause", Tl.parse("{generic.command.too-many-arguments}"))
+                            formatter.put("cause", Tl.parse("{generic.command.too-many-arguments$suffix}"))
                         }
                         is CommandResult.Missing -> {
-                            formatter.put("cause", Tl.parse("{generic.command.missing}"))
+                            formatter.put("cause", Tl.parse("{generic.command.missing$suffix}"))
                             formatter.put("param", cause.argument)
                         }
                         is CommandResult.Invalid -> {
                             formatter.put("cause", Tl.parse(if (caller == null) cause.message.replace("}", "-console}") else cause.message))
                             formatter.put("param", cause.argument)
                         }
+                    }
+                    if (command.type == CommandType.Console) {
+                        formatter.put("params", run {
+                            val args = StringBuilder()
+                            var first = true
+                            commandList
+                                .iterator()
+                                .filter { it.command[0] == command.command[0] }
+                                .forEach {
+                                    if (first) first = false
+                                    else args.append(" | ")
+                                    args.append(it.usage)
+                                }
+                            args.toString()
+                        })
                     }
                     formatter.done("{generic.checks.invalid-arguments$suffix")
                 }

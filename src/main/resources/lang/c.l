@@ -41,7 +41,7 @@ vote = [#EC5784] There's already a vote ongoing.
 unknown-command = [#EC5784] Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check [yellow]/help[].) else (Did you mean [yellow]/{suggestion}[]?)}
 unknown-command-console =  Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check /help) else (Did you mean /{suggestion}?)}
 invalid-arguments = [#EC5784] {cause}. Try [yellow]/help {command}[]!
-invalid-arguments-console = {cause}. Usage: {command} {commands.{command}.params}
+invalid-arguments-console = {cause}. Usage: {command} {params}
 permission = [#EC5784] You don't have permission to execute this command.
 admin-action-permission = [#EC5784] You don't have permission to perform this action.
 admin-action-no-target = [#EC5784] You must specify a target to perform an action.
@@ -49,19 +49,19 @@ admin-action-target-admin = [#EC5784] You cannot perform this action against 
 
 [generic.command]
 missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
-missing-console = Missing parameter '{commands.{command}.params.{param}}'
+missing-console = Missing parameter '{param}'
 invalid = Invalid parameter [yellow]'{commands.{command}.params.{param}}'[]
-invalid-console = Missing parameter '{commands.{command}.params.{param}}'
-string-termination = Parameter [yellow]'{commands.{command}.params.{param}}'[] is not correctly enclosed
-string-termination-console = Parameter '{commands.{command}.params.{param}}' is not correctly enclosed
+invalid-console = Missing parameter '{param}'
+string-termination = Parameter [yellow]'{commands.{command}.params.{param}}'[] is not properly enclosed
+string-termination-console = Parameter '{param}' is not properly enclosed
 end-of-input = Not enough input
 end-of-input-console = Not enough input
 too-many-arguments = Too many arguments
 too-many-arguments-console = Too many arguments
 not-a-number = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be a number
-not-a-number-console = Parameter '{commands.{command}.params.{param}}' must be a number
+not-a-number-console = Parameter '{param}' must be a number
 not-a-boolean = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be [#26d657]yes[] or [#EC5784]no[]
-not-a-boolean-console = Parameter '{commands.{command}.params.{param}}' must be a boolean
+not-a-boolean-console = Parameter '{param}' must be a boolean
 invalid-map-id = Unknown map ID
 invalid-map-id-console = Unknown map ID
 zero-map-id = But it refused
