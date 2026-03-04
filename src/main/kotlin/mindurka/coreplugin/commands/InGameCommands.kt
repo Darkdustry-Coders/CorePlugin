@@ -2,10 +2,12 @@ package mindurka.coreplugin.commands
 
 import arc.math.Mathf
 import arc.struct.Seq
+import arc.util.CommandHandler
 import arc.util.Log
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import mindurka.annotations.Command
+import mindurka.annotations.Hidden
 import mindurka.annotations.RequiresPermission
 import mindurka.annotations.Rest
 import mindurka.api.Consts
@@ -13,8 +15,10 @@ import mindurka.api.Gamemode
 import mindurka.api.MapHandle
 import mindurka.build.CommandType
 import mindurka.coreplugin.CorePlugin
+import mindurka.coreplugin.carriedLastFailedCommand
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.hasMindurkaCompat
+import mindurka.coreplugin.lastFailedCommand
 import mindurka.coreplugin.sessionData
 import mindurka.coreplugin.votes.KickVote
 import mindurka.coreplugin.votes.NextMapVote
@@ -35,6 +39,7 @@ import mindurka.util.permissionLevel
 import mindurka.util.setCooldown
 import mindurka.util.skip
 import mindurka.util.take
+import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
@@ -269,6 +274,29 @@ private fun setkey(caller: Player) = Async.run {
     } catch (t: Throwable) {
         caller.sendMessage("[scarlet]An error has occurred while processing command.")
         Log.err(t)
+    }
+}
+
+@Hidden
+@Command
+private fun fuck(caller: Player) {
+    val command = carriedLastFailedCommand[caller] ?: run {
+        Tl.send(caller).done("{commands.fuck.no-command-stored}")
+        return
+    }
+    carriedLastFailedCommand.remove(caller)
+
+    val ru = "/${command.name} ${command.args}"
+
+    Log.info(">>> $ru")
+
+    val resp = Vars.netServer.clientCommands.handleMessage(ru, caller)
+    when (resp.type) {
+        CommandHandler.ResponseType.valid -> {}
+        CommandHandler.ResponseType.noCommand -> unreachable()
+        CommandHandler.ResponseType.unknownCommand -> Tl.send(caller).done("{commands.fuck.whoops}")
+        CommandHandler.ResponseType.fewArguments -> Tl.send(caller).put("cause", Tl.parse("{generic.commands.end-of-input}")).done("{generic.checks.invalid-arguments}")
+        CommandHandler.ResponseType.manyArguments -> Tl.send(caller).put("cause", Tl.parse("{generic.commands.too-many-arguments}")).done("{generic.checks.invalid-arguments}")
     }
 }
 

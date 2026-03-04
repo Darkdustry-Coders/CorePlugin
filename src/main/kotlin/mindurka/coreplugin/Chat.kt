@@ -12,6 +12,14 @@ import mindurka.util.permissionLevel
 import mindustry.Vars
 import mindustry.gen.Call
 import mindustry.gen.Groups
+import mindustry.gen.Player
+import java.util.WeakHashMap
+
+class LastFailedCommand(var name: String, var args: String)
+
+internal val lastCommandArgs = WeakHashMap<Player, String>()
+internal val lastFailedCommand = WeakHashMap<Player, LastFailedCommand>()
+internal val carriedLastFailedCommand = WeakHashMap<Player, LastFailedCommand>()
 
 internal fun chatInit() {
     Vars.netServer.admins.addChatFilter chat@{ player, text ->
@@ -60,13 +68,18 @@ internal fun chatInit() {
                 }
 
                 val newDst = Strings.levenshtein(x.text, response.runCommand)
-                Log.info("text=${x.text}, dst=${newDst}")
                 if (newDst >= 3) continue
                 if (newDst <= minDst) continue
 
                 minDst = newDst
                 command = x
             }
+
+            command?.let { command ->
+                lastFailedCommand.getOrPut(player) { LastFailedCommand("", "") }.let { last ->
+                    last.name = command.text
+                    last.args = lastCommandArgs[player] ?: ""
+                } }
 
             Tl.fmt(player)
                 .put("suggestion", if (command == null) "" else command.text)

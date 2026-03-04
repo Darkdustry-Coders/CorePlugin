@@ -12,6 +12,7 @@ import mindustry.gen.Player
 import arc.util.Log
 import buj.tl.Tl
 import mindurka.build.CommandResult
+import mindurka.coreplugin.lastFailedCommand
 import mindurka.util.Async
 import mindurka.util.map
 import mindurka.util.fold

@@ -190,10 +190,9 @@ man.message = [accent]/{command} [white]{commands.{command}.params}
             = {commands.{command}.manpage}
 command = [accent]/{command} [white]{commands.{command}.params}
         = [lightgray]{commands.{command}.description}
-invalid-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
-negative-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
-unknown-command = [scarlet] [yellow]/{command} [#EC5784]is not a known command. I'm a teapot.
-# ⚠
+invalid-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
+unknown-command = [#EC5784] [yellow]/{command} [#EC5784]is not a known command. I'm a teapot.
 
 [commands.maps]
 
@@ -211,8 +210,8 @@ title-page =  List of available maps
 man.title =  Command maps
 map = [orange]{id}. [accent]{map} [white]by [accent]{author}
     = [white]{width}x{height}
-invalid-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
-negative-page = [scarlet] [#EC5784]Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
+invalid-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
 
 [commands.setkey]
 
@@ -388,3 +387,16 @@ params.reason = reason
 dialog.title = Mute {player}
 dialog.reason = Mute reason
 dialog.duration = Mute duration
+
+[commands.fuck]
+
+description = Run suggested command.
+params =
+manpage = Run suggested command.
+        =
+        = Command is cleared every time a new one have been executed.
+        : A command will only be stored if there was no command matching the
+        : input found. The command will be executed with previously provided arguments.
+
+no-command-stored = [#EC5784] Unfortunately for you, there was no command.
+whoops = [#fce174]⚠ Whoops! There is no command.

@@ -2,6 +2,7 @@ package mindurka.coreplugin
 
 import arc.util.CommandHandler
 import arc.struct.Seq
+import mindustry.gen.Player
 
 class ModCommandHandler(private val parent: CommandHandler) : CommandHandler(parent.prefix) {
     override fun handleMessage(message_: String, params: Any): CommandResponse {
@@ -14,7 +15,19 @@ class ModCommandHandler(private val parent: CommandHandler) : CommandHandler(par
 
         if (message.matches(Regex("\\/t +\\/"))) message = message.substring(2).trimStart()
 
-        return parent.handleMessage(message, params)
+        if (params is Player && message.startsWith("/fuck")) {
+            // Necessary due to CorePlugin commands being async
+            carriedLastFailedCommand[params] = lastFailedCommand[params]
+        }
+
+        val resp = parent.handleMessage(message, params)
+
+        if (params is Player) {
+            lastFailedCommand.remove(params)
+            lastCommandArgs[params] = message.substring(spaceIdx).trim()
+        }
+
+        return resp
     }
 
     override fun <T> register(text: String, params: String, description: String, runner: CommandRunner<T>): Command =
