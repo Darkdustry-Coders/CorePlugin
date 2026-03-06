@@ -8,6 +8,7 @@ import mindurka.coreplugin.database.DatabaseScripts
 import mindurka.coreplugin.sessionData
 import mindurka.util.getOrPut
 import mindurka.util.random
+import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import net.buj.surreal.Query
@@ -21,6 +22,7 @@ import net.buj.surreal.Query
 class OfflinePlayer internal constructor(var lastName: String?, val uuid: String, val usid: String?, val userId: String, val profileId: String) {
     companion object {
         private val cache = ObjectMap<String, OfflinePlayer?>()
+        private val playerCache = ObjectMap<Player, OfflinePlayer>()
 
         /**
          * Remove all (or empty) entries from cache.
@@ -45,7 +47,6 @@ class OfflinePlayer internal constructor(var lastName: String?, val uuid: String
             }
         }
 
-        // TODO: Handle '#..' for currently online players. Do not cache that.
         /**
          * Resolve an offline player.
          *
@@ -54,30 +55,33 @@ class OfflinePlayer internal constructor(var lastName: String?, val uuid: String
         @PublicAPI
         @JvmStatic
         @JvmOverloads
-        suspend fun resolve(search: String, checkUuid: Boolean = false): OfflinePlayer? = cache.getOrPut(search) sup@{
-            if (cache.size > 128)
-                cache.remove(cache.entries().find { it.value == null }?.key ?: cache.keys().random())
+        suspend fun resolve(search: String, checkUuid: Boolean = false): OfflinePlayer? {
+            if (search.startsWith('#')) try {
+                val id = search.substring(1).toInt()
+                val player = Groups.player.find { it.id == id } ?: return null
+                val obj = playerCache.getOrPut(player) { OfflinePlayer(
+                    "",
+                    player.con.uuid,
+                    player.con.usid,
+                    player.sessionData.userId,
+                    player.sessionData.profileId,
+                ) }
+                obj.lastName = player.coloredName()
+                return obj
+            } catch (_: Exception) {}
 
-            for (x in cache) {
-                if (x.value?.userId == search) return@sup x.value
-                if (x.value?.profileId?.endsWith(search) == true) return@sup x.value
-                if (checkUuid && x.value?.uuid == search) return@sup x.value
-            }
+            return cache.getOrPut(search) sup@{
+                if (cache.size > 128)
+                    cache.remove(cache.entries().find { it.value == null }?.key ?: cache.keys().random())
 
-            Groups.player.forEach {
-                if (it.name.contains(search, true))
-                    return@sup OfflinePlayer(
-                        it.coloredName(),
-                        it.uuid(),
-                        it.usid(),
-                        it.sessionData.userId,
-                        it.sessionData.profileId,
-                    )
-            }
+                for (x in cache) {
+                    if (x.value?.userId == search) return@sup x.value
+                    if (x.value?.profileId?.endsWith(search) == true) return@sup x.value
+                    if (checkUuid && x.value?.uuid == search) return@sup x.value
+                }
 
-            if (checkUuid) {
                 Groups.player.forEach {
-                    if (it.uuid() == search || it.usid() == search)
+                    if (it.name.contains(search, true))
                         return@sup OfflinePlayer(
                             it.coloredName(),
                             it.uuid(),
@@ -86,18 +90,31 @@ class OfflinePlayer internal constructor(var lastName: String?, val uuid: String
                             it.sessionData.profileId,
                         )
                 }
-            }
 
-            val result = Database.abstractQuerySingle(Query(DatabaseScripts.playerFetchScript)
-                .x("search", search).x("check_uuid", checkUuid)).ok()
-            return@sup if (result.result.isNull) null
-            else OfflinePlayer(
+                if (checkUuid) {
+                    Groups.player.forEach {
+                        if (it.uuid() == search || it.usid() == search)
+                            return@sup OfflinePlayer(
+                                it.coloredName(),
+                                it.uuid(),
+                                it.usid(),
+                                it.sessionData.userId,
+                                it.sessionData.profileId,
+                            )
+                    }
+                }
+
+                val result = Database.abstractQuerySingle(Query(DatabaseScripts.playerFetchScript)
+                    .x("search", search).x("check_uuid", checkUuid)).ok()
+                return@sup if (result.result.isNull) null
+                else OfflinePlayer(
                     result.result.at("name").asString(),
                     result.result.at("uuid").asString(),
                     null,
                     result.result.at("user_id").asString(),
                     result.result.at("profile_id").asString(),
                 )
+            }
         }
     }
 
