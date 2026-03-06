@@ -15,6 +15,7 @@ import mindurka.util.Async
 import mindustry.gen.Player
 import net.buj.surreal.Query
 import java.util.Arrays
+import kotlin.time.Duration
 
 /** Display command list or get help for a specific command */
 @ConsoleCommand
@@ -58,8 +59,29 @@ private fun help(command: String?) {
 /** Pardon a player */
 @ConsoleCommand
 private fun pardon(player: OfflinePlayer) = Async.run {
-    Database.pardon(player.userId)
-    Log.info("Pardoned player ${Strings.stripColors(player.lastName)}")
+    if (Database.pardon(player.userId)) Log.info("Pardoned player ${Strings.stripColors(player.lastName)}")
+    else Log.info("Player ${Strings.stripColors(player.lastName)} was not kicked")
+}
+
+/** Kick a player */
+@ConsoleCommand
+private fun kick(player: OfflinePlayer, duration: Duration?, reason: String) = Async.run {
+    Database.kick(player, null, duration, reason)
+    Log.info("Kicked player ${player.lastName}")
+}
+
+/** Unban a player */
+@ConsoleCommand
+private fun unban(player: OfflinePlayer) = Async.run {
+    if (Database.unban(player.userId)) Log.info("Unbanned player ${Strings.stripColors(player.lastName)}")
+    else Log.info("Player ${Strings.stripColors(player.lastName)} was not banned")
+}
+
+/** Ban a player */
+@ConsoleCommand
+private fun ban(player: OfflinePlayer, duration: Duration?, reason: String) = Async.run {
+    Database.ban(player, null, duration, reason)
+    Log.info("Banned player ${player.lastName}")
 }
 
 /** Execute a SurrealQL query */

@@ -1,0 +1,7 @@
+return (update mindustry_ban
+    set pardoned = true
+    where
+        user = type::record("user", <uuid> $user) &&
+        (expires = none || expires > time::now())
+    return diff
+).any(|$x| !$x.is_empty());

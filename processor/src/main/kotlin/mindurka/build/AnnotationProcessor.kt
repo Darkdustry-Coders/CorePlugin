@@ -85,7 +85,7 @@ private val PARAM_TYPES: Map<String, Int> = mapOf(
     "kotlin.Float" to 2, "kotlin.Double" to 2,
 
     "mindurka.api.MapHandle" to 1, "mindustry.game.Team" to 1, "mindustry.gen.Player" to 1, "mindustry.gen.Unit" to 1,
-    "mindustry.type.UnitType" to 1, "mindurka.api.OfflinePlayer" to 1,
+    "mindustry.type.UnitType" to 1, "mindurka.api.OfflinePlayer" to 1, "kotlin.time.Duration" to 1,
 
     "kotlin.String" to 0, "java.lang.String" to 0,
 )
@@ -293,13 +293,18 @@ private fun init() {
         write.println("mindurka.api.OfflinePlayer.resolve(source, ${meta.consoleCommand}) ?: " +
             if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-player}")}")
     }
+
+    ARG_PARSERS["kotlin.time.Duration"] = createParser(true) { write, _, meta ->
+        write.println("kotlin.time.Duration.parseOrNull(source) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.invalid-duration}")}")
+    }
 }
 
 private fun obtainClass(classname: String): String =
     if (classname in arrayOf("int", "long", "short", "boolean", "byte", "float", "double"))
         "${classname.take(1).uppercase() + classname.substring(1)}::class.javaPrimitiveType"
     else "Class.forName(\"${escapeString(classname)}\")"
-private fun escapeString(str: String): String = str.replace(Regex("[\\\"$\n\t\r]")) { "\\$it" }
+private fun escapeString(str: String): String = str.replace(Regex("[\"$\n\t\r]")) { "\\$it" }
 
 private fun isNullableAnnotation(qualifiedName: String): Boolean =
     qualifiedName == Maybe::class.java.canonicalName!! ||

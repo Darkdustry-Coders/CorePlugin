@@ -3,14 +3,17 @@ package mindurka.coreplugin
 import arc.util.Log
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
+import mindurka.coreplugin.database.Database
 import mindurka.ui.openText
 import mindurka.util.Async
 import mindurka.util.FormatException
 import mindurka.util.stringToDuration
 import mindustry.Vars
+import mindustry.game.Team
 import mindustry.gen.AdminRequestCallPacket
 import mindustry.gen.Player
 import mindustry.net.Packets
+import kotlin.time.Duration
 
 internal fun modActionsInit() {
     Vars.net.handleServer(AdminRequestCallPacket::class.java) { con, packet ->
@@ -48,7 +51,41 @@ internal fun modActionsInit() {
                         return@run
                     }
                     if (adminChecks(target)) return@run
+
+                    Tl.broadcast()
+                        .put("admin", admin.coloredName())
+                        .put("target", target.coloredName())
+                        .done("{generic.admin.kick}")
+                    Database.kick(target, admin, info.duration, info.reason)
                 }
+            }
+            Packets.AdminAction.ban -> {
+                if (adminChecks(target)) return@handleServer
+
+                Async.run {
+                    val info = moderationDialog(admin, target, "commands.ban.dialog") ?: return@run
+
+                    if (!admin.admin) {
+                        Tl.send(admin).done("{generic.checks.admin-action-not-admin}")
+                        return@run
+                    }
+                    if (adminChecks(target)) return@run
+
+                    Tl.broadcast()
+                        .put("admin", admin.coloredName())
+                        .put("target", target.coloredName())
+                        .done("{generic.admin.ban}")
+                    Database.ban(target, admin, info.duration, info.reason)
+                }
+            }
+            Packets.AdminAction.wave -> {
+                Tl.broadcast().put("admin", admin.coloredName()).done("{generic.admin.wave}")
+                Vars.logic.skipWave()
+            }
+            Packets.AdminAction.switchTeam -> {
+                if (adminChecks(target)) return@handleServer
+                if (packet.params !is Team) return@handleServer
+                target.team(packet.params as Team)
             }
             else -> {}
         }
@@ -57,7 +94,7 @@ internal fun modActionsInit() {
 
 private data class ModerationDialogOutput(
     val reason: String,
-    val duration: Float,
+    val duration: Duration,
 )
 
 private enum class DialogOutput {
@@ -68,14 +105,14 @@ private enum class DialogOutput {
 
 private suspend fun moderationDialog(admin: Player, target: Player, prefix: String): ModerationDialogOutput? {
     var reason: String? = null
-    var duration = 0f
+    var duration: Duration? = null
     var state = DialogOutput.Continue
 
     while (true) {
         if (state == DialogOutput.Cancel) return null
         if (state == DialogOutput.Done) return ModerationDialogOutput(
             reason!!,
-            duration
+            duration!!
         )
 
         if (reason == null) reason = admin.openText {
@@ -101,11 +138,9 @@ private suspend fun moderationDialog(admin: Player, target: Player, prefix: Stri
             textLength = 40
 
             onComplete { value ->
-                try {
-                    duration = stringToDuration(value)
+                Duration.parseOrNull(value)?.let {
+                    duration = it
                     state = DialogOutput.Done
-                } catch (f: FormatException) {
-                    Log.err("Failed to parse duration", f)
                 }
                 null
             }

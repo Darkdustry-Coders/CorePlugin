@@ -1,0 +1,11 @@
+let $now = time::now();
+return create only mindustry_ban content {
+    user: type::record("user", <uuid> $user),
+    at: $now,
+    expires: if $duration = null { none }
+             else { $now + duration::from_millis(<int> ($duration * 1000)) },
+    server_name: $server,
+    reason: $reason,
+    admin: if $admin = null { none }
+           else { type::record("user", <uuid> $admin) },
+} return <string> record::id(id) as id;

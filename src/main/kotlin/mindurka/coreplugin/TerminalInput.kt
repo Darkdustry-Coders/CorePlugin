@@ -5,7 +5,9 @@ import mindurka.api.Consts
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import org.jline.reader.LineReaderBuilder
+import org.jline.reader.UserInterruptException
 import org.jline.terminal.TerminalBuilder
+import kotlin.system.exitProcess
 
 fun setupTerminalInput() {
     // Stolen from https://github.com/Darkdustry-Coders/DarkdustryPlugin/blob/master/src/main/java/darkdustry/features/Console.java
@@ -43,9 +45,13 @@ fun setupTerminalInput() {
     System.setOut(BlockingPrintStream(reader::printAbove))
 
     Consts.serverControl.serverInput = Runnable {
-        while (true) {
-            val line = reader.readLine("> ").trim()
-            if (!line.isEmpty() && !line.trimStart().startsWith('#')) Consts.serverControl.handleCommandString(line)
+        try {
+            while (true) {
+                val line = reader.readLine("> ").trim()
+                if (!line.isEmpty() && !line.trimStart().startsWith('#')) Consts.serverControl.handleCommandString(line)
+            }
+        } catch (_: UserInterruptException) {
+            exitProcess(0);
         }
     }
 }

@@ -19,6 +19,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.time.Duration
 
 @JvmOverloads
 fun unreachable(message: String = "Unreachable reached!"): Nothing = throw UnreachableException(message)
@@ -133,44 +134,69 @@ fun durationToTlString(time: Float): Script {
     val neg = time < 0
     if (neg) time *= -1
 
-    val nt = if (neg) "-" else ""
+    val str = StringBuilder()
+    var partsAdded = 0
 
     // An approximation ofc.
-    if (time >= yearsT - 1000f) {
-        val years = floor(time / yearsT + 1000f).toInt()
-        return Tl.parse("$nt$years {generic.duration.year${if (years == 1) "" else "s"}}")
+    if (time >= yearsT) {
+        val years = floor(time / yearsT).toInt()
+        time %= yearsT
+        str.append("$years {generic.duration.year${if (years == 1) "" else "s"}}")
+        partsAdded++
     }
 
     if (time >= weeksT) {
         val weeks = floor(time / weeksT).toInt()
-        return Tl.parse("$nt$weeks {generic.duration.week${if (weeks == 1) "" else "s"}}")
+        time %= weeksT
+        if (!str.isEmpty()) str.append(" ")
+        str.append("$weeks {generic.duration.week${if (weeks == 1) "" else "s"}}")
+        partsAdded++
     }
 
     if (time >= daysT) {
         val days = floor(time / daysT).toInt()
-        return Tl.parse("$nt$days {generic.duration.day${if (days == 1) "" else "s"}}")
+        time %= daysT
+        if (!str.isEmpty()) str.append(" ")
+        str.append("$days {generic.duration.day${if (days == 1) "" else "s"}}")
+        partsAdded++
     }
 
     if (time >= 3600) {
         val hours = floor(time / 3600).toInt()
-        return Tl.parse("$nt$hours {generic.duration.hour${if (hours == 1) "" else "s"}}")
+        time %= 3600
+        if (partsAdded < 3) {
+            if (!str.isEmpty()) str.append(" ")
+            str.append("$hours {generic.duration.hour${if (hours == 1) "" else "s"}}")
+        }
+        partsAdded++
     }
 
     if (time >= 60) {
         val minutes = floor(time / 60).toInt()
-        return Tl.parse("$nt$minutes {generic.duration.minute${if (minutes == 1) "" else "s"}}")
+        time %= 60
+        if (partsAdded < 3) {
+            if (!str.isEmpty()) str.append(" ")
+            str.append("$minutes {generic.duration.minute${if (minutes == 1) "" else "s"}}")
+        }
+        partsAdded++
     }
 
     if (time >= 0.5f) {
         val seconds = ceil(time).toInt()
-        return Tl.parse("$nt$seconds {generic.duration.second${if (seconds == 1) "" else "s"}}")
+        time %= 1
+        if (partsAdded < 3) {
+            if (!str.isEmpty()) str.append(" ")
+            str.append("$seconds {generic.duration.second${if (seconds == 1) "" else "s"}}")
+        }
+        partsAdded++
     }
 
+    if (partsAdded >= 1) return Tl.parse("${if (neg) "-" else ""}$str")
     return Tl.parse(if (time >= 0.001f) {
         time.times(1000).toInt()
         val ms = ceil(time).toInt()
 
-        "$nt$ms {generic.duration.milli${if (ms == 1) "" else "s"}}"
+        "${if (neg) "-" else ""}$ms {generic.duration.milli${if (ms == 1) "" else "s"}}"
     } else "~0 {generic.duration.seconds}")
 }
 @Throws(FormatException::class)

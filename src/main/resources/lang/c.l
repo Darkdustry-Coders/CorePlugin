@@ -36,6 +36,10 @@ vote.left = [#adadad]{player} has left the game and their vote was removed.
 vote.global.cancelled = [#EC5784]⚠ Vote was cancelled by admin {admin}.
 vote.team.cancelled = [#EC5784]⚠ Team vote was cancelled by admin {admin}.
 
+admin.ban = [#EC5784]⚠ {target} was banned by {admin}.
+admin.kick = [#EC5784]⚠ {target} was kicked by {admin}.
+admin.wave = [#EC5784]⚠ A wave was skipped by admin {admin}.
+
 [generic.checks]
 same-vote = [#EC5784] Your vote has not changed.
 vote-filter = [#EC5784] You cannot vote in this poll.
@@ -73,6 +77,8 @@ unknown-map = Could not find the map
 unknown-map-console = Could not find the map
 unknown-player = Could not find the player
 unknown-player-console = Could not find the player
+invalid-duration = Not a valid duration for parameter [yellow]'{commands.{command}.params.{param}}'[]
+invalid-duration-console = Not a valid duration for parameter {param}
 
 [generic.kick]
 merged = [#EC5784]This account was merged into another and thus no longer accessible.
@@ -110,6 +116,26 @@ another-location = [#EC5784]You are already logged in from another location.
          = [accent]If you believe this is a mistake, create a post in [cyan]#help[] channel on our
          : [#4c59e0]Discord Server[].
          = [cyan]{generic.discord}
+ban = [#EC5784]You were banned from this server.
+    =
+    = [accent]Ban ID: [yellow]{id}
+    = [accent]Admin: {admin}
+    = [accent]Reason: [#EC5784]{reason}
+    = [accent]Remaining: [yellow]{remaining}
+    =
+    = [accent]If you believe there was a mistake, create a post in [cyan]#appeals[] channel on our
+    : [#4c59e0]Discord Server[].
+    = [cyan]{generic.discord}
+kick = [#EC5784]You were kicked from this server.
+     =
+     = [accent]Kick ID: [yellow]{id}
+     = [accent]Admin: {admin}
+     = [accent]Reason: [#EC5784]{reason}
+     = [accent]Remaining: [yellow]{remaining}
+     =
+     = [accent]If you believe there was a mistake, create a post in [cyan]#appeals[] channel on our
+     : [#4c59e0]Discord Server[].
+     = [cyan]{generic.discord}
 votekick = [#EC5784]You were votekicked from this server.
          =
          = [accent]Votekick ID: [yellow]{id}

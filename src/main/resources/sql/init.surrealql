@@ -65,7 +65,6 @@ define table mindustry_votekick schemafull;
 define field user on mindustry_votekick type record<user>;
 define field initiator on mindustry_votekick type record<user>;
 define field at on mindustry_votekick type datetime;
-define field ip on mindustry_votekick type string;
 define field expires on mindustry_votekick type option<datetime>;
 define field server_name on mindustry_votekick type string;
 define field reason on mindustry_votekick type string;
@@ -75,7 +74,6 @@ define field pardoned on mindustry_votekick type bool default false;
 define table mindustry_kick schemafull;
 define field user on mindustry_kick type record<user>;
 define field at on mindustry_kick type datetime;
-define field ip on mindustry_kick type string;
 define field expires on mindustry_kick type option<datetime>;
 define field server_name on mindustry_kick type string;
 define field reason on mindustry_kick type string;
@@ -85,7 +83,6 @@ define field pardoned on mindustry_kick type bool default false;
 define table mindustry_ban schemafull;
 define field user on mindustry_ban type record<user>;
 define field at on mindustry_ban type datetime;
-define field ip on mindustry_ban type string;
 define field expires on mindustry_ban type option<datetime>;
 define field server_name on mindustry_ban type option<string>;
 define field reason on mindustry_ban type string;
@@ -212,9 +209,9 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
                 expires: if $tmp.expires = none { none } else { $tmp.expires.millis() },
             };
         };
-        let $tmp = select * from only mindustry_kick where user = $x.user and expires > $now and server_name = $server and !pardoned order by expires asc limit 1;
+        let $tmp = select * from only mindustry_kick where user = $x.user and (expires = none || expires > $now) and server_name = $server and !pardoned order by expires asc limit 1;
         if $tmp != none {
-            let $admin = fn::mindustry_last_name($tmp.admin);
+            let $admin = if $tmp.admin = none { "<Console>" } else { fn::mindustry_last_name($tmp.admin) };
             return {
                 disabled: 9,
                 id: <string> record::id($tmp.id),
@@ -224,16 +221,16 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
                 expires: if $tmp.expires = none { none } else { $tmp.expires.millis() },
             };
         };
-        let $tmp = select * from only mindustry_ban where user = $x.user and expires > $now and !pardoned order by expires asc limit 1;
+        let $tmp = select * from only mindustry_ban where user = $x.user and (expires = none || expires > $now) and !pardoned order by expires asc limit 1;
         if $tmp != none {
-            let $admin = fn::mindustry_last_name($tmp.admin);
+            let $admin = if $tmp.admin = none { "<Console>" } else { fn::mindustry_last_name($tmp.admin) };
             return {
                 disabled: 8,
                 id: <string> record::id($tmp.id),
                 user: <string> record::id($tmp.user),
                 admin: $admin,
                 reason: $tmp.reason,
-                server: $tmp.server,
+                server: $tmp.server_name,
                 expires: if $tmp.expires = none { none } else { $tmp.expires.millis() },
             };
         };

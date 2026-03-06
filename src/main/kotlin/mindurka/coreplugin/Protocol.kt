@@ -3,6 +3,7 @@ package mindurka.coreplugin
 import arc.Core
 import arc.func.Cons3
 import arc.func.Prov
+import arc.net.Connection
 import arc.struct.ObjectIntMap
 import arc.struct.ObjectMap
 import arc.struct.Seq
@@ -16,10 +17,12 @@ import buj.tl.Tl
 import mindurka.api.emit
 import mindurka.api.timer
 import mindurka.config.SharedConfig
+import mindurka.coreplugin.database.BannedAccountException
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.DisabledAccountException
 import mindurka.coreplugin.database.DisconnectedAccountException
 import mindurka.coreplugin.database.KeyValidationFailure
+import mindurka.coreplugin.database.KickedAccountException
 import mindurka.coreplugin.database.MergedAccountException
 import mindurka.coreplugin.database.SharedAccountException
 import mindurka.coreplugin.database.VotekickedAccountException
@@ -36,6 +39,7 @@ import mindustry.gen.ServerBinaryPacketReliableCallPacket
 import mindustry.gen.ServerBinaryPacketUnreliableCallPacket
 import mindustry.gen.ServerPacketReliableCallPacket
 import mindustry.gen.ServerPacketUnreliableCallPacket
+import mindustry.net.ArcNetProvider
 import mindustry.net.Net
 import mindustry.net.NetConnection
 import mindustry.net.Packet
@@ -228,6 +232,12 @@ class Protocol {
         overridePacket<ServerPacketUnreliableCallPacket, OServerPacketUnreliableCallPacket> { OServerPacketUnreliableCallPacket() }
 
         Vars.net.handleServer(Packets.Connect::class.java) { con, packet ->
+            val realCon: Connection = Reflect.get(con.javaClass, con, "connection")
+            if (realCon.remoteAddressTCP.address != realCon.remoteAddressUDP.address) {
+                con.close()
+                return@handleServer
+            }
+
             if (connectionStates.containsKey(con)) {
                 con.close()
                 return@handleServer
@@ -479,6 +489,12 @@ class Protocol {
                 return
             } catch (_: SharedAccountException) {
                 player.con.kick(Tl.fmt(player).done("{generic.kick.shared}"))
+                return
+            } catch (ban: BannedAccountException) {
+                Database.banConnection(player.con, ban.banId, player.locale, ban.reason, ban.expires, ban.admin)
+                return
+            } catch (kick: KickedAccountException) {
+                Database.kickConnection(player.con, kick.kickId, player.locale, kick.reason, kick.expires, kick.admin)
                 return
             } catch (kick: VotekickedAccountException) {
                 Database.votekickConnection(player.con, kick.votekickId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
