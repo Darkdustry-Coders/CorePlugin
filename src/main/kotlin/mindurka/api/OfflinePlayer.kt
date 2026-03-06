@@ -1,6 +1,7 @@
 package mindurka.api
 
 import arc.struct.ObjectMap
+import arc.util.Log
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.DatabaseScripts
@@ -91,12 +92,12 @@ class OfflinePlayer internal constructor(var lastName: String?, val uuid: String
                 .x("search", search).x("check_uuid", checkUuid)).ok()
             return@sup if (result.result.isNull) null
             else OfflinePlayer(
-                result.result.at("name").asString(),
-                result.result.at("uuid").asString(),
-                null,
-                result.result.at("user_id").asString(),
-                result.result.at("profile_id").asString(),
-            )
+                    result.result.at("name").asString(),
+                    result.result.at("uuid").asString(),
+                    null,
+                    result.result.at("user_id").asString(),
+                    result.result.at("profile_id").asString(),
+                )
         }
     }
 

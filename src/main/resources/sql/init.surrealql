@@ -138,7 +138,7 @@ define function fn::mindustry_fetch_user($search: string, $check_uuid: bool) {
             name: $x.last_name,
             user_id: <string> record::id($x.user),
             profile_id: <string> record::id($x.id),
-            uuid: select value <string> record::id(id) from only mindustry_user where profile = $x limit 1,
+            uuid: select value <string> record::id(id) from only mindustry_user where profile = $x.id limit 1,
         };
     };
 
@@ -149,7 +149,7 @@ define function fn::mindustry_fetch_user($search: string, $check_uuid: bool) {
             name: $y.last_name,
             user_id: <string> record::id($y.user),
             profile_id: <string> record::id($y.id),
-            uuid: select value <string> record::id(id) from only mindustry_user where profile = $y limit 1,
+            uuid: select value <string> record::id(id) from only mindustry_user where profile = $y.id limit 1,
         };
     };
 
@@ -161,7 +161,7 @@ define function fn::mindustry_fetch_user($search: string, $check_uuid: bool) {
             name: $x.profile.last_name,
             user_id: <string> record::id($x.user),
             profile_id: <string> record::id($x.profile),
-            uuid: select value <string> record::id(id) from only mindustry_user where profile = $x limit 1,
+            uuid: select value <string> record::id(id) from only mindustry_user where profile = $x.id limit 1,
         };
     };
 
