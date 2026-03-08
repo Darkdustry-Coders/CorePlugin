@@ -1,6 +1,7 @@
 package mindurka.api
 
 import arc.files.Fi
+import arc.func.Prov
 import arc.struct.Seq
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.CorePlugin
@@ -225,6 +226,9 @@ object Gamemode {
     /** Enable /rtv. */
     @JvmField
     var enableRtv = true
+
+    @JvmField
+    var defaultPatch: Prov<String>? = null
 
     /** Initialize CorePlugin. */
     @JvmStatic

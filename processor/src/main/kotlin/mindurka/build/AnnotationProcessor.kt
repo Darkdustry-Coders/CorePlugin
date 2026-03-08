@@ -279,7 +279,7 @@ private fun init() {
         write.println("} ?: return ${invalid(meta.name, "{generic.command.zero-map-id}")}")
 
         write.leave() // toUIntOrNull()?.let
-        write.print("} ?: mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(source) } ?: ")
+        write.print("} ?: mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(source, true) } ?: ")
         if (meta.nullable) write.println("return@parser null")
         else write.println("return ${invalid(meta.name, "{genetic.command.unknown-map}")}")
     }

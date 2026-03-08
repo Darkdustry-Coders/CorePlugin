@@ -3,7 +3,9 @@ package mindurka.coreplugin
 // Keeping those unwrapped for my own sanity.
 import arc.Core
 import arc.func.Cons
+import arc.math.Mathf
 import arc.struct.IntMap
+import arc.struct.ObjectMap
 import arc.util.Log
 import arc.util.Time
 import buj.tl.Tl
@@ -37,6 +39,7 @@ import mindurka.util.ModifyWorld
 import mindurka.util.SendMessage
 import mindurka.util.filter
 import mindurka.util.map
+import mindurka.util.random
 import mindustry.Vars
 import mindustry.content.Blocks
 import mindustry.core.NetServer
@@ -45,7 +48,12 @@ import mindustry.game.Team
 import mindustry.gen.Call
 import mindustry.gen.Groups
 import mindustry.gen.Player
+import mindustry.gen.SetTileCallPacket
 import mindustry.net.Administration
+import mindustry.world.Block
+import mindustry.world.blocks.environment.StaticWall
+import java.util.WeakHashMap
+import kotlin.math.min
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -92,6 +100,13 @@ object CorePlugin {
     @JvmField var currentGlobalVote: Vote? = null
     @JvmField val teamVotes = IntMap<Vote>()
 
+    private var fakeBlockKind: Block? = null
+    private class FakeBlock(
+        var x: Int,
+        var y: Int,
+    )
+    private val fakeBlockPos = ObjectMap<Player, FakeBlock>()
+
     init {
         Log.info("Starting CorePlugin")
         Time.mark()
@@ -117,7 +132,174 @@ object CorePlugin {
                     Blocks.scrapWallHuge, Blocks.scrapWallLarge, Blocks.scrapWallGigantic, Blocks.thruster, Blocks.scrapWall)
             }
         }
+
+        on<EventType.WorldLoadEvent>(priority = Priority.Lowest) {
+            fakeBlockPos.clear()
+
+            if (Vars.state.patcher.patches.size > 0 && Vars.state.patcher.patches[0].name == "Mindurka Default Patch") {
+                Vars.state.patcher.patches.remove(0)
+            }
+
+            fakeBlockKind = run {
+                for (shift in 0..min(Vars.world.width(), Vars.world.height()) / 2) {
+                    for (x in shift..<(Vars.world.width() - shift)) {
+                        val tile = Vars.world.tile(x, shift)
+                        if (tile.block() !is StaticWall) continue
+                        if (tile.block().size != 1) continue
+                        return@run tile.block()
+                    }
+                    for (x in shift..<(Vars.world.width() - shift)) {
+                        val tile = Vars.world.tile(x, Vars.world.height() - shift - 1)
+                        if (tile.block() !is StaticWall) continue
+                        if (tile.block().size != 1) continue
+                        return@run tile.block()
+                    }
+
+                    for (y in shift..<(Vars.world.height() - shift)) {
+                        val tile = Vars.world.tile(shift, y)
+                        if (tile.block() !is StaticWall) continue
+                        if (tile.block().size != 1) continue
+                        return@run tile.block()
+                    }
+                    for (y in shift..<(Vars.world.height() - shift)) {
+                        val tile = Vars.world.tile(Vars.world.width() - shift - 1, y)
+                        if (tile.block() !is StaticWall) continue
+                        if (tile.block().size != 1) continue
+                        return@run tile.block()
+                    }
+                }
+
+                null
+            }
+
+            if (fakeBlockKind != null) interval(0.125f, lifetime = Lifetime.Round) {
+                Groups.player.each {
+                    val tileX = Mathf.floor(it.mouseX / Vars.tilesize)
+                    val tileY = Mathf.floor(it.mouseY / Vars.tilesize)
+
+                    val fakePos = fakeBlockPos[it] ?: return@each
+                    val dst = Mathf.dst(fakePos.x.toFloat(), fakePos.y.toFloat(), tileX.toFloat(), tileY.toFloat())
+                    if (dst > 16) return@each
+
+                    val packet = SetTileCallPacket()
+                    packet.tile = Vars.world.tile(fakePos.x, fakePos.y)
+                    packet.block = fakeBlockKind
+                    packet.team = Team.derelict
+                    packet.rotation = 0
+                    it.con.send(packet, true)
+
+                    val newTile = Vars.world.tiles.iterator()
+                        .filter { it.block() == fakeBlockKind }
+                        .random() ?: run {
+                            fakeBlockPos.remove(it)
+                            return@each
+                    }
+
+                    val packet2 = SetTileCallPacket()
+                    packet2.tile = newTile
+                    packet2.block = Vars.content.block("legacy-mech-pad")
+                    packet2.team = Team.derelict
+                    packet2.rotation = 0
+                    it.con.send(packet2, true)
+
+                    fakePos.x = newTile.x.toInt()
+                    fakePos.y = newTile.y.toInt()
+                }
+            }
+
+            Vars.state.patcher.apply(Vars.state.patcher.patches.map { it.patch }.apply { insert(0, run {
+                val patch = StringBuilder()
+
+                patch.append("name: Mindurka Default Patch\n")
+                Gamemode.defaultPatch?.let { patch.append(it.get()).append('\n') }
+                fakeBlockKind?.let { real ->
+                    patch.append("block.legacy-mech-pad: {\n")
+                    patch.append("    region: block-${real.name}-full\n")
+                    patch.append("    uiIcon: block-${real.name}-ui\n")
+                    patch.append("    localizedName: ${real.name.replace(Regex("-[a-z]")) {
+                        " ${it.value[1].uppercase()}"
+                    }.replaceFirstChar { it.uppercase() }}\n")
+                    patch.append("    drawTeamOverlay: false\n")
+                    patch.append("    placeablePlayer: false\n")
+                    patch.append("    replaceable: false\n")
+                    patch.append("    consumesPower: false\n")
+                    patch.append("    connectedPower: false\n")
+                    patch.append("    unloadable: false\n")
+                    patch.append("    acceptsItems: false\n")
+                    patch.append("    rotateDraw: false\n")
+                    patch.append("    rebuildable: false\n")
+                    patch.append("    canOverdrive: false\n")
+                    patch.append("    inlineDescription: false\n")
+                    patch.append("    targetable: false\n")
+                    patch.append("    hideDatabase: true\n")
+                    patch.append("    solid: true\n")
+                    patch.append("    forceDark: true\n")
+                    patch.append("    privileged: true\n")
+                    patch.append("}\n")
+                }
+
+                Log.info("$patch")
+
+                patch.toString()
+            }) })
+        }
+        Vars.netServer.admins.addActionFilter { act ->
+            if (!(act.type == Administration.ActionType.breakBlock && act.block == fakeBlockKind) || fakeBlockKind == null) return@addActionFilter true
+
+            val packet = SetTileCallPacket()
+            packet.tile = act.tile
+            packet.block = fakeBlockKind
+            packet.team = Team.derelict
+            packet.rotation = 0
+            act.player.con.send(packet, true)
+
+            fakeBlockKind?.let { real ->
+                val tile = Vars.world.tiles.iterator()
+                    .filter { it.block() == real }
+                    .random() ?: run {
+                        fakeBlockPos.remove(act.player)
+                        return@let
+                }
+                val packet = SetTileCallPacket()
+                packet.tile = tile
+                packet.block = Vars.content.block("legacy-mech-pad")
+                packet.team = Team.derelict
+                packet.rotation = 0
+                val blockPos = fakeBlockPos[act.player] ?: run {
+                    val x = FakeBlock(tile.x.toInt(), tile.y.toInt())
+                    fakeBlockPos.put(act.player, x)
+                    x
+                }
+                blockPos.x = tile.x.toInt()
+                blockPos.y = tile.y.toInt()
+                act.player.con.send(packet, true)
+            }
+
+            false
+        }
+
+        on<EventType.PlayerConnectionConfirmed> { event ->
+            fakeBlockKind?.let { real ->
+                val tile = Vars.world.tiles.iterator()
+                    .filter { it.block() == real }
+                    .random() ?: return@let
+                val packet = SetTileCallPacket()
+                packet.tile = tile
+                packet.block = Vars.content.block("legacy-mech-pad")
+                packet.team = Team.derelict
+                packet.rotation = 0
+                val blockPos = FakeBlock(
+                    x = tile.x.toInt(),
+                    y = tile.y.toInt()
+                )
+                fakeBlockPos.put(event.player, blockPos)
+                event.player.con.send(packet, true)
+            }
+        }
+
         on<EventType.PlayerLeave> {
+            fakeBlockPos.remove(it.player)
+
             handleUiEvent(it)
 
             val player = it.player

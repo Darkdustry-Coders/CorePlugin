@@ -48,25 +48,6 @@ import kotlin.system.exitProcess
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
-data class PlayerSmallData (
-    val userId: String,
-    val id: String,
-    var keySet: Boolean,
-    var shortId: Int?,
-    var permissionLevel: Int,
-    // TODO: Mutes.
-) {
-    suspend fun setPermissionLevel(player: Player, level: Int) {
-        permissionLevel = level
-        if (permissionLevel < 0) permissionLevel = 0
-        if (permissionLevel > 1000) permissionLevel = 1000
-        player.admin = permissionLevel >= 100
-        Vars.netServer.admins.getInfo(player.uuid()).admin = permissionLevel >= 100
-        Database.abstractQuery(Query(DatabaseScripts.setpermissionlevelScript)
-            .x("permissionLevel", permissionLevel).x("id", id)).ok()
-    }
-}
-
 class MergedAccountException: Exception("Unhandled merged account exception")
 class DisabledAccountException: Exception("Unhandled disconnected account exception")
 class DisconnectedAccountException: Exception("Unhandled disconnected account exception")
@@ -86,6 +67,7 @@ class KickedAccountException(
     val expires: Instant?
 ): Exception("Unhandled kick")
 class GraylistedAccountException: Exception("Unhandled graylist")
+class BlacklistedException: Exception("Unhandled blacklist")
 class AnotherLocationException: Exception("Unhandled double login")
 class VotekickedAccountException(val votekickId: String, val reason: String, val expires: Instant, val initiator: String, val votes: Seq<String>): Exception("Unhandled votekick")
 
@@ -328,8 +310,8 @@ object Database {
     }
 
     @Throws(KeyValidationFailure::class, DisconnectedAccountException::class, MergedAccountException::class,
-        SharedAccountException::class, DisabledAccountException::class)
-    suspend fun login(uuid: String, usid: String, ip: String, key: PublicKey?, newName: String, session: PlayerData) {
+        SharedAccountException::class, DisabledAccountException::class, BlacklistedException::class)
+    suspend fun login(uuid: String, usid: String, ip: String, isp: String?, key: PublicKey?, newName: String, session: PlayerData) {
         val keyHash = key?.let { key -> MessageDigest.getInstance("SHA256").digest(key.encoded) }
 
         votekickCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
@@ -366,6 +348,7 @@ object Database {
                 .x("uuid", uuid)
                 .x("usid", usid)
                 .x("ip", ip)
+                .apply { isp?.let { x("isp", it) } }
                 .x("server", Config.i.serverName)
                 .x("key", key?.encoded?.let(Base64.withPadding(Base64.PaddingOption.ABSENT)::encode))
                 .x("new_name", newName)).ok()) {
@@ -420,9 +403,8 @@ object Database {
                 votekickCache.put(uuid, VotekickedInfo(id, userId, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), reason, expires, initiator, votes))
                 throw VotekickedAccountException(id, reason, expires, initiator, votes);
             }
-            else -> {
-                throw RuntimeException("Unexpected login error: $error")
-            }
+            DisableCodes.blacklisted -> throw BlacklistedException()
+            else -> throw RuntimeException("Unexpected login error: $error")
         }
 
         session.userId = query.result.at("user_id").asString()
@@ -476,11 +458,13 @@ object Database {
     }
 
     internal suspend fun votekick(player: Player, initiator: Player, votes: Seq<Player>, reason: String) {
+        val isp = IspTables.of(player.con.address)
         val id = abstractQuerySingle(Query(DatabaseScripts.votekickScript)
             .x("user", player.sessionData.userId)
             .x("initiator", player.sessionData.userId)
             .x("votes", votes.iterator().map { it.sessionData.userId }.collect(ArrayList()))
             .x("ip", player.con.address)
+            .apply { isp?.let { x("isp", it) } }
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         votekickConnection(player.con, id, player.locale, reason, Clock.System.now() + 30.minutes,
@@ -515,10 +499,12 @@ object Database {
      */
     @PublicAPI
     suspend fun kick(player: Player, admin: Player?, duration: Duration?, reason: String) {
+        val isp = IspTables.of(player.con.address)
         val id = abstractQuerySingle(Query(DatabaseScripts.kickScript)
             .x("user", player.sessionData.userId)
             .x("admin", admin?.sessionData?.userId)
             .x("ip", player.con.address)
+            .apply { isp?.let { x("isp", it) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
@@ -530,10 +516,12 @@ object Database {
      */
     @PublicAPI
     suspend fun kick(player: OfflinePlayer, admin: Player?, duration: Duration?, reason: String) {
+        val isp = player.player?.con?.address?.let { IspTables.of(it) }
         val id = abstractQuerySingle(Query(DatabaseScripts.kickScript)
             .x("user", player.userId)
             .x("admin", admin?.sessionData?.userId)
             .x("ip", player.player?.con?.address)
+            .apply { isp?.let { x("isp", it) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
@@ -559,10 +547,12 @@ object Database {
      */
     @PublicAPI
     suspend fun ban(player: Player, admin: Player?, duration: Duration?, reason: String) {
+        val isp = IspTables.of(player.con.address)
         val id = abstractQuerySingle(Query(DatabaseScripts.banScript)
             .x("user", player.sessionData.userId)
             .x("admin", admin?.sessionData?.userId)
             .x("ip", player.con.address)
+            .apply { isp?.let { x("isp", it) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
@@ -574,10 +564,12 @@ object Database {
      */
     @PublicAPI
     suspend fun ban(player: OfflinePlayer, admin: Player?, duration: Duration?, reason: String) {
+        val isp = player.player?.con?.address?.let { IspTables.of(it) }
         val id = abstractQuerySingle(Query(DatabaseScripts.banScript)
             .x("user", player.userId)
             .x("admin", admin?.sessionData?.userId)
             .x("ip", player.player?.con?.address)
+            .apply { isp?.let { x("isp", it) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()

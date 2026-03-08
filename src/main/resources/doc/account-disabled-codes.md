@@ -56,3 +56,6 @@ User was votekicked from the server. Votekicks apply per-server.
 - `expires`: Unix timestamp before which the kick is valid. `null` if permanent.
 - `initiator`: Last username of the person who initiated the votekick.
 - `votes`: Last usernames of people who voted in favor of this votekick.
+
+## 12 - Blacklisted
+The connection is too suspicious and thus must be blocked.

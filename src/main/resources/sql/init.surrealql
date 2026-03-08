@@ -16,7 +16,6 @@ if $schema_version > 1 {
 if $schema_version < 1 {
 
 define table if not exists user schemafull;
-
 # 0   - normal player
 # 100 - moderator (mute, kick, ban)
 # 200 - admin (map editing, artv, /stalk)
@@ -28,6 +27,16 @@ define field mindustry_permission_level on user type int default 0;
 
 # TODO: Discord.
 # TODO: Telegram.
+
+define table if not exists sus_ip schemafull;
+define field id on sus_ip type string;
+define field last_update on sus_ip type datetime default time::now();
+define field sus on sus_ip type float default 0;
+
+define table if not exists sus_isp schemafull;
+define field id on sus_isp type string;
+define field last_update on sus_isp type datetime default time::now();
+define field sus on sus_isp type float default 0;
 
 define table mindustry_abandoned_user schemafull;
 define field id on mindustry_abandoned_user type string;
@@ -180,7 +189,52 @@ define function fn::mindustry_last_name($user: record<user>) {
     return $x.last_name + " [#dadada][[" + $id_string + "]";
 };
 
-define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $server: string, $key: option<bytes>, $new_name: string) {
+define function fn::sus_update_obtain(
+    $scopes: {
+        ip: string,          ip_promised: option<bool>,
+        isp: option<string>, ips_promised: option<bool>,
+    },
+    $extra_sus: float) -> float
+{
+    let $record = type::record("sus_ip", $scopes.ip);
+    let $now = time::now();
+
+    let $sus_ip = if $record.exists() || $scopes.ip_promised = true {
+        let $x = select * from only $record;
+        let $passed = <float> ($now - $x.last_update).millis() / 1000;
+        let $sus = math::max([0, $x.sus - $passed]);
+        let $sus = math::clamp(0, $sus + $extra_sus, 3000);
+        update only $record content { sus: $sus, last_update: $now };
+        $sus
+    } else {
+        create only $record content {
+            last_update: $now,
+            sus: math::clamp(0, $extra_sus, 3000),
+        } return value sus
+    };
+
+    let $sus_isp = if $scopes.isp != none {
+        let $record2 = type::record("sus_isp", $scopes.isp);
+
+        let $sus_ip = if $record2.exists() || $scopes.isp_promised = true {
+            let $x = select * from only $record2;
+            let $passed = <float> ($now - $x.last_update).millis() / 1000;
+            let $sus = math::max([0, $x.sus - $passed]);
+            let $sus = math::clamp(0, $sus + $extra_sus * 0.5, 3000);
+            update only $record2 content { sus: $sus, last_update: $now };
+            $sus
+        } else {
+            create only $record2 content {
+                last_update: $now,
+                sus: math::clamp(0, $extra_sus, 3000),
+            } return value sus
+        };
+    } else { 0 };
+
+    return math::max([$sus_ip]);
+};
+
+define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $isp: option<string>, $server: string, $key: option<bytes>, $new_name: string) {
     let $tmp = select disabled from only type::record("mindustry_abandoned_user", $uuid);
     if $tmp != none {
         return $tmp;
@@ -188,7 +242,7 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
 
     let $now = time::now();
 
-    let $process = |$x: record<mindustry_profile>| {
+    let $process = |$x: record<mindustry_profile>, $is_new: bool| {
         select key from mindustry_profile where user = $x.user and key != none;
 
         if $x.disabled != 0 {
@@ -247,29 +301,41 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
         };
     };
 
-    let $process_with_key = |$y: record<mindustry_profile>| {
+    let $process_with_key = |$y: record<mindustry_profile>, $is_new: bool| {
         if $y.key != none && $y.key != $key {
             return { disabled: 3, orig: $y.key };
         };
 
-        return $process($y);
+        return $process($y, $is_new);
     };
 
     if $key != none {
         let $table = select value id from only mindustry_profile where key = $key;
         if $table != none {
+            if fn::sus_update_obtain({ ip: $ip, isp: $isp }, 50) >= 2000 {
+                return { disabled: 12 };
+            };
             return $process($table);
         };
     };
 
     let $table = select * from only type::record("mindustry_user", $uuid);
     if $table = none {
+        if fn::sus_update_obtain({ ip: $ip, isp: $isp }, 600) >= 2000 {
+            return { disabled: 12 };
+        };
+
         let $user = create only user content { id: rand::uuid::v7() } return value id;
         let $profile = create only mindustry_profile content { id: rand::uuid::v7(), user: $user, key: none } return value id;
         let $table = create only mindustry_user content { id: $uuid, profile: $profile };
-        return $process_with_key($profile);
+
+        return $process_with_key($profile, true);
     } else {
-        return $process_with_key($table.profile);
+        if fn::sus_update_obtain({ ip: $ip, isp: $isp }, 50) >= 2000 {
+            return { disabled: 12 };
+        };
+
+        return $process_with_key($table.profile, false);
     };
 };
 

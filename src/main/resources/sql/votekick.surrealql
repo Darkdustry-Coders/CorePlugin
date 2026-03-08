@@ -1,4 +1,5 @@
 let $now = time::now();
+fn::sus_update_obtain({ ip: $ip, isp: $isp }, 1500);
 return create only mindustry_votekick content {
     user: type::record("user", <uuid> $user),
     at: $now,

@@ -63,4 +63,33 @@ object DisableCodes {
      * - `votes`: Last usernames of players that voted in favor of the kick.
      */
     const val votekicked = 11
+    /**
+     * The user was automatically blacklisted by the system.
+     *
+     * The server should not accept messages from that IP for a while.
+     */
+    const val blacklisted = 12
+}
+
+object PermLevels {
+    /**
+     * Default privileges.
+     */
+    const val default = 0
+    /**
+     * /mute, /kick, /ban, etc.
+     */
+    const val moderator = 100
+    /**
+     * Map editing, /artv, tracing.
+     */
+    const val admin = 200
+    /**
+     * For now no extra perms.
+     */
+    const val admin_overseer = 300
+    /**
+     * /js, /sql.
+     */
+    const val console = 1000
 }

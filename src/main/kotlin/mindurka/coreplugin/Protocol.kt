@@ -18,14 +18,17 @@ import mindurka.api.emit
 import mindurka.api.timer
 import mindurka.config.SharedConfig
 import mindurka.coreplugin.database.BannedAccountException
+import mindurka.coreplugin.database.BlacklistedException
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.DisabledAccountException
 import mindurka.coreplugin.database.DisconnectedAccountException
+import mindurka.coreplugin.database.IspTables
 import mindurka.coreplugin.database.KeyValidationFailure
 import mindurka.coreplugin.database.KickedAccountException
 import mindurka.coreplugin.database.MergedAccountException
 import mindurka.coreplugin.database.SharedAccountException
 import mindurka.coreplugin.database.VotekickedAccountException
+import mindurka.coreplugin.messages.AddFirewallBan
 import mindurka.util.Async
 import mindurka.util.K
 import mindurka.util.sha256
@@ -238,6 +241,11 @@ class Protocol {
                 return@handleServer
             }
 
+            if (Vars.netServer.admins.isDosBlacklisted(con.address)) {
+                con.close()
+                return@handleServer
+            }
+
             if (connectionStates.containsKey(con)) {
                 con.close()
                 return@handleServer
@@ -379,8 +387,12 @@ class Protocol {
                 val versionType = dataStream.readUTF()
                 player.color.set(dataStream.readInt())
                 con.usid = dataStream.readUTF()
-                if (mcversion < 3) con.uuid = dataStream.readUTF()
-                else con.uuid = String(Base64Coder.encode(dataStream.readNBytes(16)))
+                if (mcversion < 3) {
+                    connectionStates[con] = PanicState
+                    con.kick("Protocol error")
+                    return@addBinaryPacketHandler
+                }
+                con.uuid = String(Base64Coder.encode(dataStream.readNBytes(16)))
                 player.locale = dataStream.readUTF()
                 // TODO: Replace completely with key auth and forget this exists.
                 player.admin = false
@@ -450,6 +462,8 @@ class Protocol {
     }
 
     private suspend fun login(player: Player, mods: Seq<String>) {
+        val isp = IspTables.of(player.con.address)
+
         val playerUuid = player.uuid()
         try {
             val session = player.sessionData
@@ -474,7 +488,7 @@ class Protocol {
             player.team(Vars.netServer.assignTeam(player))
 
             try {
-                Database.login(player.uuid(), player.usid(), player.con.address, session.publicKey, player.coloredName(), session)
+                Database.login(player.uuid(), player.usid(), player.con.address, isp?.isp, session.publicKey, player.coloredName(), session)
             } catch (_: MergedAccountException) {
                 player.con.kick(Tl.fmt(player).done("{generic.kick.merged}"))
                 return
@@ -498,6 +512,11 @@ class Protocol {
                 return
             } catch (kick: VotekickedAccountException) {
                 Database.votekickConnection(player.con, kick.votekickId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
+                return
+            } catch (_: BlacklistedException) {
+                player.con.close()
+                Vars.netServer.admins.blacklistDos(player.con.address)
+                emit(AddFirewallBan(player.con.address))
                 return
             } catch (t: Throwable) {
                 player.con.kick("Internal error.")
