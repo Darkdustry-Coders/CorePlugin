@@ -14,6 +14,9 @@ special-settings-error = [#EC5784]Flags on this map are not set correctly:
                        = Map may not function correctly.
 
 # spam Spam SPAM
+welcome-message-title = Welcome message
+welcome-message = [accent]We are in the process of completely rewriting server plugins.
+                : Expect bugs!
 gamemode-uses-special-settings = [accent]Some of this gamemode's features don't work in vanilla.[]
                                =
                                = Install [#4c59e0]MindurkaCompat[] from mod explorer to gain access to them.

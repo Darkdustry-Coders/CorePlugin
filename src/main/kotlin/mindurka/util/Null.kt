@@ -22,7 +22,7 @@ object K
 
 /** A reference to a value. */
 @PublicAPI
-data class Ref<T>(var r: T) {
+data class Ref<T>(@JvmField var r: T) {
     override fun toString(): String = r?.toString() ?: "null"
     override fun hashCode(): Int = r?.hashCode() ?: 0
     override fun equals(other: Any?): Boolean = (if (other is Ref<*>) r?.equals(other.r) else r?.equals(other)) ?: true

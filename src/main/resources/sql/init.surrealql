@@ -214,17 +214,17 @@ define function fn::sus_update_obtain(
     };
 
     let $sus_isp = if $scopes.isp != none {
-        let $record2 = type::record("sus_isp", $scopes.isp);
+        let $record = type::record("sus_isp", $scopes.isp);
 
-        let $sus_ip = if $record2.exists() || $scopes.isp_promised = true {
-            let $x = select * from only $record2;
+        let $sus_ip = if $record.exists() || $scopes.isp_promised = true {
+            let $x = select * from only $record;
             let $passed = <float> ($now - $x.last_update).millis() / 1000;
             let $sus = math::max([0, $x.sus - $passed]);
             let $sus = math::clamp(0, $sus + $extra_sus * 0.5, 3000);
-            update only $record2 content { sus: $sus, last_update: $now };
+            update only $record content { sus: $sus, last_update: $now };
             $sus
         } else {
-            create only $record2 content {
+            create only $record content {
                 last_update: $now,
                 sus: math::clamp(0, $extra_sus, 3000),
             } return value sus
@@ -342,6 +342,8 @@ define function fn::mindustry_login($uuid: string, $usid: string, $ip: string, $
 };
 
 update only object:schema_version set value = 1;
+
+let $graylist_settings = select * from object:graylist;
 
 return none;
 commit;

@@ -6,6 +6,7 @@ import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.ObjectMap
+import arc.struct.Seq
 import arc.util.Log
 import arc.util.Time
 import buj.tl.Tl
@@ -321,6 +322,11 @@ object CorePlugin {
                 currentGlobalVote!!.updateStatus(SendMessage.One(it.player))
             if (teamVotes[it.player.team().id] != null)
                 teamVotes[it.player.team().id]!!.updateStatus(SendMessage.One(it.player))
+
+            Call.menu(it.player.con, Int.MAX_VALUE,
+                Tl.fmt(it.player).done("{generic.welcome-message-title}"),
+                Tl.fmt(it.player).done("{generic.welcome-message}"),
+                arrayOf(arrayOf(Tl.fmt(it.player).done("{generic.close}"))))
         }
 
         on<ServersRefresh> { serverInfo()?.let { info -> RabbitMQ.reply(it, info) } }
