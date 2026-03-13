@@ -521,7 +521,12 @@ object Events {
                 }
                 if (cls.annotations.any{ it.annotationClass == NetworkEvent::class })
                     RabbitMQ.recv(cls as Class<*>) {
-                        arc.Events.fire(it)
+                        try {
+                            arc.Events.fire(it)
+                        } catch (why: Exception) {
+                            Log.error("Failure processing event", why)
+                            throw why
+                        }
                     }
                 val array = Array<Seq<EventContainer>?>(Priority.entries.size) { null }
                 eventHandlers.put(cls, array)
