@@ -104,7 +104,6 @@ data class VotekickedInfo(
 )
 
 internal object DatabaseScripts {
-    val initScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/init.surrealql"))
     val liveScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/live.surrealql"))
     val loaduserScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
     val setkeyScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
@@ -182,11 +181,6 @@ object Database {
             }
 
             try {
-                if (SharedConfig.i.initDb) {
-                    driver!!.query(Query(DatabaseScripts.initScript)).await().ok()
-                    Log.info("Initialized successfully")
-                } else Log.info("Skipping database initialization")
-
                 val liveQueries = driver!!.query(Query(DatabaseScripts.liveScript)
                     .x("server_name", Config.i.serverName)).await().ok()
 
