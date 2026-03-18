@@ -33,10 +33,8 @@ import mindurka.coreplugin.commands.registerCommand
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerInfo
-import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.messages.ServersRefresh
 import mindurka.coreplugin.votes.Vote
-import mindurka.coreplugin.votes.VoteFail
 import mindurka.ui.handleUiEvent
 import mindurka.util.ModifyWorld
 import mindurka.util.SendMessage
@@ -50,19 +48,11 @@ import mindustry.game.EventType
 import mindustry.game.Team
 import mindustry.gen.Call
 import mindustry.gen.Groups
-import mindustry.gen.Icon
 import mindustry.gen.Player
 import mindustry.gen.SetTileCallPacket
 import mindustry.net.Administration
-import net.buj.surreal.Query
-import java.util.Arrays
-import java.util.Locale
-import java.util.Locale.getDefault
-import kotlin.math.ceil
-import kotlin.math.roundToInt
 import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
-import java.util.WeakHashMap
 import kotlin.math.min
 
 object CorePlugin {
@@ -109,6 +99,11 @@ object CorePlugin {
     @JvmField val protocol: Protocol
     @JvmField var currentGlobalVote: Vote? = null
     @JvmField val teamVotes = IntMap<Vote>()
+    @JvmField val hubServers = Seq<HubServer>()
+
+    class HubServer(val name: String, var ip: String) {
+        var lastRecvd: Long = System.nanoTime()
+    }
 
     private var fakeBlockKind: Block? = null
     private class FakeBlock(
@@ -141,6 +136,28 @@ object CorePlugin {
                 Vars.state.rules.revealedBlocks.addAll(Blocks.heatReactor, Blocks.slagCentrifuge,
                     Blocks.scrapWallHuge, Blocks.scrapWallLarge, Blocks.scrapWallGigantic, Blocks.thruster, Blocks.scrapWall)
             }
+        }
+
+        on<ServerInfo> { msg ->
+            val name = RabbitMQ.sentBy(msg)!!
+            if (msg.gamemode == "Hub") {
+                hubServers.find { it.name == name }
+                    ?.apply {
+                        ip = msg.ip
+                        lastRecvd = System.nanoTime()
+                    }
+                    ?: run {
+                        hubServers.add(HubServer(name, msg.ip))
+                        null
+                    }
+            }
+        }
+        on<ServerDown> { msg ->
+            hubServers.removeAll { it.name == RabbitMQ.sentBy(msg) }
+        }
+        interval(60f) {
+            val time = System.nanoTime()
+            hubServers.removeAll { time - it.lastRecvd > 30_000_000_000 }
         }
 
         on<EventType.WorldLoadEvent>(priority = Priority.Lowest) {
@@ -336,24 +353,6 @@ object CorePlugin {
                 Tl.fmt(it.player).done("{generic.welcome-message-title}"),
                 Tl.fmt(it.player).done("{generic.welcome-message}"),
                 arrayOf(arrayOf(Tl.fmt(it.player).done("{generic.close}"))))
-        }
-
-        on<EventType.PlayerChatEvent> { event ->
-            if (event.message.startsWith("/") || event.message in arrayOf("y", "n")) return@on
-            val msg = ServerMessage(
-                event.message,
-                "${event.player.sessionData.userId}@mindustry",
-                event.player.sessionData.userId,
-                Strings.stripColors(event.player.sessionData.basename),
-                null
-            )
-
-            emit(msg)
-        }
-
-        on<ServerMessage> { event ->
-            val service = event.service.split('@')[1].uppercase(getDefault())
-            Call.sendMessage("[$service | ${event.username}]: ${event.message}")
         }
 
         on<ServersRefresh> { serverInfo()?.let { info -> RabbitMQ.reply(it, info) } }

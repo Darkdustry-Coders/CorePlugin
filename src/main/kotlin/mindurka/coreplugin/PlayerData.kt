@@ -35,12 +35,20 @@ class PlayerData(player: Player) {
         fun ofOrNull(player: Player): PlayerData? = cache[player]
     }
 
+    @JvmField
     val basename = player.coloredName()
+    /** A name set with /nick. Overrides [basename]. */
+    @JvmField
+    var customname: String? = null
+    @JvmField
     val player = WeakReference(player)
 
+    @JvmField
     var mindurkaCompatVersion = 0
+    @JvmField
     var publicKey: PublicKey? = null
 
+    @JvmField
     var keySet = false
 
     var permissionLevel = 0
@@ -69,6 +77,7 @@ class PlayerData(player: Player) {
             field = value
             updateUsername()
         }
+    @JvmField
     var userId: String = defaultString
 
     val usid = player.usid()
@@ -89,6 +98,8 @@ class PlayerData(player: Player) {
         locks.each(RabbitMQ.Lock::release)
         locks.clear()
     }
+
+    suspend fun flush() {}
 }
 
 /**

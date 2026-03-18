@@ -23,6 +23,7 @@ import mindurka.util.UnreachableException
 import mindurka.util.collect
 import mindurka.util.durationToTlString
 import mindurka.util.map
+import mindurka.util.prefixed
 import mindurka.util.random
 import mindurka.util.unreachable
 import mindustry.Vars
@@ -104,21 +105,24 @@ data class VotekickedInfo(
 )
 
 internal object DatabaseScripts {
-    val liveScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/live.surrealql"))
-    val loaduserScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/loaduser.surrealql"))
-    val setkeyScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setkey.surrealql"))
-    val setpermissionlevelScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
+    private val loader = javaClass.classLoader.prefixed("coreplugin")
 
-    val ispsFetchScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_fetch.surrealql"))
-    val ispsUpdateScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/isps_update.surrealql"))
+    val liveScript: String = Streams.copyString(loader.getResourceAsStream("sql/live.surrealql"))
+    val loaduserScript: String = Streams.copyString(loader.getResourceAsStream("sql/loaduser.surrealql"))
+    val setkeyScript: String = Streams.copyString(loader.getResourceAsStream("sql/setkey.surrealql"))
+    val setpermissionlevelScript: String = Streams.copyString(loader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
 
-    val playerFetchScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/player_fetch.surrealql"))
+    val ispsFetchScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_fetch.surrealql"))
+    val ispsUpdateScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_update.surrealql"))
 
-    val votekickScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/votekick.surrealql"))
-    val kickScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/kick.surrealql"))
-    val pardonScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/pardon.surrealql"))
-    val banScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/ban.surrealql"))
-    val unbanScript: String = Streams.copyString(javaClass.classLoader.getResourceAsStream("sql/unban.surrealql"))
+    val playerFetchScript: String = Streams.copyString(loader.getResourceAsStream("sql/player_fetch.surrealql"))
+    val playerSetNick: String = Streams.copyString(loader.getResourceAsStream("sql/player_setnick.surrealql"))
+
+    val votekickScript: String = Streams.copyString(loader.getResourceAsStream("sql/votekick.surrealql"))
+    val kickScript: String = Streams.copyString(loader.getResourceAsStream("sql/kick.surrealql"))
+    val pardonScript: String = Streams.copyString(loader.getResourceAsStream("sql/pardon.surrealql"))
+    val banScript: String = Streams.copyString(loader.getResourceAsStream("sql/ban.surrealql"))
+    val unbanScript: String = Streams.copyString(loader.getResourceAsStream("sql/unban.surrealql"))
 }
 
 object Database {
@@ -405,6 +409,7 @@ object Database {
         session.profileId = query.result.at("id").asString()
         session.keySet = query.result.at("key_set").asBoolean()
         session.shortId = if (query.result.at("short_id").isNull) null else query.result.at("short_id").asLong()
+        session.customname = if (query.result.at("set_name").isNull) null else query.result.at("set_name").asString()
         session.`unsafe$rawSetPermissionLevel`(query.result.at("permission_level").asInteger())
     }
 

@@ -486,6 +486,7 @@ private data class EventContainer (
 @PublicAPI
 object Events {
     private val eventHandlers = ObjectMap<Class<*>, Array<Seq<EventContainer>?>>()
+    private val handlingNetworkEvents = Seq<Class<*>>()
 
     /**
      * Register an event handler.
@@ -519,15 +520,18 @@ object Events {
                         if (cancelled) break
                     }
                 }
-                if (cls.annotations.any{ it.annotationClass == NetworkEvent::class })
-                    RabbitMQ.recv(cls as Class<*>) {
-                        try {
-                            arc.Events.fire(it)
-                        } catch (why: Exception) {
-                            Log.error("Failure processing event", why)
-                            throw why
+                if (cls.annotations.any{ it.annotationClass == NetworkEvent::class }) {
+                    if (handlingNetworkEvents.addUnique(cls)) {
+                        RabbitMQ.recv(cls as Class<*>) {
+                            try {
+                                arc.Events.fire(it)
+                            } catch (why: Exception) {
+                                Log.error("Failure processing event", why)
+                                throw why
+                            }
                         }
                     }
+                }
                 val array = Array<Seq<EventContainer>?>(Priority.entries.size) { null }
                 eventHandlers.put(cls, array)
                 array

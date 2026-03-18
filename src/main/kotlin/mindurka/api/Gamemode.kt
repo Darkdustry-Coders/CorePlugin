@@ -247,6 +247,7 @@ object Gamemode {
     }
     /** Initialize CorePlugin. */
     @JvmStatic
+    @Deprecated("Provide a prefixed ClassLoader instead")
     fun init(cls: Class<*>) {
         init(cls.classLoader)
     }

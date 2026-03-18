@@ -1,0 +1,1 @@
+update only type::record("mindustry_profile", <uuid> $profile) set set_name = $name;

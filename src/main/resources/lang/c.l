@@ -1,13 +1,25 @@
+# Colors
+
+[col]
+
+ok = #26d657
+warn = #fce174
+err = #ec5784
+cmd = #ec5784
+cmdarg = yellow
+mdc = #4c59e0
+sysmsg = #adadad
+
 # Generic
 
 [generic]
 
-close = [#26d657] Close
-cancel = [#EC5784] Cancel
-ok = [#26d657] Ok
+close = [{col.ok}] Close
+cancel = [{col.err}] Cancel
+ok = [{col.ok}] Ok
 server = Mindurka
 discord = https://mindurka.online/discord
-special-settings-error = [#EC5784]Flags on this map are not set correctly:
+special-settings-error = [{col.err}]Flags on this map are not set correctly:
                        =
                        = {errors}
                        =
@@ -19,43 +31,43 @@ welcome-message = [accent]We are in the process of completely rewriting server p
                 : Expect bugs!
 gamemode-uses-special-settings = [accent]Some of this gamemode's features don't work in vanilla.[]
                                =
-                               = Install [#4c59e0]MindurkaCompat[] from mod explorer to gain access to them.
+                               = Install [{col.mdc}]MindurkaCompat[] from mod explorer to gain access to them.
 map-uses-special-settings = [accent]Some of this map's features don't work in vanilla.[]
                           =
-                          = Install [#4c59e0]MindurkaCompat[] from mod explorer to gain access to them.
-can-use-public-key = [accent][#4c59e0]MindurkaCompat[] supports public key authorization.
+                          = Install [{col.mdc}]MindurkaCompat[] from mod explorer to gain access to them.
+can-use-public-key = [accent][{col.mdc}]MindurkaCompat[] supports public key authorization.
                    = Public key authorization is more secure than traditional uuid-based authorization.
                    = To switch to use public key instead of uuid, type [green]/setkey[].
-                   = See [#EC5784]/help setkey[] for more information.
+                   = See [#ec5784]/help setkey[] for more information.
 
 chat = [scarlet][[{player}]: [white]{message}
 chat.team = [[ Team]
 chat.admin = [scarlet][[ Admins]
 
-vote.global = [#adadad]Type [#26d657]y[] or [#EC5784]n[] to vote. {if {votes} < 0 then [#EC5784] else [#26d657]}{votes}/{threshold}
-vote.team = [#adadad]Type [#26d657]/vote y[] or [#EC5784]/vote n[] to vote. {if {votes} < 0 then [#EC5784] else [#26d657]}{votes}/{threshold}
-vote.left = [#adadad]{player} has left the game and their vote was removed.
+vote.global = [{col.sysmsg}]Type [{col.ok}]y[] or [{col.err}]n[] to vote. {if {votes} < 0 then [{col.err}] else [{col.ok}]}{votes}/{threshold}
+vote.team = [{col.sysmsg}]Type [{col.ok}]/vote y[] or [{col.err}]/vote n[] to vote. {if {votes} < 0 then [{col.err}] else [{col.ok}]}{votes}/{threshold}
+vote.left = [{col.sysmsg}]{player} has left the game and their vote was removed.
 
-vote.global.cancelled = [#EC5784]⚠ Vote was cancelled by admin {admin}.
-vote.team.cancelled = [#EC5784]⚠ Team vote was cancelled by admin {admin}.
+vote.global.cancelled = [{col.err}]⚠ Vote was cancelled by admin {admin}.
+vote.team.cancelled = [{col.err}]⚠ Team vote was cancelled by admin {admin}.
 
-admin.ban = [#EC5784]⚠ {target} was banned by {admin}.
-admin.kick = [#EC5784]⚠ {target} was kicked by {admin}.
-admin.wave = [#EC5784]⚠ A wave was skipped by admin {admin}.
+admin.ban = [{col.err}]⚠ {target} was banned by {admin}.
+admin.kick = [{col.err}]⚠ {target} was kicked by {admin}.
+admin.wave = [{col.ok}]A wave was skipped by admin {admin}.
 
 [generic.checks]
-same-vote = [#EC5784] Your vote has not changed.
-vote-filter = [#EC5784] You cannot vote in this poll.
-cooldown = [#EC5784] Slow down! This command is on cooldown.
-vote = [#EC5784] There's already a vote ongoing.
-unknown-command = [#EC5784] Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check [yellow]/help[].) else (Did you mean [yellow]/{suggestion}[]?)}
+same-vote = [{col.err}] Your vote has not changed.
+vote-filter = [{col.err}] You cannot vote in this poll.
+cooldown = [{col.err}] Slow down! This command is on cooldown.
+vote = [{col.err}] There's already a vote ongoing.
+unknown-command = [{col.err}] Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check [yellow]/help[].) else (Did you mean [yellow]/{suggestion}[]?)}
 unknown-command-console =  Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check /help) else (Did you mean /{suggestion}?)}
-invalid-arguments = [#EC5784] {cause}. Try [yellow]/help {command}[]!
+invalid-arguments = [{col.err}] {cause}. Try [yellow]/help {command}[]!
 invalid-arguments-console = {cause}. Usage: {command} {params}
-permission = [#EC5784] You don't have permission to execute this command.
-admin-action-permission = [#EC5784] You don't have permission to perform this action.
-admin-action-no-target = [#EC5784] You must specify a target to perform an action.
-admin-action-target-admin = [#EC5784] You cannot perform this action against another admin.
+permission = [{col.err}] You don't have permission to execute this command.
+admin-action-permission = [{col.err}] You don't have permission to perform this action.
+admin-action-no-target = [{col.err}] You must specify a target to perform an action.
+admin-action-target-admin = [{col.err}] You cannot perform this action against another admin.
 
 [generic.command]
 missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
@@ -84,42 +96,42 @@ invalid-duration = Not a valid duration for parameter [yellow]'{commands.{comman
 invalid-duration-console = Not a valid duration for parameter {param}
 
 [generic.kick]
-merged = [#EC5784]This account was merged into another and thus no longer accessible.
+merged = [{col.err}]This account was merged into another and thus no longer accessible.
        =
        = [accent]Merge action is irreversible. For more information see the FAQ section in [cyan]#help[] channel on our
        : [#4c59e0]Discord Server[].
        = [cyan]{generic.discord}
-disconnected = [#EC5784]This account is no longer assigned to any users.
+disconnected = [{col.err}]This account is no longer assigned to any users.
              =
              = [accent]If you'd like to reconnect it, create a post in [cyan]#help[] channel on our [royal]Discord Server[].
              = [cyan]{generic.discord}
-key-validation-failure-mdc = [#EC5784]Key validation failure.
+key-validation-failure-mdc = [{col.err}]Key validation failure.
                            =
                            = [accent]The key on your device does not match the key on the server.
                            = Make sure you have imported a save from your old device. If you don't have access to
                            : it, create a post in [cyan]#help[] channel on our [#4c59e0]Discord Server[].
                            = [cyan]{generic.discord}
-key-validation-failure-no-mdc = [#EC5784]Key validation failure.
+key-validation-failure-no-mdc = [{col.err}]Key validation failure.
                               =
                               = [accent]This account is protected. In order to log in, you must have
                               : [#4c59e0]MindurkaCompat[] installed. If you have any questions, create a port in
                               : [cyan]#help[] channel on our [#4c59e0]Discord Server[].
                               = [cyan]{generic.discord}
-disabled = [#EC5784]This account was disabled.
+disabled = [{col.err}]This account was disabled.
          =
          = [accent]If you'd like to appeal this decision, create a post in [cyan]#appeals[] channel on our [#4c59e0]Discord Server[].
          = [cyan]{generic.discord}
-shared = [#EC5784]This account was found to be shared between several players and thus no longer accessible.
+shared = [{col.err}]This account was found to be shared between several players and thus no longer accessible.
        =
        = [accent]This decision cannot be appealed. For more information see the FAQ section in [cyan]#help[] channel on our
        : [#4c59e0]Discord Server[].
        = [cyan]{generic.discord}
-another-location = [#EC5784]You are already logged in from another location.
+another-location = [{col.err}]You are already logged in from another location.
          =
          = [accent]If you believe this is a mistake, create a post in [cyan]#help[] channel on our
          : [#4c59e0]Discord Server[].
          = [cyan]{generic.discord}
-ban = [#EC5784]You were banned from this server.
+ban = [{col.err}]You were banned from this server.
     =
     = [accent]Ban ID: [yellow]{id}
     = [accent]Admin: {admin}
@@ -129,7 +141,7 @@ ban = [#EC5784]You were banned from this server.
     = [accent]If you believe there was a mistake, create a post in [cyan]#appeals[] channel on our
     : [#4c59e0]Discord Server[].
     = [cyan]{generic.discord}
-kick = [#EC5784]You were kicked from this server.
+kick = [{col.err}]You were kicked from this server.
      =
      = [accent]Kick ID: [yellow]{id}
      = [accent]Admin: {admin}
@@ -139,7 +151,7 @@ kick = [#EC5784]You were kicked from this server.
      = [accent]If you believe there was a mistake, create a post in [cyan]#appeals[] channel on our
      : [#4c59e0]Discord Server[].
      = [cyan]{generic.discord}
-votekick = [#EC5784]You were votekicked from this server.
+votekick = [{col.err}]You were votekicked from this server.
          =
          = [accent]Votekick ID: [yellow]{id}
          = [accent]Initiator: {initiator}
@@ -222,9 +234,9 @@ man.message = [accent]/{command} [white]{commands.{command}.params}
             = {commands.{command}.manpage}
 command = [accent]/{command} [white]{commands.{command}.params}
         = [lightgray]{commands.{command}.description}
-invalid-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
-negative-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
-unknown-command = [#EC5784] [yellow]/{command} [#EC5784]is not a known command. I'm a teapot.
+invalid-page = [{col.err}] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [{col.err}] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
+unknown-command = [{col.err}] [yellow]/{command} [{col.err}]is not a known command. I'm a teapot.
 
 [commands.maps]
 
@@ -242,8 +254,8 @@ title-page =  List of available maps
 man.title =  Command maps
 map = [orange]{id}. [accent]{map} [white]by [accent]{author}
     = [white]{width}x{height}
-invalid-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
-negative-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
+invalid-page = [{col.err}] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [{col.err}] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
 
 [commands.setkey]
 
@@ -269,14 +281,14 @@ params =
 title = Confirmation dialog
 message = [accent]Do you want to enable public key authorization?
         =
-        = [#EC5784]This action is irreversible.
+        = [{col.err}]This action is irreversible.
 
 ok = [#26d657] Successfully enabled public key authorization.
-error = [#EC5784] Already enabled.
+error = [{col.err}] Already enabled.
 admin-protection = [#EC5784] You must log in before enabling key authorization on an admin account.
-no-mdc = [#EC5784] No public key was shared.
+no-mdc = [{col.err}] No public key was shared.
        =
-       = Install or enable [#4c59e0]MindurkaCompat[] and repeat the command.
+       = Install or enable [{col.mdc}]MindurkaCompat[] and repeat the command.
 
 [commands.vote]
 
@@ -297,11 +309,11 @@ manpage = Start a vote for map change.
 params = [map]
 params.map = map
 
-vote.update = [#adadad]{player} wants to change the current map to [yellow]{map}[].
-vote.for = [#adadad]{player} voted [#26d657]for[] changing the map to [yellow]{map}[].
-vote.against = [#adadad]{player} voted [#EC5784]against[] changing the map to [yellow]{map}[].
-vote.commit = [#26d657]Changing map to [yellow]{map}[].
-vote.cancel = [#EC5784]Not enough votes to change the current map.
+vote.update = [{col.sysmsg}]{player} wants to change the current map to [yellow]{map}[].
+vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] changing the map to [yellow]{map}[].
+vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] changing the map to [yellow]{map}[].
+vote.commit = [{col.ok}]Changing map to [yellow]{map}[].
+vote.cancel = [{col.err}]Not enough votes to change the current map.
 
 [commands.vnm]
 
@@ -312,11 +324,11 @@ manpage = Start a vote for next map.
 params = [map]
 params.map = map
 
-vote.update = [#adadad]{player} wants to play [yellow]{map}[] next.
-vote.for = [#adadad]{player} voted [#26d657]for[] playing [yellow]{map}[] next.
-vote.against = [#adadad]{player} voted [#EC5784]against[] playing [yellow]{map}[] next.
-vote.commit = [#26d657]Next map is now set to [yellow]{map}[].
-vote.cancel = [#EC5784]Not enough votes to set the next map.
+vote.update = [{col.sysmsg}]{player} wants to play [yellow]{map}[] next.
+vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] playing [yellow]{map}[] next.
+vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] playing [yellow]{map}[] next.
+vote.commit = [{col.ok}]Next map is now set to [yellow]{map}[].
+vote.cancel = [{col.err}]Not enough votes to set the next map.
 
 [commands.votekick]
 
@@ -331,19 +343,19 @@ params = <player> <reason..>
 params.player = player
 params.reason = reason
 
-vote.update = [#adadad]{player} wants to kick {target} for [yellow]{reason}[].
-vote.for = [#adadad]{player} voted [#26d657]for[] kicking {target}.
-vote.against = [#adadad]{player} voted [#EC5784]against[] kicking {target}.
-vote.commit = [#26d657]Kicked player {player} for [yellow]{reason}[] for [yellow]30 minutes[].
-vote.cancel = [#EC5784]Not enough votes to kick {player}.
+vote.update = [{col.sysmsg}]{player} wants to kick {target} for [yellow]{reason}[].
+vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] kicking {target}.
+vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] kicking {target}.
+vote.commit = [{col.ok}]Kicked player {player} for [yellow]{reason}[] for [yellow]30 minutes[].
+vote.cancel = [{col.err}]Not enough votes to kick {player}.
 
-errors.self = [#EC5784] You cannot kick yourself!
+errors.self = [{col.err}] You cannot kick yourself!
 errors.self.special0 = [#49C9C7]u[#AE58C8]w[#49C9C7]u
-errors.self.special1 = [#EC5784] Not here, thanks.
-errors.self.special2 = [#EC5784] Try specifying somebody else!
-errors.admin = [#EC5784] Admins are immune to [yellow]/votekick[].
-errors.players = [#EC5784] There are not enough players to start a votekick.
-errors.team = [#EC5784] You cannot start a votekick for a player from another team.
+errors.self.special1 = [{col.err}] Not here, thanks.
+errors.self.special2 = [{col.err}] Try specifying somebody else!
+errors.admin = [{col.err}] Admins are immune to [yellow]/votekick[].
+errors.players = [{col.err}] There are not enough players to start a votekick.
+errors.team = [{col.err}] You cannot start a votekick for a player from another team.
 
 [commands.sync]
 
@@ -431,5 +443,31 @@ manpage = Run suggested command.
         : A command will only be stored if there was no command matching the
         : input found. The command will be executed with previously provided arguments.
 
-no-command-stored = [#EC5784] Unfortunately for you, there was no command.
-whoops = [#fce174]⚠ Whoops! There is no command.
+no-command-stored = [{col.err}] Unfortunately for you, there was no command.
+whoops = [{col.warn}]⚠ Whoops! There is no command.
+
+[commands.nick]
+
+description = Set your display name.
+params = [name]
+manpage = Set your display name.
+        =
+        = Running the command on its own will reset your name.
+        =
+        = Set name will be displayed even if you change it in Mindustry's settings.
+
+errors.too-long = [{col.err}] Your name is too long.
+errors.colors-too-long = [{col.err}] Your name has too many colors.
+warns.same-name = [{col.warn}] You already have this name set.
+warns.nothing-reset = [{col.warn}] There is no name to remove.
+
+[commands.hub]
+
+description = Connect to hub server.
+params =
+manpage = Attempt to connect to the hub server.
+        =
+        = Server will automatically choose the hub server that is on the same version as
+        : the server you're currently on.
+
+errors.hub-down = [{col.err}]⚠ Hub server is offline.

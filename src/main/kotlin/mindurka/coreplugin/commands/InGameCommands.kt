@@ -4,6 +4,7 @@ import arc.math.Mathf
 import arc.struct.Seq
 import arc.util.CommandHandler
 import arc.util.Log
+import arc.util.Strings
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import mindurka.annotations.Command
@@ -18,7 +19,9 @@ import mindurka.build.CommandType
 import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.carriedLastFailedCommand
 import mindurka.coreplugin.database.Database
+import mindurka.coreplugin.database.DatabaseScripts
 import mindurka.coreplugin.database.PermLevels
+import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.hasMindurkaCompat
 import mindurka.coreplugin.lastFailedCommand
 import mindurka.coreplugin.sessionData
@@ -27,6 +30,7 @@ import mindurka.coreplugin.votes.NextMapVote
 import mindurka.coreplugin.votes.RtvVote
 import mindurka.ui.openMenu
 import mindurka.util.Async
+import mindurka.util.AsyncCall
 import mindurka.util.K
 import mindurka.util.SendMessage
 import mindurka.util.UnreachableException
@@ -45,6 +49,7 @@ import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
+import net.buj.surreal.Query
 import kotlin.collections.iterator
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -358,23 +363,6 @@ private fun vnm(caller: Player, @Rest map: MapHandle?) {
 }
 
 @Command
-@RequiresPermission(PermLevels.moderator)
-private fun a(caller: Player, @Rest message: String) {
-    for (player in Groups.player) {
-        if (player.permissionLevel < 100) continue
-        Tl.send(player).put("player", caller.name).put("message", message).done("{generic.chat.admin} {generic.chat}")
-    }
-}
-
-@Command
-private fun t(caller: Player, @Rest message: String) {
-    for (player in Groups.player) {
-        if (player.team() !== caller.team()) continue
-        Tl.send(player).put("player", caller.name).put("message", message).done("[#${caller.team().color}]{generic.chat.team}[] {generic.chat}")
-    }
-}
-
-@Command
 @RequiresPermission(PermLevels.admin)
 private fun artv(caller: Player, @Rest map: MapHandle?) {
     val map = map ?: Gamemode.maps.next()
@@ -408,4 +396,56 @@ private fun votekick(caller: Player, player: Player, @Rest reason: String) {
         return
     }
     caller.setCooldown("/votekick", 60f)
+}
+
+@Command
+private fun nick(caller: Player, @Rest name: String?) = Async.run {
+    if (caller.checkOnCooldown("/nick")) return@run
+
+    val data = caller.sessionData
+
+    if (name != null) {
+        if (Strings.stripColors(name).length > 32) {
+            Tl.send(caller).done("{commands.nick.errors.too-long}")
+            return@run
+        }
+        if (name.length > 128) {
+            Tl.send(caller).done("{commands.nick.errors.colors-too-long}")
+            return@run
+        }
+        if (name == data.customname) {
+            Tl.send(caller).done("{commands.nick.warns.same-name}")
+            return@run
+        }
+    } else {
+        if (data.customname == null) {
+            Tl.send(caller).done("{commands.nick.warns.nothing-reset}")
+            return@run
+        }
+    }
+
+    data.customname = name
+    data.updateUsername()
+    Database.abstractQuery(Query(DatabaseScripts.playerSetNick)
+        .x("profile", data.profileId)
+        .apply { if (name != null) x("name", name) }).ok()
+
+    caller.setCooldown("/nick", 3f)
+}
+
+@Command
+private fun hub(caller: Player) = Async.run {
+    if (caller.checkOnCooldown("/hub")) return@run
+
+    for (server in CorePlugin.hubServers.copy()) {
+        val i = server.ip.indexOf(':')
+        val host = server.ip.substring(0, i)
+        val port = server.ip.substring(i + 1).toInt()
+
+        if (AsyncCall.connect(caller, host, port)) return@run
+    }
+
+    Tl.send(caller).done("{commands.hub.errors.hub-down}")
+
+    caller.setCooldown("/hub", 10f)
 }

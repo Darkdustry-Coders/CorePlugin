@@ -1,8 +1,13 @@
 import groovy.json.JsonSlurper
 
+import java.lang.StringBuilder
+import java.nio.charset.StandardCharsets
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.Paths
+import java.nio.file.attribute.BasicFileAttributes
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -79,6 +84,14 @@ dependencies {
     ksp project(':processor')
 }
 
+sourceSets {
+    main {
+        kotlin {
+            srcDir "build/generated/buildtime"
+        }
+    }
+}
+
 jar {
     from ({ configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }) {
         exclude 'doc/**'
@@ -111,6 +124,48 @@ kotlin {
 allprojects {
     repositories {
         mavenCentral()
+    }
+}
+
+tasks.named("compileKotlin") {
+    dependsOn "generateExtras"
+}
+
+tasks.register("generateExtras") {
+    def rpath = rootDir
+
+    doLast {
+        def path = rpath.toPath().resolve("build/generated/buildtime")
+        if (Files.exists(path)) Files.walkFileTree(path, new SimpleFileVisitor<java.nio.file.Path>() {
+            @Override
+            FileVisitResult visitFile(java.nio.file.Path file, BasicFileAttributes attrs) {
+                Files.delete(file)
+                return FileVisitResult.CONTINUE
+            }
+
+            @Override
+            FileVisitResult postVisitDirectory(java.nio.file.Path file, IOException exc) {
+                Files.delete(file)
+                return FileVisitResult.CONTINUE
+            }
+        })
+        Files.createDirectories(path.resolve("mindurka/coreplugin/"))
+
+        def builder = new StringBuilder()
+        builder.append("package mindurka.coreplugin\n\n")
+
+        builder.append("/** Compile time info passed to CorePlugin. */\n")
+        builder.append("object Build {\n")
+        builder.append("    /** Commit hash of CorePlugin. */\n")
+        builder.append("    @JvmField\n")
+        builder.append("    val gitCommit = \"${"git rev-parse HEAD".execute().inputReader().readLine().trim()}\"\n")
+        builder.append("\n")
+        builder.append("    /** Whether CorePlugin is being built as a native image. */\n")
+        builder.append("    @JvmField\n")
+        builder.append("    val nativeImage = false\n")
+        builder.append("}\n")
+
+        Files.write(path.resolve("mindurka/coreplugin/Build.kt"), builder.toString().getBytes(StandardCharsets.UTF_8))
     }
 }
 
