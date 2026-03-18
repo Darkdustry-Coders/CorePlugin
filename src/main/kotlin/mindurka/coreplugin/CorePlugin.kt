@@ -8,6 +8,7 @@ import arc.struct.IntMap
 import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.Log
+import arc.util.Strings
 import arc.util.Time
 import buj.tl.Tl
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -32,6 +33,7 @@ import mindurka.coreplugin.commands.registerCommand
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerInfo
+import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.messages.ServersRefresh
 import mindurka.coreplugin.votes.Vote
 import mindurka.coreplugin.votes.VoteFail
@@ -48,9 +50,16 @@ import mindustry.game.EventType
 import mindustry.game.Team
 import mindustry.gen.Call
 import mindustry.gen.Groups
+import mindustry.gen.Icon
 import mindustry.gen.Player
 import mindustry.gen.SetTileCallPacket
 import mindustry.net.Administration
+import net.buj.surreal.Query
+import java.util.Arrays
+import java.util.Locale
+import java.util.Locale.getDefault
+import kotlin.math.ceil
+import kotlin.math.roundToInt
 import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
 import java.util.WeakHashMap
@@ -327,6 +336,24 @@ object CorePlugin {
                 Tl.fmt(it.player).done("{generic.welcome-message-title}"),
                 Tl.fmt(it.player).done("{generic.welcome-message}"),
                 arrayOf(arrayOf(Tl.fmt(it.player).done("{generic.close}"))))
+        }
+
+        on<EventType.PlayerChatEvent> { event ->
+            if (event.message.startsWith("/") || event.message in arrayOf("y", "n")) return@on
+            val msg = ServerMessage(
+                event.message,
+                "${event.player.sessionData.userId}@mindustry",
+                event.player.sessionData.userId,
+                Strings.stripColors(event.player.sessionData.basename),
+                null
+            )
+
+            emit(msg)
+        }
+
+        on<ServerMessage> { event ->
+            val service = event.service.split('@')[1].uppercase(getDefault())
+            Call.sendMessage("[$service | ${event.username}]: ${event.message}")
         }
 
         on<ServersRefresh> { serverInfo()?.let { info -> RabbitMQ.reply(it, info) } }
