@@ -7,6 +7,7 @@ import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.Seq
 import arc.util.Log
+import arc.util.Strings
 import arc.util.Time
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
@@ -40,6 +41,7 @@ import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerInfo
+import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.messages.ServersRefresh
 import mindurka.coreplugin.votes.KickVote
 import mindurka.coreplugin.votes.NextMapVote
@@ -71,10 +73,13 @@ import mindustry.game.EventType
 import mindustry.game.Team
 import mindustry.gen.Call
 import mindustry.gen.Groups
+import mindustry.gen.Icon
 import mindustry.gen.Player
 import mindustry.net.Administration
 import net.buj.surreal.Query
 import java.util.Arrays
+import java.util.Locale
+import java.util.Locale.getDefault
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
@@ -170,6 +175,24 @@ object CorePlugin {
                 currentGlobalVote!!.updateStatus(SendMessage.One(it.player))
             if (teamVotes[it.player.team().id] != null)
                 teamVotes[it.player.team().id]!!.updateStatus(SendMessage.One(it.player))
+        }
+
+        on<EventType.PlayerChatEvent> { event ->
+            if (event.message.startsWith("/") || event.message in arrayOf("y", "n")) return@on
+            val msg = ServerMessage(
+                event.message,
+                "${event.player.sessionData.userId}@mindustry",
+                event.player.sessionData.userId,
+                Strings.stripColors(event.player.sessionData.basename),
+                null
+            )
+
+            emit(msg)
+        }
+
+        on<ServerMessage> { event ->
+            val service = event.service.split('@')[1].uppercase(getDefault())
+            Call.sendMessage("[$service | ${event.username}]: ${event.message}")
         }
 
         on<ServersRefresh> { serverInfo()?.let { info -> RabbitMQ.reply(it, info) } }

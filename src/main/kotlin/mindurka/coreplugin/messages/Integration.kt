@@ -11,7 +11,7 @@ data class ServerMessage (
     /** Address of the server. */
     val service: String,
     /** Shared user ID. */
-    val user: Int?,
+    val user: String?,
     /** Displayed username. */
     val username: String?,
     /** Displayed avatar. */
