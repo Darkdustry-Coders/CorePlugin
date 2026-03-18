@@ -17,6 +17,8 @@ import java.io.PrintWriter
 import java.util.UUID
 import java.util.Scanner
 import java.io.File
+import kotlin.reflect.KType
+import kotlin.reflect.javaType
 
 interface Note
 
@@ -460,6 +462,27 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
 
                 classFile.println("class $commandClassName: mindurka.build.CommandImpl() {")
                 classFile.enter()
+
+                classFile.print("override val constraints: Array<out mindurka.annotations.BaseCommandConstraint> = arrayOf(")
+
+                run {
+                    var i = 0
+                    sym.annotations
+                        .find { it.annotationType.resolve().declaration.qualifiedName!!.asString() == EnabledIf::class.java.canonicalName }
+                        ?.let { it.arguments.forEach {
+                            val value = it.value
+                            if (value is KSType) {
+                                if (i != 0) classFile.print(", ")
+                                classFile.print(value.declaration.packageName.asString())
+                                classFile.print(".")
+                                classFile.print(value.declaration.simpleName.getShortName())
+                                classFile.print(".obtain()")
+                                i += 1
+                            }
+                        } } ?: 0
+                }
+
+                classFile.println(")")
 
                 classFile.println("override val doc: String = ${if (sym.docString == null) "\"I'm a goofy goober error\"" else "\"${escapeString(sym.docString!!)}\""}")
 

@@ -223,9 +223,19 @@ object Gamemode {
      */
     @JvmField
     var restoreTeams = true
-    /** Enable /rtv. */
+    /** Enable /rtv and /vnm. */
     @JvmField
     var enableRtv = true
+    /** Enable /vnw. */
+    @JvmField
+    var enableVnw = false
+    /**
+     * Enable /surrender.
+     *
+     * This only takes effect if the server is launched in pvp mode.
+     */
+    @JvmField
+    var enableSurrender = true
 
     @JvmField
     var defaultPatch: Prov<String>? = null

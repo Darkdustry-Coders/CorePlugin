@@ -343,6 +343,7 @@ errors.self.special1 = [#EC5784] Not here, thanks.
 errors.self.special2 = [#EC5784] Try specifying somebody else!
 errors.admin = [#EC5784] Admins are immune to [yellow]/votekick[].
 errors.players = [#EC5784] There are not enough players to start a votekick.
+errors.team = [#EC5784] You cannot start a votekick for a player from another team.
 
 [commands.sync]
 

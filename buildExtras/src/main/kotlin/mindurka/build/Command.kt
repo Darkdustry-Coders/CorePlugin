@@ -1,5 +1,7 @@
 package mindurka.build
 
+import mindurka.annotations.BaseCommandConstraint
+
 enum class CommandType {
     /** A console command. */
     Console,
@@ -43,6 +45,8 @@ data class StringPtr (
 }
 
 abstract class CommandImpl {
+    /** Constraints to limit command visibility. */
+    abstract val constraints: Array<out BaseCommandConstraint>
     /** Docstring to use in console. */
     abstract val doc: String
     /** Usage to display in console. */

@@ -2,6 +2,13 @@ package mindurka.annotations
 import kotlin.reflect.KClass
 
 /**
+ * A blank interface for command constrants.
+ *
+ * Should not be used directly.
+ */
+interface BaseCommandConstraint {}
+
+/**
  * A command that can be executed via console.
  *
  * This annotation can only be applied to static functions.
@@ -31,6 +38,12 @@ annotation class Command(val value: String = "<infer>")
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class Maybe
+/**
+ * Add a constraint to only allow execution of a command if that constraint is true.
+ */
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class EnabledIf(vararg val value: KClass<out BaseCommandConstraint>)
 /**
  * Collect the rest of the input.
  *

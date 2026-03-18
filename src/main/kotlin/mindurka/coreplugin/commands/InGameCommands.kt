@@ -7,6 +7,7 @@ import arc.util.Log
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import mindurka.annotations.Command
+import mindurka.annotations.EnabledIf
 import mindurka.annotations.Hidden
 import mindurka.annotations.RequiresPermission
 import mindurka.annotations.Rest
@@ -17,6 +18,7 @@ import mindurka.build.CommandType
 import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.carriedLastFailedCommand
 import mindurka.coreplugin.database.Database
+import mindurka.coreplugin.database.PermLevels
 import mindurka.coreplugin.hasMindurkaCompat
 import mindurka.coreplugin.lastFailedCommand
 import mindurka.coreplugin.sessionData
@@ -328,6 +330,7 @@ private fun vote(caller: Player, vote: String) {
 }
 
 @Command
+@EnabledIf(RtvEnabled::class)
 private fun rtv(caller: Player, @Rest map: MapHandle?) {
     if (caller.checkOnCooldown("/rtv")) return
 
@@ -341,6 +344,7 @@ private fun rtv(caller: Player, @Rest map: MapHandle?) {
 }
 
 @Command
+@EnabledIf(RtvEnabled::class)
 private fun vnm(caller: Player, @Rest map: MapHandle?) {
     if (caller.checkOnCooldown("/vnm")) return
 
@@ -354,7 +358,7 @@ private fun vnm(caller: Player, @Rest map: MapHandle?) {
 }
 
 @Command
-@RequiresPermission(100)
+@RequiresPermission(PermLevels.moderator)
 private fun a(caller: Player, @Rest message: String) {
     for (player in Groups.player) {
         if (player.permissionLevel < 100) continue
@@ -371,7 +375,7 @@ private fun t(caller: Player, @Rest message: String) {
 }
 
 @Command
-@RequiresPermission(200)
+@RequiresPermission(PermLevels.admin)
 private fun artv(caller: Player, @Rest map: MapHandle?) {
     val map = map ?: Gamemode.maps.next()
     Consts.serverControl.play(false, map::rtv)
@@ -381,6 +385,10 @@ private fun artv(caller: Player, @Rest map: MapHandle?) {
 private fun votekick(caller: Player, player: Player, @Rest reason: String) {
     if (caller.checkOnCooldown("/votekick")) return
 
+    if (player.team() !== caller.team()) {
+        Tl.send(caller).done("{commands.votekick.errors.team}")
+        return
+    }
     if (player === caller) {
         Tl.send(caller).done(if (Mathf.random() < 0.8f) "{commands.votekick.errors.self}"
         else "{commands.votekick.errors.self.special${Mathf.random(0, 2)}}")
@@ -388,6 +396,10 @@ private fun votekick(caller: Player, player: Player, @Rest reason: String) {
     }
     if (player.admin) {
         Tl.send(caller).done("{commands.votekick.errors.admin}")
+        return
+    }
+    if (player.team().data().players.size < 3) {
+        Tl.send(caller).done("{commands.votekick.errors.players}")
         return
     }
 
