@@ -2,7 +2,6 @@ package buj.tl
 
 import arc.struct.ObjectMap
 import arc.struct.Seq
-import arc.util.Log
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import java.io.IOException
@@ -457,6 +456,7 @@ private fun parseExpr(script: String, idx: Array<Int>): Script {
     var tempStr = StringBuilder()
     val depth = Seq<Char>()
     var backspace = false
+    var terminateOnCr = true
     idx[0]--
     while (++idx[0] < script.length) {
         if (backspace) {
@@ -477,14 +477,21 @@ private fun parseExpr(script: String, idx: Array<Int>): Script {
             ')' -> {
                 if (depth.isEmpty) break
                 if (depth.pop() != ')') throw RuntimeException("mismatched bracket. expected ')'")
-                if (depth.isEmpty) break
+                if (depth.isEmpty && terminateOnCr) {
+                    idx[0]++
+                    break
+                }
             }
-            '{' -> depth.add('}')
+            '{' -> {
+                if (depth.isEmpty) terminateOnCr = false
+                depth.add('}')
+            }
             '}' -> {
                 if (depth.isEmpty) break
                 if (depth.pop() != '}') throw RuntimeException("mismatched bracket. expected '}'")
             }
         }
+        if (depth.isEmpty) terminateOnCr = false
         if (!depth.isEmpty || !script[idx[0]].isWhitespace() && script[idx[0]] !in "<>=&~!")
                 tempStr.append(script[idx[0]])
         else break

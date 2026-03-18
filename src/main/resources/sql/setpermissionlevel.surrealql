@@ -1,1 +1,3 @@
-update mindustry_profile set permission_level = $permissionLevel where record::id(id) = type::uuid($id);
+let $x = select value user from only type::record("mindustry_profile", <uuid> $id);
+update $x set mindustry_permission_level = $permissionLevel;
+return null;

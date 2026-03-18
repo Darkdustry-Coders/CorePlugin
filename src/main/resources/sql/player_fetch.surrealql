@@ -1,0 +1,1 @@
+return fn::mindustry_fetch_user($search, $check_uuid);

@@ -3,6 +3,7 @@ package mindurka.api
 import arc.func.Cons
 import arc.struct.ObjectMap
 import arc.struct.Seq
+import kotlinx.coroutines.future.await
 import mindurka.annotations.PublicAPI
 import mindurka.annotations.NetworkEvent
 import mindurka.coreplugin.RabbitMQ
@@ -19,6 +20,7 @@ import mindustry.gen.Player
 import mindustry.gen.Unit
 import mindustry.world.blocks.environment.Floor
 import org.jline.utils.Log
+import java.util.concurrent.CompletableFuture
 
 /**
  * A player is having their team assigned.
@@ -191,6 +193,8 @@ interface Cancellable {
     fun cancel()
 }
 
+private var lastCancelId = 0
+
 /**
  * A cancel callback.
  *
@@ -198,6 +202,8 @@ interface Cancellable {
  */
 @PublicAPI
 class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
+    private var id = lastCancelId++
+
     companion object {
         private var bigCacheWarning = false
         private val cache = Seq<Cancel>()
@@ -213,6 +219,8 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
 
             val cancel = cache.pop()
             cancel.callback = callback
+            cancel.id = lastCancelId++
+            Log.debug{"Created cancel ${cancel.id}"}
 
             return cancel
         }
@@ -240,6 +248,10 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
     private var callback: Runnable? = callback
     private val alsoCancel = Seq<Cancellable>()
     private val backwardsBound = Seq<Cancellable>()
+
+    init {
+        Log.debug{"Created cancel $id"}
+    }
 
     @OptIn(CancellableInternals::class)
     override fun alsoCancel(other: Cancellable) {
@@ -278,6 +290,7 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
      */
     override fun cancel() {
         val cbold = callback ?: return
+        Log.debug{"Cancelling cancel $id"}
 
         cbold.run()
         callback = null
@@ -331,6 +344,8 @@ enum class Priority {
     After,
 }
 
+private var lastLifetimeId = 0
+
 /**
  * Lifetimes of long-lived objects.
  *
@@ -374,7 +389,10 @@ open class Lifetime(parent: Cancellable? = null): Cancellable {
     private val alsoCancel = Seq<Cancellable>()
     private val backwardsBound = Seq<Cancellable>()
 
+    private val id = lastLifetimeId++
+
     init {
+        Log.debug{"Created lifetime $id"}
         parent?.let(::alsoCancel)
         uponStart()
     }
@@ -411,7 +429,9 @@ open class Lifetime(parent: Cancellable? = null): Cancellable {
     }
 
     override fun cancel() {
+        if (cancelled) return
         cancelled = true
+        Log.debug{"Cancelled lifetime $id"}
 
         this.alsoCancel.each(Cancellable::cancel)
         backwardsBound.each { it.unbind(this) }
@@ -423,6 +443,13 @@ open class Lifetime(parent: Cancellable? = null): Cancellable {
     }
 
     override fun cancelled(): Boolean = cancelled
+}
+
+@PublicAPI
+suspend inline fun <T: Any> future(fn: (CompletableFuture<T>) -> kotlin.Unit): T {
+    val future = CompletableFuture<T>()
+    fn(future)
+    return future.await()
 }
 
 /**
@@ -494,7 +521,12 @@ object Events {
                 }
                 if (cls.annotations.any{ it.annotationClass == NetworkEvent::class })
                     RabbitMQ.recv(cls as Class<*>) {
-                        arc.Events.fire(it)
+                        try {
+                            arc.Events.fire(it)
+                        } catch (why: Exception) {
+                            Log.error("Failure processing event", why)
+                            throw why
+                        }
                     }
                 val array = Array<Seq<EventContainer>?>(Priority.entries.size) { null }
                 eventHandlers.put(cls, array)

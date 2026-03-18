@@ -1,0 +1,17 @@
+let $a = (update mindustry_votekick
+    set pardoned = true
+    where
+        user = type::record("user", <uuid> $user) &&
+        (expires = none || expires > time::now()) &&
+        server_name = $server
+    return diff
+).any(|$x| !$x.is_empty());
+let $b = (update mindustry_kick
+    set pardoned = true
+    where
+        user = type::record("user", <uuid> $user) &&
+        (expires = none || expires > time::now()) &&
+        server_name = $server
+    return diff
+).any(|$x| !$x.is_empty());
+return $a || $b;

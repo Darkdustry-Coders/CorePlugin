@@ -8,7 +8,12 @@ import kotlin.reflect.KClass
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class ConsoleCommand(val value: String = "<infer>")
+annotation class ConsoleCommand(
+    /** Command name. */
+    val value: String = "<infer>",
+    /** Params as displayed in 'help'. */
+    val params: String = "",
+)
 /**
  * A command that can be executed in-game.
  *

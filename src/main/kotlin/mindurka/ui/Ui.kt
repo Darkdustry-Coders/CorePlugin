@@ -8,7 +8,6 @@ import mindustry.game.EventType.MenuOptionChooseEvent
 import java.util.concurrent.CompletableFuture
 import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
-import arc.util.Log
 import mindustry.gen.Call
 import arc.struct.Seq
 

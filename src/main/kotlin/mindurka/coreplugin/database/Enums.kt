@@ -31,6 +31,7 @@ object DisableCodes {
      *
      * ## Parameters
      * - `id`: The ID of this ban.
+     * - `user`: The ID of the user.
      * - `reason`: Reason for why the account is banned.
      * - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
      * - `admin`: Last username of an admin that issues a ban.
@@ -42,6 +43,7 @@ object DisableCodes {
      *
      * ## Parameters
      * - `id`: The ID of this kick.
+     * - `user`: The ID of the user.
      * - `reason`: Reason for why the account is kicked.
      * - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
      * - `admin`: Last username of an admin that issues a ban.
@@ -54,10 +56,40 @@ object DisableCodes {
      *
      * ## Parameters
      * - `id`: The ID of this kick.
+     * - `user`: The ID of the user.
      * - `reason`: Reason for why the account is kicked.
      * - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
      * - `initiator`: Last username of a player that started the votekick.
      * - `votes`: Last usernames of players that voted in favor of the kick.
      */
     const val votekicked = 11
+    /**
+     * The user was automatically blacklisted by the system.
+     *
+     * The server should not accept messages from that IP for a while.
+     */
+    const val blacklisted = 12
+}
+
+object PermLevels {
+    /**
+     * Default privileges.
+     */
+    const val default = 0
+    /**
+     * /mute, /kick, /ban, etc.
+     */
+    const val moderator = 100
+    /**
+     * Map editing, /artv, tracing.
+     */
+    const val admin = 200
+    /**
+     * For now no extra perms.
+     */
+    const val admin_overseer = 300
+    /**
+     * /js, /sql.
+     */
+    const val console = 1000
 }

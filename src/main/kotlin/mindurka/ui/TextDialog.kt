@@ -13,7 +13,6 @@ import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
 import arc.func.Func
 import arc.func.Prov
-import arc.util.Log
 import mindurka.util.Ref
 import mindurka.util.UnsafeNull
 

@@ -14,6 +14,9 @@ special-settings-error = [#EC5784]Flags on this map are not set correctly:
                        = Map may not function correctly.
 
 # spam Spam SPAM
+welcome-message-title = Welcome message
+welcome-message = [accent]We are in the process of completely rewriting server plugins.
+                : Expect bugs!
 gamemode-uses-special-settings = [accent]Some of this gamemode's features don't work in vanilla.[]
                                =
                                = Install [#4c59e0]MindurkaCompat[] from mod explorer to gain access to them.
@@ -33,17 +36,52 @@ vote.global = [#adadad]Type [#26d657]y[] or [#EC5784]n[] to vote. {if {votes} < 
 vote.team = [#adadad]Type [#26d657]/vote y[] or [#EC5784]/vote n[] to vote. {if {votes} < 0 then [#EC5784] else [#26d657]}{votes}/{threshold}
 vote.left = [#adadad]{player} has left the game and their vote was removed.
 
+vote.global.cancelled = [#EC5784]⚠ Vote was cancelled by admin {admin}.
+vote.team.cancelled = [#EC5784]⚠ Team vote was cancelled by admin {admin}.
+
+admin.ban = [#EC5784]⚠ {target} was banned by {admin}.
+admin.kick = [#EC5784]⚠ {target} was kicked by {admin}.
+admin.wave = [#EC5784]⚠ A wave was skipped by admin {admin}.
+
 [generic.checks]
 same-vote = [#EC5784] Your vote has not changed.
 vote-filter = [#EC5784] You cannot vote in this poll.
 cooldown = [#EC5784] Slow down! This command is on cooldown.
 vote = [#EC5784] There's already a vote ongoing.
-unknown-command = [#EC5784] Could not find command [yellow]{command}[]. Check [yellow]/help[].
-invalid-arguments = [#EC5784] Arguments provided for [yellow]{command}[] are incorrect. Try [yellow]/help {command}[]!
+unknown-command = [#EC5784] Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check [yellow]/help[].) else (Did you mean [yellow]/{suggestion}[]?)}
+unknown-command-console =  Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check /help) else (Did you mean /{suggestion}?)}
+invalid-arguments = [#EC5784] {cause}. Try [yellow]/help {command}[]!
+invalid-arguments-console = {cause}. Usage: {command} {params}
 permission = [#EC5784] You don't have permission to execute this command.
 admin-action-permission = [#EC5784] You don't have permission to perform this action.
 admin-action-no-target = [#EC5784] You must specify a target to perform an action.
 admin-action-target-admin = [#EC5784] You cannot perform this action against another admin.
+
+[generic.command]
+missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
+missing-console = Missing parameter '{param}'
+invalid = Invalid parameter [yellow]'{commands.{command}.params.{param}}'[]
+invalid-console = Missing parameter '{param}'
+string-termination = Parameter [yellow]'{commands.{command}.params.{param}}'[] is not properly enclosed
+string-termination-console = Parameter '{param}' is not properly enclosed
+end-of-input = Not enough input
+end-of-input-console = Not enough input
+too-many-arguments = Too many arguments
+too-many-arguments-console = Too many arguments
+not-a-number = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be a number
+not-a-number-console = Parameter '{param}' must be a number
+not-a-boolean = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be [#26d657]yes[] or [#EC5784]no[]
+not-a-boolean-console = Parameter '{param}' must be a boolean
+invalid-map-id = Unknown map ID
+invalid-map-id-console = Unknown map ID
+zero-map-id = But it refused
+zero-map-id-console = But it refused
+unknown-map = Could not find the map
+unknown-map-console = Could not find the map
+unknown-player = Could not find the player
+unknown-player-console = Could not find the player
+invalid-duration = Not a valid duration for parameter [yellow]'{commands.{command}.params.{param}}'[]
+invalid-duration-console = Not a valid duration for parameter {param}
 
 [generic.kick]
 merged = [#EC5784]This account was merged into another and thus no longer accessible.
@@ -81,6 +119,26 @@ another-location = [#EC5784]You are already logged in from another location.
          = [accent]If you believe this is a mistake, create a post in [cyan]#help[] channel on our
          : [#4c59e0]Discord Server[].
          = [cyan]{generic.discord}
+ban = [#EC5784]You were banned from this server.
+    =
+    = [accent]Ban ID: [yellow]{id}
+    = [accent]Admin: {admin}
+    = [accent]Reason: [#EC5784]{reason}
+    = [accent]Remaining: [yellow]{remaining}
+    =
+    = [accent]If you believe there was a mistake, create a post in [cyan]#appeals[] channel on our
+    : [#4c59e0]Discord Server[].
+    = [cyan]{generic.discord}
+kick = [#EC5784]You were kicked from this server.
+     =
+     = [accent]Kick ID: [yellow]{id}
+     = [accent]Admin: {admin}
+     = [accent]Reason: [#EC5784]{reason}
+     = [accent]Remaining: [yellow]{remaining}
+     =
+     = [accent]If you believe there was a mistake, create a post in [cyan]#appeals[] channel on our
+     : [#4c59e0]Discord Server[].
+     = [cyan]{generic.discord}
 votekick = [#EC5784]You were votekicked from this server.
          =
          = [accent]Votekick ID: [yellow]{id}
@@ -150,6 +208,9 @@ manpage = Get a list of available commands.
         =
         = If [blue][[command][] is specified, give its extended description.
 params = [page-or-command]
+params.page = page
+params.command = command
+
 select-page.title =  Select a page
 select-page.message = Currently on page {page}
 title-page =  List of available commands
@@ -161,7 +222,9 @@ man.message = [accent]/{command} [white]{commands.{command}.params}
             = {commands.{command}.manpage}
 command = [accent]/{command} [white]{commands.{command}.params}
         = [lightgray]{commands.{command}.description}
-invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{max}[]. There are no secret commands behind there. We promise.
+invalid-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
+unknown-command = [#EC5784] [yellow]/{command} [#EC5784]is not a known command. I'm a teapot.
 
 [commands.maps]
 
@@ -171,13 +234,16 @@ manpage = Get a list of available maps.
         = If [blue][[page][] is specified, open the specified page.
 
 params = [page]
+params.page = page
+
 select-page.title =  Select a page
 select-page.message = Currently on page {page}
 title-page =  List of available maps
 man.title =  Command maps
 map = [orange]{id}. [accent]{map} [white]by [accent]{author}
     = [white]{width}x{height}
-invalid-page = [scarlet]⚠ Page must be an integer between [orange]1[] and [orange]{max}[].
+invalid-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. There are no secret pages behind there. We promise.
+negative-page = [#EC5784] Page must be an integer between [yellow]1[] and [yellow]{max}[]. What are you looking at, anyway?
 
 [commands.setkey]
 
@@ -207,6 +273,7 @@ message = [accent]Do you want to enable public key authorization?
 
 ok = [#26d657] Successfully enabled public key authorization.
 error = [#EC5784] Already enabled.
+admin-protection = [#EC5784] You must log in before enabling key authorization on an admin account.
 no-mdc = [#EC5784] No public key was shared.
        =
        = Install or enable [#4c59e0]MindurkaCompat[] and repeat the command.
@@ -218,7 +285,8 @@ manpage = Vote in a team-specific poll.
         =
         = While global votes are to be responded to with y/n, team-specific polls are handled with /vote y/n to allow
         : both votes to proceed at the same time.
-params = [map]
+params = [y/n/c]
+params.vote = y/n/c
 
 [commands.rtv]
 
@@ -227,6 +295,7 @@ manpage = Start a vote for map change.
         =
         = If map is not specified, a random one is chosen. Map list can be viewed with [#EC5784]/maps[].
 params = [map]
+params.map = map
 
 vote.update = [#adadad]{player} wants to change the current map to [yellow]{map}[].
 vote.for = [#adadad]{player} voted [#26d657]for[] changing the map to [yellow]{map}[].
@@ -241,6 +310,7 @@ manpage = Start a vote for next map.
         =
         = If map is not specified, a random one is chosen. Map list can be viewed with [#EC5784]/maps[].
 params = [map]
+params.map = map
 
 vote.update = [#adadad]{player} wants to play [yellow]{map}[] next.
 vote.for = [#adadad]{player} voted [#26d657]for[] playing [yellow]{map}[] next.
@@ -257,7 +327,9 @@ manpage = Start a vote for kicking a player.
         =
         = Specified reason must describe, shortly and concisely, what the issue is.
         : Starting a votekick without specifying a valid reason is a bannable offense.
-params = [player] [reason..]
+params = <player> <reason..>
+params.player = player
+params.reason = reason
 
 vote.update = [#adadad]{player} wants to kick {target} for [yellow]{reason}[].
 vote.for = [#adadad]{player} voted [#26d657]for[] kicking {target}.
@@ -268,7 +340,7 @@ vote.cancel = [#EC5784]Not enough votes to kick {player}.
 errors.self = [#EC5784] You cannot kick yourself!
 errors.self.special0 = [#49C9C7]u[#AE58C8]w[#49C9C7]u
 errors.self.special1 = [#EC5784] Not here, thanks.
-errors.self.special2 = [#EC5784] Try specifying someone else!
+errors.self.special2 = [#EC5784] Try specifying somebody else!
 errors.admin = [#EC5784] Admins are immune to [yellow]/votekick[].
 errors.players = [#EC5784] There are not enough players to start a votekick.
 
@@ -284,13 +356,15 @@ params =
 
 description = Send message in team chat.
 manpage = Send message in team chat.
-params = [message...]
+params = <message...>
+params.message = message
 
 [commands.a]
 
 description = Send message in admin chat.
 manpage = Send message in admin chat.
-params = [message...]
+params = <message...>
+params.message = message
 
 [commands.artv]
 
@@ -301,6 +375,7 @@ manpage = Force change map.
         =
         = Unlike [#EC5784]/rtv[], this does not start a vote and is only accessible to admins.
 params = [map]
+params.map = map
 
 [commands.kick]
 
@@ -308,7 +383,10 @@ description = Kick a player out of the server.
 manpage = Kick a player out of the server.
         =
         = This acts as a ban, but specific to this particular server.
-params = [player] [duration] [reason...]
+params = <player> <duration> <reason...>
+params.player = player
+params.duration = duration
+params.reason = reason
 
 dialog.title = Kick {player}
 dialog.reason = Kick reason
@@ -320,7 +398,10 @@ description = Ban a player on all servers.
 manpage = Ban a player on all servers.
         =
         = This acts as a ban, but specific to this particular server.
-params = [player] [duration] [reason...]
+params = <player> <duration> <reason...>
+params.player = player
+params.duration = duration
+params.reason = reason
 
 dialog.title = Ban {player}
 dialog.reason = Ban reason
@@ -330,8 +411,24 @@ dialog.duration = Ban duration
 
 description = Mute a player on all servers.
 manpage = Mute a player on all servers.
-params = [player] [duration] [reason...]
+params = <player> <duration> <reason...>
+params.player = player
+params.duration = duration
+params.reason = reason
 
 dialog.title = Mute {player}
 dialog.reason = Mute reason
 dialog.duration = Mute duration
+
+[commands.fuck]
+
+description = Run suggested command.
+params =
+manpage = Run suggested command.
+        =
+        = Command is cleared every time a new one have been executed.
+        : A command will only be stored if there was no command matching the
+        : input found. The command will be executed with previously provided arguments.
+
+no-command-stored = [#EC5784] Unfortunately for you, there was no command.
+whoops = [#fce174]⚠ Whoops! There is no command.

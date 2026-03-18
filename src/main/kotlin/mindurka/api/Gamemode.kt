@@ -1,13 +1,13 @@
 package mindurka.api
 
 import arc.files.Fi
+import arc.func.Prov
 import arc.struct.Seq
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.CorePlugin
 import mindurka.util.SafeFilename
 import mindurka.util.child
 import mindurka.util.map
-import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.game.MapObjectives.FlagObjective
 import mindustry.game.Team
@@ -226,6 +226,9 @@ object Gamemode {
     /** Enable /rtv. */
     @JvmField
     var enableRtv = true
+
+    @JvmField
+    var defaultPatch: Prov<String>? = null
 
     /** Initialize CorePlugin. */
     @JvmStatic

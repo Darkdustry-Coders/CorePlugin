@@ -1,18 +1,26 @@
 package mindurka.coreplugin.database
 
 import arc.struct.ObjectMap
+import mindurka.annotations.PublicAPI
 import mindurka.util.Async
 import mindurka.util.encodeURIComponent
 import mindurka.util.random
 import mjson.Json
 import net.buj.surreal.Query
 
+@PublicAPI
 data class IspTables(
+    @JvmField
     val isp: String,
+    @JvmField
     val ass: String,
+    @JvmField
     val asname: String,
+    @JvmField
     val proxy: Boolean,
+    @JvmField
     val hosting: Boolean,
+    @JvmField
     val mobile: Boolean,
 ) {
     companion object {

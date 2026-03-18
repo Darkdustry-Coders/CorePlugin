@@ -1,11 +1,9 @@
 package mindurka.api
 
 import arc.struct.Seq
-import arc.util.Strings
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.Config
 import mindustry.Vars
-import mindustry.game.EventType
 import mindustry.game.Rules
 import mindustry.maps.Map
 import mindustry.world.Block
@@ -84,13 +82,13 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
         @JvmStatic
         fun of(map: Map) = SpecialSettings(map.rules(), map.width, map.height)
 
-        @JvmStatic @PublicAPI val PREFIX = "mdrk"
-        @JvmStatic @PublicAPI val FORMAT = "$PREFIX.format"
-        @JvmStatic @PublicAPI val FORMAT_VER = "1"
-        @JvmStatic @PublicAPI val PATCH = "$PREFIX.patch"
-        @JvmStatic @PublicAPI val GAMEMODE = "$PREFIX.gamemode"
-        @JvmStatic @PublicAPI val GAMEMODE_LEGACY = "mindurkaGamemode"
-        @JvmStatic @PublicAPI val OVERDRIVE_IGNORES_CHEAT = "$PREFIX.overdriveIgnoresCheat"
+        @JvmField @PublicAPI val PREFIX = "mdrk"
+        @JvmField @PublicAPI val FORMAT = "$PREFIX.format"
+        @JvmField @PublicAPI val FORMAT_VER = "1"
+        @JvmField @PublicAPI val PATCH = "$PREFIX.patch"
+        @JvmField @PublicAPI val GAMEMODE = "$PREFIX.gamemode"
+        @JvmField @PublicAPI val GAMEMODE_LEGACY = "mindurkaGamemode"
+        @JvmField @PublicAPI val OVERDRIVE_IGNORES_CHEAT = "$PREFIX.overdriveIgnoresCheat"
     }
 
     /** String name of the gamemode. */

@@ -27,6 +27,7 @@ Account was disabled as its UUID was leaked.
 User was banned from the server. Bans apply globally.
 
 - `id`: The ID of this ban.
+- `user`: ID of the votekicked user.
 - `reason`: Reason for why the account is banned.
 - `expires`: Unix timestamp before which the ban is valid. `null` if permanent.
 - `admin`: Last username of an admin that issues a ban.
@@ -36,6 +37,7 @@ User was banned from the server. Bans apply globally.
 User was kicked from the server. Kicks apply per-server.
 
 - `id`: The ID of this kick.
+- `user`: ID of the votekicked user.
 - `reason`: Reason for why the account is banned.
 - `expires`: Unix timestamp before which the kick is valid. `null` if permanent.
 - `admin`: Last username of an admin that issues a ban.
@@ -49,7 +51,11 @@ This code is usually not issued by the database.
 User was votekicked from the server. Votekicks apply per-server.
 
 - `id`: The ID of this votekick.
+- `user`: ID of the votekicked user.
 - `reason`: Reason for why the account is banned.
 - `expires`: Unix timestamp before which the kick is valid. `null` if permanent.
 - `initiator`: Last username of the person who initiated the votekick.
 - `votes`: Last usernames of people who voted in favor of this votekick.
+
+## 12 - Blacklisted
+The connection is too suspicious and thus must be blocked.

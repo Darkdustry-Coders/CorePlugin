@@ -11,10 +11,14 @@ import mindurka.coreplugin.ModCommandHandler
 import mindustry.gen.Player
 import arc.util.Log
 import buj.tl.Tl
+import mindurka.build.CommandResult
+import mindurka.coreplugin.lastFailedCommand
+import mindurka.util.Async
 import mindurka.util.map
 import mindurka.util.fold
 import kotlin.math.max
 import mindurka.util.filter
+import mindurka.util.unreachable
 
 private class CommandRegistrationContext(private val handle: CommandHandler) {
     private var sorted = true
@@ -35,7 +39,7 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
 
     fun register(command: CommandImpl) {
         if (!commandList.any { it.command[0] == command.command[0] }) {
-            handle.register(command.command[0], "[args...]", command.doc) { args, caller: Any? ->
+            handle.register(command.command[0], "[args...]", command.doc) { args, caller: Any? -> Async.run {
                 if (!sorted) {
                     val maxDepth = commandList.iterator().map { it.priority.size }.fold(0) { a, b -> max(a, b) }
                     val maxCommandLen = commandList.iterator().map { it.command.size }.fold(0) { a, b -> max(a, b) }
@@ -47,14 +51,55 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
                     sorted = true
                 }
 
+                var cause: CommandResult? = null
+
                 for (cmd in commandList.iterator().filter { it.command[0] == command.command[0] }) {
-                    (cmd.parse(caller, if (args.size > 0) args[0] else "") ?: continue)()
-                    return@register
+                    when (val result = cmd.parse(caller, if (args.size > 0) args[0] else "")) {
+                        CommandResult.Complete -> return@run
+                        else -> if (cause?.let { it.ordinal > result.ordinal } != false) cause = result
+                    }
                 }
 
-                if (caller is Player) Tl.send(caller).put("command", command.command[0]).done("{generic.checks.invalid-arguments}")
-                else Log.info("Invalid command arguments!")
-            }
+                val suffix = if (caller is Player) "" else "-console"
+                val message = run {
+                    val formatter = Tl.fmt(if (caller is Player) caller.locale else "c")
+                    formatter.put("command", command.command[0])
+                    when (cause) {
+                        null -> {}
+                        CommandResult.Complete -> unreachable()
+                        CommandResult.TooMuchData -> {
+                            formatter.put("cause", Tl.parse("{generic.command.too-many-arguments$suffix}"))
+                        }
+                        is CommandResult.Missing -> {
+                            formatter.put("cause", Tl.parse("{generic.command.missing$suffix}"))
+                            formatter.put("param", cause.argument)
+                        }
+                        is CommandResult.Invalid -> {
+                            formatter.put("cause", Tl.parse(if (caller == null) cause.message.replace("}", "-console}") else cause.message))
+                            formatter.put("param", cause.argument)
+                        }
+                    }
+                    if (command.type == CommandType.Console) {
+                        formatter.put("params", run {
+                            val args = StringBuilder()
+                            var first = true
+                            commandList
+                                .iterator()
+                                .filter { it.command[0] == command.command[0] }
+                                .forEach {
+                                    if (first) first = false
+                                    else args.append(" | ")
+                                    args.append(it.usage)
+                                }
+                            args.toString()
+                        })
+                    }
+                    formatter.done("{generic.checks.invalid-arguments$suffix")
+                }
+
+                if (caller is Player) caller.sendMessage(message)
+                else Log.err(message)
+            } }
         }
         commandList.add(command)
         sorted = false

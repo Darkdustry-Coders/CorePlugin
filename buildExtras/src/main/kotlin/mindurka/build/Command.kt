@@ -14,6 +14,7 @@ data class StringPtr (
     fun isEmpty(): Boolean = source.length == index
     fun clone(): StringPtr = StringPtr(source, index)
     fun peek(): Char? = if (isEmpty()) null else source[index]
+    fun next(): Char? = if (isEmpty()) null else source[index++]
     fun rest(): String? {
         if (isEmpty()) return null
         val idx = index
@@ -23,7 +24,7 @@ data class StringPtr (
     fun trimStart() {
         while (index < source.length && source[index].isWhitespace()) index++
     }
-    fun takeUntil(f: (Char) -> Boolean): String? {
+    inline fun takeUntil(f: (Char) -> Boolean): String? {
         if (isEmpty()) return null
         if (f(source[index])) return null
 
@@ -44,6 +45,8 @@ data class StringPtr (
 abstract class CommandImpl {
     /** Docstring to use in console. */
     abstract val doc: String
+    /** Usage to display in console. */
+    abstract val usage: String
     /** Subcommand path. */
     abstract val command: Array<String>
     /** Whether command is visible in /help. Ignored for console commands. */
@@ -57,5 +60,12 @@ abstract class CommandImpl {
     /** Cooldown between command executions. */
     abstract val cooldown: Float
     /** Prepare command for execution. */
-    abstract fun parse(caller: Any?, raw: String): (() -> Unit)?
+    abstract suspend fun parse(caller: Any?, raw: String): CommandResult
+}
+
+abstract class CommandResult(@JvmField val ordinal: Int) {
+    class Missing(val argument: String) : CommandResult(0)
+    class Invalid(val argument: String, val message: String) : CommandResult(1)
+    object TooMuchData : CommandResult(2)
+    object Complete : CommandResult(3)
 }

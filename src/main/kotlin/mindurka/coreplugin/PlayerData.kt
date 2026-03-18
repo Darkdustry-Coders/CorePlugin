@@ -3,6 +3,7 @@ package mindurka.coreplugin
 import arc.struct.Seq
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.database.Database
+import mindustry.Vars
 import mindurka.coreplugin.mindurkacompat.Version as MdcVersion
 import mindustry.gen.Player
 import java.lang.ref.WeakReference
@@ -41,10 +42,20 @@ class PlayerData(player: Player) {
     var publicKey: PublicKey? = null
 
     var keySet = false
+
     var permissionLevel = 0
-        internal set
+        private set
     suspend fun setPermissionLevel(level: Int) {
         Database.setPermissionLevel(profileId, level)
+        permissionLevel = level
+        if (keySet && level >= 100) Vars.netServer.admins.adminPlayer(uuid, usid)
+        else Vars.netServer.admins.unAdminPlayer(uuid)
+        player.get()?.admin = level >= 100
+    }
+    /**
+     * Set permission level without updating the database.
+     */
+    internal fun `unsafe$rawSetPermissionLevel`(level: Int) {
         permissionLevel = level
     }
 
@@ -59,6 +70,9 @@ class PlayerData(player: Player) {
             updateUsername()
         }
     var userId: String = defaultString
+
+    val usid = player.usid()
+    val uuid = player.uuid()
 
     fun idString() = shortId?.toString() ?: profileId.takeLast(6)
     /** Full username of a player as displayed in chat and tab. */
