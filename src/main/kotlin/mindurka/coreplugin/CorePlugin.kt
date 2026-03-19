@@ -36,6 +36,7 @@ import mindurka.coreplugin.messages.ServerInfo
 import mindurka.coreplugin.messages.ServersRefresh
 import mindurka.coreplugin.votes.Vote
 import mindurka.ui.handleUiEvent
+import mindurka.util.Async
 import mindurka.util.ModifyWorld
 import mindurka.util.SendMessage
 import mindurka.util.filter
@@ -331,13 +332,12 @@ object CorePlugin {
 
             val player = it.player
 
-            player.sessionData.releaseLocks()
-
-            Core.app.post {
+            Async.run {
                 if (currentGlobalVote != null)
                     currentGlobalVote!!.playerLeft(SendMessage.All, player)
                 if (teamVotes[player.team().id] != null)
                     teamVotes[player.team().id]!!.playerLeft(SendMessage.Multi(player.team()), player)
+                player.sessionData.releaseLocks()
             }
         }
         on<EventType.MenuOptionChooseEvent>(listener = ::handleUiEvent)
@@ -355,7 +355,7 @@ object CorePlugin {
                 arrayOf(arrayOf(Tl.fmt(it.player).done("{generic.close}"))))
         }
 
-        on<ServersRefresh> { serverInfo()?.let { info -> RabbitMQ.reply(it, info) } }
+        on<ServersRefresh> { serverInfo()?.let { info -> Async.run { RabbitMQ.reply(it, info) } } }
         interval(30f) { serverInfo()?.let(::emit)  }
 
         on<EventType.BlockBuildEndEvent>(priority = Priority.After) {
@@ -433,6 +433,8 @@ object CorePlugin {
 
         setupTerminalInput()
 
+        protocol = Protocol()
+
         RabbitMQ.noop()
         Runtime.getRuntime().addShutdownHook(Thread {
             emit(ServerDown)
@@ -440,10 +442,9 @@ object CorePlugin {
                 player.kick("Server closed", 0L)
             }
             Vars.net.closeServer()
+
             RabbitMQ.flush()
         })
-
-        protocol = Protocol()
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.");
     }

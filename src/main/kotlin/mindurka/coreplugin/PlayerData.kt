@@ -84,18 +84,20 @@ class PlayerData(player: Player) {
     val uuid = player.uuid()
 
     fun idString() = shortId?.toString() ?: profileId.takeLast(6)
+    /** Just the name. */
+    val name: String get() = customname ?: basename
     /** Full username of a player as displayed in chat and tab. */
-    fun fullName() = "$basename [#dadada][[${idString()}]"
+    fun fullName() = "$name [#dadada][[${idString()}]"
     /** Simple username of a player as displayed in kick messages. */
-    fun simpleName() = "$basename [#dadada][[${idString()}]"
+    fun simpleName() = "$name [#dadada][[${idString()}]"
 
     fun updateUsername() {
         player.get()?.name = fullName()
     }
 
     val locks = Seq<RabbitMQ.Lock>(RabbitMQ.Lock::class.java)
-    fun releaseLocks() {
-        locks.each(RabbitMQ.Lock::release)
+    suspend fun releaseLocks() {
+        for (lock in locks) lock.release()
         locks.clear()
     }
 

@@ -7,6 +7,7 @@ import kotlinx.coroutines.future.await
 import mindurka.annotations.PublicAPI
 import mindurka.annotations.NetworkEvent
 import mindurka.coreplugin.RabbitMQ
+import mindurka.util.Async
 import mindurka.util.Ref
 import mindurka.util.UnsafeNull
 import mindurka.util.nodecl
@@ -521,7 +522,7 @@ object Events {
                     }
                 }
                 if (cls.annotations.any{ it.annotationClass == NetworkEvent::class }) {
-                    if (handlingNetworkEvents.addUnique(cls)) {
+                    if (handlingNetworkEvents.addUnique(cls)) { Async.run {
                         RabbitMQ.recv(cls as Class<*>) {
                             try {
                                 arc.Events.fire(it)
@@ -530,7 +531,7 @@ object Events {
                                 throw why
                             }
                         }
-                    }
+                    } }
                 }
                 val array = Array<Seq<EventContainer>?>(Priority.entries.size) { null }
                 eventHandlers.put(cls, array)
@@ -563,7 +564,7 @@ object Events {
     /** Emit an event. */
     @JvmStatic
     fun <T> fire(event: T) {
-        if (event?.javaClass?.annotations?.any{ it.annotationClass == NetworkEvent::class } == true) RabbitMQ.send(event)
+        if (event?.javaClass?.annotations?.any{ it.annotationClass == NetworkEvent::class } == true) Async.run { RabbitMQ.send(event) }
         else arc.Events.fire(event)
     }
 

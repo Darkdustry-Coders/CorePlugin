@@ -1,5 +1,7 @@
 package mindurka.util;
 
+import arc.func.Cons;
+
 /**
  * Basic operations cuz in Kotlin for some reason they are
  * experimental.

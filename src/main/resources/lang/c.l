@@ -460,6 +460,7 @@ errors.too-long = [{col.err}] Your name is too long.
 errors.colors-too-long = [{col.err}] Your name has too many colors.
 warns.same-name = [{col.warn}] You already have this name set.
 warns.nothing-reset = [{col.warn}] There is no name to remove.
+success = [{col.ok}] Nickname changed to {name}.
 
 [commands.hub]
 

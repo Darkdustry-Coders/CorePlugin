@@ -465,11 +465,12 @@ class Protocol {
         val isp = IspTables.of(player.con.address)
 
         val playerUuid = player.uuid()
+        var done = false
         try {
             val session = player.sessionData
             (RabbitMQ.lock("player-uuid.${player.uuid()}") ?: run {
-                session.releaseLocks()
                 player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                session.releaseLocks()
                 return@login
             }).let { session.locks.add(it); K }
 
@@ -478,8 +479,8 @@ class Protocol {
                 session.publicKey = state.key
                 session.mindurkaCompatVersion = state.mindurkaCompatVersion
                 (RabbitMQ.lock("player-key.${sha256(state.key.encoded)}") ?: run {
-                    session.releaseLocks()
                     player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                    session.releaseLocks()
                     return@login
                 }).let { session.locks.add(it); K }
             }
@@ -521,12 +522,13 @@ class Protocol {
             } catch (t: Throwable) {
                 player.con.kick("Internal error.")
                 Log.err(t)
+                session.releaseLocks()
                 return
             }
 
             (RabbitMQ.lock("player-profile.${sha256(session.profileId)}") ?: run {
-                session.releaseLocks()
                 player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                session.releaseLocks()
                 return@login
             }).let { session.locks.add(it); K }
 
@@ -536,6 +538,7 @@ class Protocol {
             } catch (t: Throwable) {
                 player.con.kick(Packets.KickReason.nameEmpty)
                 Log.err(t)
+                session.releaseLocks()
                 return
             }
 
@@ -548,9 +551,12 @@ class Protocol {
 
             Call.hideHudText(player.con) // holy annoying otherwise
             Vars.netServer.sendWorldData(player)
+
+            done = true
             emit(EventType.PlayerConnect(player))
         } finally {
             loggingIn.remove(playerUuid)
+            if (!done) player.sessionData.releaseLocks()
         }
     }
 }
