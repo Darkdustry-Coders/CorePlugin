@@ -167,7 +167,7 @@ object RabbitMQ {
     private suspend fun ensureExchange(queueName: String) {
         task {
             if (queues.add(queueName)) {
-                channel.exchangeDeclare(exchange(queueName), "fanout", true, false, false, emptyMap())
+                channel.exchangeDeclare(exchange(queueName), "topic", true, false, false, emptyMap())
                 channel.queueDeclare(queue(queueName), true, false, true, emptyMap())
                 channel.queueBind(queue(queueName), exchange(queueName), CorePluginConfig.i.serverName)
             }
