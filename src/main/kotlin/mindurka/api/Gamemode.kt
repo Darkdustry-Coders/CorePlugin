@@ -236,6 +236,9 @@ object Gamemode {
      */
     @JvmField
     var enableSurrender = true
+    /** Enable /spectate. */
+    @JvmField
+    var enableSpectate = true
 
     @JvmField
     var defaultPatch: Prov<String>? = null

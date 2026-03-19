@@ -27,6 +27,7 @@ import mindurka.util.prefixed
 import mindurka.util.random
 import mindurka.util.unreachable
 import mindustry.Vars
+import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.net.NetConnection
 import net.buj.surreal.Driver
@@ -414,9 +415,10 @@ object Database {
     }
 
     internal suspend fun setPermissionLevel(profileId: String, level: Int) {
-        abstractQuery(Query(DatabaseScripts.setpermissionlevelScript)
-            .x("permissionLevel", level)
-            .x("id", profileId)).ok()
+        Groups.player.find { it.sessionData.profileId == profileId }
+            .sessionData.handleUpdateOutput(abstractQuerySingle(Query(DatabaseScripts.setpermissionlevelScript)
+                .x("permissionLevel", level)
+                .x("id", profileId)).ok().result)
     }
 
     suspend fun setKey(player: Player) {

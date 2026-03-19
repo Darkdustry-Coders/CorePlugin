@@ -1,27 +1,30 @@
 package mindurka.coreplugin.votes
 
+import arc.math.Mathf
 import buj.tl.L
+import mindurka.api.timer
 import mindurka.coreplugin.CorePlugin
-import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.sessionData
-import mindurka.util.Async
 import mindurka.util.SendMessage
+import mindustry.game.Team
 import mindustry.gen.Player
 
-class KickVote(initiator: Player, val player: Player, val reason: String): SimpleVote("commands.votekick.vote", initiator, initiator.team()) {
+class SurrenderVote(initiator: Player, val player: Player, val reason: String): SimpleVote("commands.votekick.vote", initiator, initiator.team()) {
     override fun formatParams(l: L<*>) {
         l.put("player", initiator.sessionData.simpleName())
             .put("reason", reason)
             .put("target", player.sessionData.simpleName())
     }
     override fun done() {
-        Async.run {
-            Database.votekick(
-                player,
-                initiator,
-                votesFor,
-                reason
-            )
+        team!!.cores().each { it.kill() }
+        team.data().buildings.each {
+            if (it.block.privileged) return@each
+            if (Mathf.random() > 0.7f) it.kill()
+            else it.team(Team.derelict)
+        }
+        team.data().units.each {
+            if (!it.killable()) return@each
+            timer(Mathf.random() * 5f) { it.kill() }
         }
     }
 

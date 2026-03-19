@@ -346,8 +346,8 @@ params.reason = reason
 vote.update = [{col.sysmsg}]{player} wants to kick {target} for [yellow]{reason}[].
 vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] kicking {target}.
 vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] kicking {target}.
-vote.commit = [{col.ok}]Kicked player {player} for [yellow]{reason}[] for [yellow]30 minutes[].
-vote.cancel = [{col.err}]Not enough votes to kick {player}.
+vote.commit = [{col.ok}]Kicked player {target} for [yellow]{reason}[] for [yellow]30 minutes[].
+vote.cancel = [{col.err}]Not enough votes to kick {target}.
 
 errors.self = [{col.err}] You cannot kick yourself!
 errors.self.special0 = [#49C9C7]u[#AE58C8]w[#49C9C7]u
@@ -472,3 +472,17 @@ manpage = Attempt to connect to the hub server.
         : the server you're currently on.
 
 errors.hub-down = [{col.err}]⚠ Hub server is offline.
+
+[commands.surrender]
+
+description = Start a vote for surrendering your team.
+params =
+manpage = Start a vote for surrendering your team.
+        =
+        = If the vote succeeds, all cores of your team will be destroyed.
+
+vote.update = [{col.sysmsg}]{player} wants to surrender.
+vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] surrendering.
+vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] surrendering.
+vote.commit = [{col.ok}]Team has surrendered.
+vote.cancel = [{col.err}]Not enough votes to surrender.

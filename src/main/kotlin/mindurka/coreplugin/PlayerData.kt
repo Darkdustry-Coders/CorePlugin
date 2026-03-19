@@ -6,9 +6,15 @@ import mindurka.coreplugin.database.Database
 import mindustry.Vars
 import mindurka.coreplugin.mindurkacompat.Version as MdcVersion
 import mindustry.gen.Player
+import mjson.Json
+import net.buj.surreal.Query
 import java.lang.ref.WeakReference
 import java.security.PublicKey
 import java.util.WeakHashMap
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Instant
+import kotlin.time.TimeSource
 
 /** Player session data. */
 class PlayerData(player: Player) {
@@ -101,7 +107,32 @@ class PlayerData(player: Player) {
         locks.clear()
     }
 
-    suspend fun flush() {}
+    internal fun handleUpdateOutput(out: Json) {
+        var updateUsername = false
+
+        if (out.has("set_short_id")) {
+            shortId = out.at("set_short_id").asLong()
+            updateUsername = true
+        }
+
+        if (updateUsername) updateUsername()
+    }
+
+    private var lastPushed = TimeSource.Monotonic.markNow()
+    suspend fun flush() {
+        val now = TimeSource.Monotonic.markNow()
+        val elapsed = now - lastPushed
+        lastPushed = now
+
+        val query = StringBuilder($$"update only type::record(\"mindustry_profile\", <uuid> $profile) set ")
+        query.append("total_play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+        query.append(", play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+        query.append(";\n")
+        query.append($$"return fn::mindustry_update_profile(type::record(\"mindustry_profile\", <uuid> $profile));")
+
+        handleUpdateOutput(Database.abstractQuerySingle(Query(query.toString())
+            .x("profile", profileId)).ok().result)
+    }
 }
 
 /**

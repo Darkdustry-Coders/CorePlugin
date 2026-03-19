@@ -15,6 +15,8 @@ import mindurka.annotations.Rest
 import mindurka.api.Consts
 import mindurka.api.Gamemode
 import mindurka.api.MapHandle
+import mindurka.api.RoundEndEvent
+import mindurka.api.emit
 import mindurka.build.CommandType
 import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.carriedLastFailedCommand
@@ -366,7 +368,10 @@ private fun vnm(caller: Player, @Rest map: MapHandle?) {
 @RequiresPermission(PermLevels.admin)
 private fun artv(caller: Player, @Rest map: MapHandle?) {
     val map = map ?: Gamemode.maps.next()
-    Consts.serverControl.play(false, map::rtv)
+    Consts.serverControl.play(false) {
+        emit(RoundEndEvent)
+        map.rtv()
+    }
 }
 
 @Command

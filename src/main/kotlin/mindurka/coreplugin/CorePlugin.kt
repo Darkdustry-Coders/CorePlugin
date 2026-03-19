@@ -1,14 +1,12 @@
 package mindurka.coreplugin
 
 // Keeping those unwrapped for my own sanity.
-import arc.Core
 import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.Log
-import arc.util.Strings
 import arc.util.Time
 import buj.tl.Tl
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -398,6 +396,12 @@ object CorePlugin {
 
         modActionsInit()
         chatInit()
+
+        interval(30f) { Async.run {
+            for (player in Groups.player) {
+                player.sessionData.flush()
+            }
+        } }
 
         Consts.serverControl.gameOverListener = Cons { event ->
             val map = Gamemode.maps.next()
