@@ -195,7 +195,7 @@ object RabbitMQ {
     }
 
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <T> send(`object`: T, routingKey: String = "#") {
+    suspend fun <T> send(`object`: T, routingKey: String = CorePluginConfig.i.serverName) {
         val `annotation` =
             `object`?.javaClass?.annotations?.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
                 ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
@@ -217,7 +217,7 @@ object RabbitMQ {
     @PublicAPI
     @JvmStatic
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <T> sendTo(`object`: T, to: String, routingKey: String = "#") {
+    suspend fun <T> sendTo(`object`: T, to: String, routingKey: String = CorePluginConfig.i.serverName) {
         val `annotation` =
             `object`?.javaClass?.annotations?.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
                 ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
