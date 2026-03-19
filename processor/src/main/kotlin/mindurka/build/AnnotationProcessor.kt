@@ -465,11 +465,12 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
 
                 classFile.print("override val constraints: Array<out mindurka.annotations.BaseCommandConstraint> = arrayOf(")
 
+                // TODO: Change to support args.
                 run {
                     var i = 0
                     sym.annotations
-                        .find { it.annotationType.resolve().declaration.qualifiedName!!.asString() == EnabledIf::class.java.canonicalName }
-                        ?.let { it.arguments.forEach {
+                        .filter { it.annotationType.resolve().declaration.qualifiedName!!.asString() == EnabledIf::class.java.canonicalName }
+                        .forEach { it.arguments.forEach {
                             val value = it.value
                             if (value is KSType) {
                                 if (i != 0) classFile.print(", ")
@@ -479,7 +480,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                                 classFile.print(".obtain()")
                                 i += 1
                             }
-                        } } ?: 0
+                        } }
                 }
 
                 classFile.println(")")
@@ -646,6 +647,10 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
 
                 classFile.leave()
                 classFile.println("}") // class commandName
+
+                for (an in sym.annotations) {
+                    classFile.println("// ${an.annotationType.resolve().declaration.qualifiedName!!.asString()}")
+                }
 
                 classFile.flush()
                 classFile.close()

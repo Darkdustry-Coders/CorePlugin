@@ -52,6 +52,7 @@ import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import net.buj.surreal.Query
+import java.util.Arrays
 import kotlin.collections.iterator
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -68,7 +69,9 @@ private fun help(caller: Player, pageInit: Int?) = Async.run async@{
     val commands = Vars.netServer.clientCommands.commandList.iterator()
         .filter {
             val commands = metadataForCommand(it.text, CommandType.Player).collect(Seq())
-            commands.isEmpty || !commands.iterator().all { it.hidden || it.minPermissionLevel > permissionLevel }
+            commands.isEmpty || !commands.iterator().all { it.hidden || it.minPermissionLevel > permissionLevel ||
+                Arrays.stream(it.constraints).allMatch { !(it as CommandConstraint).enabled(caller) }
+            }
         }
         .map { Tl.fmt(caller).put("command", it.text).done("{commands.help.command}") }
         .collect(Seq())

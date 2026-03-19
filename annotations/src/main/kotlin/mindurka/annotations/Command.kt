@@ -43,7 +43,7 @@ annotation class Maybe
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class EnabledIf(vararg val value: KClass<out BaseCommandConstraint>)
+annotation class EnabledIf(val value: KClass<out BaseCommandConstraint>)
 /**
  * Collect the rest of the input.
  *

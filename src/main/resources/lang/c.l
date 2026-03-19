@@ -70,6 +70,8 @@ admin-action-no-target = [{col.err}] You must specify a target to perform an 
 admin-action-target-admin = [{col.err}] You cannot perform this action against another admin.
 
 [generic.command]
+disabled = Command [yellow]'/{command}'[] is disabled
+disabled-console = Command '{command}' is disabled
 missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
 missing-console = Missing parameter '{param}'
 invalid = Invalid parameter [yellow]'{commands.{command}.params.{param}}'[]

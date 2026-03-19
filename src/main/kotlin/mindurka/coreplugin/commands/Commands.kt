@@ -53,7 +53,13 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
 
                 var cause: CommandResult? = null
 
-                for (cmd in commandList.iterator().filter { it.command[0] == command.command[0] }) {
+                a@for (cmd in commandList.iterator().filter { it.command[0] == command.command[0] }) {
+                    for (constr in cmd.constraints) {
+                        if (!(constr as CommandConstraint).enabled(caller as Player)) {
+                            if (cause?.let { it.ordinal > CommandResult.Disabled.ordinal } != false) cause = CommandResult.Disabled
+                            continue@a
+                        }
+                    }
                     when (val result = cmd.parse(caller, if (args.size > 0) args[0] else "")) {
                         CommandResult.Complete -> return@run
                         else -> if (cause?.let { it.ordinal > result.ordinal } != false) cause = result
@@ -67,6 +73,9 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
                     when (cause) {
                         null -> {}
                         CommandResult.Complete -> unreachable()
+                        CommandResult.Disabled -> {
+                            formatter.put("cause", Tl.parse("{generic.command.disabled}"))
+                        }
                         CommandResult.TooMuchData -> {
                             formatter.put("cause", Tl.parse("{generic.command.too-many-arguments$suffix}"))
                         }
