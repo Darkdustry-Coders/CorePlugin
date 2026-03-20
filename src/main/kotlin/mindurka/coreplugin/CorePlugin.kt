@@ -78,31 +78,11 @@ object CorePlugin {
         init(klass.classLoader)
     }
 
-    private fun serverInfo(): ServerInfo? = run {
-        if (!Vars.net.active()) return null
-
-        ServerInfo(
-            name = Administration.Config.serverName.get() as String,
-            motd = Administration.Config.desc.get() as String,
-            gamemode = Vars.state.rules.modeName,
-            map = Vars.state.map.name(),
-            players = Groups.player.size(),
-            maxPlayers = Vars.netServer.admins.playerLimit,
-            wave = if (Vars.state.rules.waves) -1 else Vars.state.wave,
-            maxWaves = if (Vars.state.rules.winWave > 0) Vars.state.rules.winWave else -1,
-            ip = "${(+SharedConfig).serverIp}:${Administration.Config.port.get()}",
-        )
-    }
-
     @JvmField val epoch = Time.millis()
     @JvmField val protocol: Protocol
     @JvmField var currentGlobalVote: Vote? = null
     @JvmField val teamVotes = IntMap<Vote>()
-    @JvmField val hubServers = Seq<HubServer>()
-
-    class HubServer(val name: String, var ip: String) {
-        var lastRecvd: Long = System.nanoTime()
-    }
+    @JvmField val mainThread = Thread.currentThread()
 
     private var fakeBlockKind: Block? = null
     private class FakeBlock(
@@ -117,6 +97,7 @@ object CorePlugin {
 
         Database.load()
         Overrides.load()
+        RabbitMQ.init()
 
         val vanillaTeamAssigner = Vars.netServer.assigner
         Vars.netServer.assigner = NetServer.TeamAssigner { player, players ->
@@ -135,28 +116,6 @@ object CorePlugin {
                 Vars.state.rules.revealedBlocks.addAll(Blocks.heatReactor, Blocks.slagCentrifuge,
                     Blocks.scrapWallHuge, Blocks.scrapWallLarge, Blocks.scrapWallGigantic, Blocks.thruster, Blocks.scrapWall)
             }
-        }
-
-        on<ServerInfo> { msg ->
-            val name = RabbitMQ.sentBy(msg)!!
-            if (msg.gamemode == "Hub") {
-                hubServers.find { it.name == name }
-                    ?.apply {
-                        ip = msg.ip
-                        lastRecvd = System.nanoTime()
-                    }
-                    ?: run {
-                        hubServers.add(HubServer(name, msg.ip))
-                        null
-                    }
-            }
-        }
-        on<ServerDown> { msg ->
-            hubServers.removeAll { it.name == RabbitMQ.sentBy(msg) }
-        }
-        interval(60f) {
-            val time = System.nanoTime()
-            hubServers.removeAll { time - it.lastRecvd > 30_000_000_000 }
         }
 
         on<EventType.WorldLoadEvent>(priority = Priority.Lowest) {
@@ -353,9 +312,6 @@ object CorePlugin {
                 arrayOf(arrayOf(Tl.fmt(it.player).done("{generic.close}"))))
         }
 
-        on<ServersRefresh> { serverInfo()?.let { info -> Async.run { RabbitMQ.reply(it, info) } } }
-        interval(30f) { serverInfo()?.let(::emit)  }
-
         on<EventType.BlockBuildEndEvent>(priority = Priority.After) {
             if (it.breaking) return@on
 
@@ -396,6 +352,7 @@ object CorePlugin {
 
         modActionsInit()
         chatInit()
+        initHubDiscovery()
 
         interval(30f) { Async.run {
             for (player in Groups.player) {
@@ -439,7 +396,6 @@ object CorePlugin {
 
         protocol = Protocol()
 
-        RabbitMQ.noop()
         Runtime.getRuntime().addShutdownHook(Thread {
             emit(ServerDown)
             for (player in Groups.player) {
@@ -447,7 +403,7 @@ object CorePlugin {
             }
             Vars.net.closeServer()
 
-            RabbitMQ.flush()
+            RabbitMQ.close()
         })
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.");

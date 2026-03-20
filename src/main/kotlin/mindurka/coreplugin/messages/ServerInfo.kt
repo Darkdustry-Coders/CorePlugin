@@ -30,7 +30,7 @@ data class ServerInfo(
     /**
      * Server's gamemode.
      *
-     * Mapped to {generic.gamemode.<gamemode>} language key.
+     * Mapped to {generic.gamemode.{gamemode}} language key.
      */
     val gamemode: String,
     /** Current map. */

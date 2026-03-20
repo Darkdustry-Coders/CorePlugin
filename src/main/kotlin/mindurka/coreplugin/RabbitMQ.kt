@@ -1,499 +1,358 @@
 package mindurka.coreplugin
 
 import arc.Core
-import com.rabbitmq.client.ConnectionFactory
-import com.rabbitmq.client.Connection
-import com.rabbitmq.client.Channel
-import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.AMQP.BasicProperties.Builder as PropertiesBuilder
-import mindurka.annotations.NetworkEvent
-import mindurka.coreplugin.Config as CorePluginConfig
-import mindurka.config.SharedConfig
-import mindurka.config.Serializers
-import mindurka.api.Cancel
-import kotlinx.serialization.serializer
-import kotlin.jvm.kotlin
-import java.net.ConnectException
-import java.util.WeakHashMap
-import kotlin.reflect.full.createType
 import arc.func.Cons
 import arc.func.Prov
-import mindurka.annotations.NetworkRequest
-import arc.math.Mathf
+import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.Log
 import arc.util.Threads
-import arc.util.Timer
+import com.rabbitmq.client.AMQP
+import com.rabbitmq.client.BasicProperties
+import com.rabbitmq.client.BuiltinExchangeType
+import com.rabbitmq.client.Channel
+import com.rabbitmq.client.Connection
+import com.rabbitmq.client.ConnectionFactory
+import com.rabbitmq.client.Consumer
+import com.rabbitmq.client.Envelope
+import com.rabbitmq.client.ShutdownSignalException
 import kotlinx.coroutines.future.await
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.serializer
+import mindurka.annotations.NetworkEvent
 import mindurka.annotations.PublicAPI
-import mindurka.util.Async
-import mindurka.util.K
+import mindurka.config.Serializers
+import mindurka.config.SharedConfig
 import mindurka.util.Mutex
-import java.util.concurrent.CompletableFuture
-import mindurka.util.Ref
-import mindurka.util.UnsafeNull
-import mindurka.util.nodecl
+import mindurka.util.debug
 import mindurka.util.sha256
+import mindurka.util.unreachable
+import mindustry.Vars
 import java.io.IOException
-import java.util.Base64
+import java.net.ConnectException
+import java.util.WeakHashMap
+import java.util.concurrent.CompletableFuture
+import kotlin.jvm.kotlin
+import kotlin.reflect.full.createType
+import kotlin.system.exitProcess
+import kotlin.uuid.ExperimentalUuidApi
 
-class TookTooLongExeption(message: String) : Exception(message)
+class RabbitMQLock internal constructor(private val worker: RabbitMQWorker, channel: Channel, queueName: String) {
+    private var channel: Channel? = channel
+    private var queueName: String? = queueName
 
-object RabbitMQ {
     /**
-     * Distributed exclusive+temporary queue-based lock.
+     * Release the lock.
+     *
+     * Will not do anything on multiple triggers.
      */
-    @PublicAPI
-    class Lock internal constructor(private val channel: Channel, name: String) {
-        @JvmField
-        var name: String? = name
+    suspend fun release() {
+        val channel = this.channel ?: return
+        this.channel = null
+        val queueName = this.queueName ?: return
+        this.queueName = null
 
-        /**
-         * Release this lock.
-         *
-         * Calling this method multiple times does nothing.
-         */
-        @PublicAPI
-        suspend fun release(): kotlin.Unit = task { heldLocks.mutv { heldLocks ->
-            val name = name ?: return@mutv
-            this.name = null
-
-            channel.queueDelete(name, false, false)
+        worker.task<Unit> {
+            channel.queueDelete(queueName)
+            assert(worker.shared.mutb { it.acquiredLocks.remove(queueName) })
             channel.close()
-            heldLocks.remove(name)
-        } }
-
-        /** Create a [Cancel] for this lock. */
-        fun cancellable() = Cancel { Async.run(::release) }
+        }.await()
     }
+}
 
-    private val connection: Connection
-    @OptIn(UnsafeNull::class)
-    private var channel: Channel = nodecl()
-    private val queues = HashSet<String>()
-
-    private val sentBy = WeakHashMap<Any?, String?>()
-    private val correlationId = WeakHashMap<Any?, String?>()
-    private val heldLocks = Mutex(Seq<String>())
-
-    private class Task<T>(val run: Prov<T>, val future: CompletableFuture<T>?)
-    private class Tasks {
-        val tasks = Seq<Task<*>>()
-        var running: Boolean = false
-        var shittingDown = false
-        var shutDown = false
-        var currentThread: Thread? = null
-    }
-    private val tasks = Mutex(Tasks())
-
-    init {
+internal class RabbitMQWorker() {
+    @JvmField
+    val connection: Connection = run {
         val factory = ConnectionFactory()
         factory.setUri(SharedConfig.i().rabbitMqUrl)
         factory.isAutomaticRecoveryEnabled = true
-        var con: Connection
+
         while (true) {
             try {
-                con = factory.newConnection()
-                break
+                return@run factory.newConnection()
             } catch (_: ConnectException) {
-                Log.err("Connection refused! Retrying in 5s...")
+                Log.err("Failed to connect to RabbitMQ, retrying in 5 seconds...")
                 Thread.sleep(5000)
             }
         }
-        connection = con
-        reopenChannel()
+        unreachable()
+    }
+    @JvmField
+    val mainChannel: Channel = connection.createChannel()
+
+    @JvmField
+    val shared = Mutex(SharedInfo())
+    class SharedInfo {
+        val tasks = ArrayDeque<Runnable>()
+        val acquiredLocks = Seq<String>()
+        val exchangesFor = ObjectMap<String, Seq<Cons<*>>>()
+        var currentThread: Thread? = null
+        var nextConsumerId: Long = 0L
     }
 
-    fun noop() {}
-
-    private fun reopenChannel() {
-        channel = connection.createChannel()
-        channel.basicQos(100);
-        channel.addShutdownListener {
-            if (!it.isHardError) {
-                reopenChannel()
-            }
-            Log.err("The world is on fire", it)
+    init {
+        mainChannel.basicQos(128)
+        mainChannel.addShutdownListener {
+            Log.err("RabbitMQ error: ${it.stackTraceToString()}")
         }
     }
 
-    private suspend fun <R> task(task: Prov<R>): R {
-        val future = CompletableFuture<R>()
-        tasks.mutb { tasks ->
-            if (tasks.shutDown) throw IllegalStateException()
-            tasks.tasks.add(Task<R>(task, future))
-            val x = tasks.running
-            tasks.running = true
-            x
-        }
-        Threads.thread("RabbitMQ Task Thread") {
-            tasks.mutv { it.currentThread = Thread.currentThread() }
+    /**
+     * Add a new tasks and return the thread it'll be running on.
+     */
+    fun resumeTasks(newTask: Runnable): Thread = shared.mut {
+        it.tasks.addLast(newTask)
+        it.currentThread?.let { return@mut it }
+        val thread = Threads.thread("RabbitMQ Task Executor") {
             while (true) {
-                val task = tasks.mut { tasks ->
-                    if (tasks.tasks.isEmpty) {
-                        tasks.running = false
-                        return@mut null
+                val task = shared.mut {
+                    val task = it.tasks.removeFirstOrNull()
+                    if (task == null) {
+                        it.currentThread = null
                     }
-                    val x = tasks.tasks.remove(0)
-                    if (x == null && tasks.shittingDown) {
-                        tasks.shutDown = true
-                    }
-                    x
+                    task
                 } ?: break
-                try {
-                    val value = task.run.get()
-                    task.future?.let { future ->
-                        Core.app.run {
-                            @Suppress("UNCHECKED")
-                            (future as CompletableFuture<Any?>).complete(value)
-                        }
+                task.run()
+            }
+        }
+        it.currentThread = thread
+        thread
+    }
+
+    fun <T> task(exec: Prov<T>): CompletableFuture<T> {
+        val future = CompletableFuture<T>()
+        resumeTasks {
+            try {
+                val x = exec.get()
+                Core.app.run { future.complete(x) }
+            } catch (x: Throwable) {
+                Core.app.run { future.completeExceptionally(x) }
+            }
+        }
+        return future
+    }
+
+    @JvmField
+    val metadata = WeakHashMap<Any, BasicProperties>()
+
+    @OptIn(ExperimentalUuidApi::class, ExperimentalSerializationApi::class)
+    fun <T: Any> collectAll(klass: Class<T>, newMessage: Cons<T>) {
+        val annotation = klass.annotations.find { it is NetworkEvent } as NetworkEvent? ?: throw IllegalArgumentException("All network messages must be annotated with '@NetworkEvent'")
+        if (shared.mutb {
+            if (it.exchangesFor.containsKey(annotation.value)) {
+                it.exchangesFor.get(annotation.value).add(newMessage)
+                true
+            } else {
+                it.exchangesFor.put(annotation.value, Seq<Cons<*>>().add(newMessage))
+                false
+            }
+        }) return
+
+        val queueName = "${annotation.value}.mindustry.${Config.i.serverName}"
+        val routingKey = Config.i.serverName
+        val consumerKey = "${run {shared.mutl {
+            val x = it.nextConsumerId
+            it.nextConsumerId += 1
+            x
+        }}}.${annotation.value}"
+
+        resumeTasks {
+            try {
+                mainChannel.exchangeDeclare(annotation.value, BuiltinExchangeType.DIRECT, /*durable*/false, /*autoDelete*/true, /*internal*/false, emptyMap())
+                mainChannel.queueDeclare(queueName, /*durable*/false, /*exclusive*/false, /*autoDelete*/true, emptyMap())
+                mainChannel.queueBind(queueName, annotation.value, routingKey)
+                mainChannel.queueBind(queueName, annotation.value, "#")
+                mainChannel.basicConsume(queueName, false, consumerKey, object : Consumer {
+                    override fun handleConsumeOk(consumerTag: String) {}
+                    override fun handleCancelOk(consumerTag: String) {}
+                    override fun handleCancel(consumerTag: String) {}
+                    override fun handleShutdownSignal(
+                        consumerTag: String,
+                        sig: ShutdownSignalException
+                    ) {}
+                    override fun handleRecoverOk(consumerTag: String) {}
+
+                    override fun handleDelivery(
+                        consumerTag: String,
+                        envelope: Envelope,
+                        properties: AMQP.BasicProperties,
+                        body: ByteArray
+                    ) {
+                        debug{"[RabbitMQ] Recvd $queueName (mime=${properties.contentEncoding}, from=${properties.appId})"}
+                        val ktype = klass.kotlin.createType(emptyList(), false, emptyList())
+
+                        val o = when (properties.contentEncoding) {
+                            "application/cbor" ->
+                                try {
+                                    Serializers.cbor.decodeFromByteArray(Serializers.cbor.serializersModule.serializer(ktype), body)
+                                } catch (t: Throwable) {
+                                    mainChannel.basicNack(envelope.deliveryTag, false, false)
+                                    Core.app.run { Log.err("Failed to parse message (${queueName})", t) }
+                                    return
+                                }
+                            "application/json" ->
+                                try {
+                                    Serializers.json.decodeFromString(Serializers.json.serializersModule.serializer(ktype), body.toString(Vars.charset))
+                                } catch (t: Throwable) {
+                                    mainChannel.basicNack(envelope.deliveryTag, false, false)
+                                    Core.app.run { Log.err("Failed to parse message (${queueName})", t) }
+                                    return
+                                }
+                            "application/toml" ->
+                                try {
+                                    Serializers.toml.decodeFromString(Serializers.toml.serializersModule.serializer(ktype), body.toString(Vars.charset))
+                                } catch (t: Throwable) {
+                                    mainChannel.basicNack(envelope.deliveryTag, false, false)
+                                    Core.app.run { Log.err("Failed to parse message (${queueName})", t) }
+                                    return
+                                }
+                            else -> {
+                                mainChannel.basicNack(envelope.deliveryTag, false, false)
+                                Core.app.run { Log.err("Failed to parse message (${queueName}): Unsupported format ${properties.contentEncoding}") }
+                                return
+                            }
+                        } as T
+
+                        mainChannel.basicAck(envelope.deliveryTag, false)
+
+                        Core.app.run { try {
+                            metadata[o] = properties
+                            shared.mutv { (it.exchangesFor[annotation.value] as Seq<Cons<T>>?)?.each { it.get(o) } }
+                        } catch (t: Throwable) {
+                            Log.err("Fatal error", t)
+                            exitProcess(1)
+                        } }
                     }
-                } catch (e: Throwable) {
-                    task.future?.let { future ->
-                        Core.app.run {
-                            future.completeExceptionally(e)
-                        }
-                    }
+                })
+            } catch (err: Throwable) {
+                Core.app.run {
+                    Log.err("Fatal RabbitMQ error", err)
+                    exitProcess(1)
                 }
             }
         }
-        return future.await()
     }
 
-    private fun exchange(queueName: String) = "main.$queueName"
+    @OptIn(ExperimentalSerializationApi::class)
+    fun <T: Any> broadcast(o: T) = send(o, "#")
+    @OptIn(ExperimentalSerializationApi::class)
+    fun <T: Any> send(o: T, routingKey: String) {
+        resumeTasks {
+            val annotation = o.javaClass.annotations.find { it is NetworkEvent } as NetworkEvent? ?: throw IllegalArgumentException("All network messages must be annotated with '@NetworkEvent'")
+            val props = AMQP.BasicProperties.Builder()
+            props.contentEncoding("application/cbor")
+            props.appId(Config.i.serverName)
 
-    private fun queue(queueName: String) = "main.$queueName.${CorePluginConfig.i.serverName}"
+            debug{"[RabbitMQ] Sending ${annotation.value} (routingKey=$routingKey)"}
 
-    private suspend fun ensureExchange(queueName: String) {
-        task {
-            if (queues.add(queueName)) {
-                channel.exchangeDeclare(exchange(queueName), "topic", true, false, false, emptyMap())
-                channel.queueDeclare(queue(queueName), true, false, true, emptyMap())
-                channel.queueBind(queue(queueName), exchange(queueName), CorePluginConfig.i.serverName)
-            }
+            val ktype = o.javaClass.kotlin.createType(emptyList(), false, emptyList())
+            val arr = Serializers.cbor.encodeToByteArray(Serializers.cbor.serializersModule.serializer(ktype), o)
+
+            mainChannel.basicPublish(annotation.value, routingKey, true, false, props.build(), arr)
         }
     }
-
-    private suspend fun publish(
-        queueName: String,
-        body: ByteArray,
-        routingKey: String = "#",
-        props: BasicProperties.Builder = PropertiesBuilder()
-    ) {
-        task {
-            channel.basicPublish(
-                exchange(queueName),
-                routingKey,
-                true, false,
-                props
-                    .appId(CorePluginConfig.i().serverName)
-                    .contentEncoding("text/cbor")
-                    .build(),
-                body
-            )
-        }
-    }
-
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <T> send(`object`: T, routingKey: String = CorePluginConfig.i.serverName) {
-        val `annotation` =
-            `object`?.javaClass?.annotations?.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
-                ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
-        val queueName = `annotation`.value
-        ensureExchange(queueName)
-        val body = Serializers.cbor.encodeToByteArray(
-            Serializers.cbor.serializersModule.serializer(
-                `object`.javaClass.kotlin.createType(
-                    emptyList(),
-                    false,
-                    emptyList()
-                )
-            ),
-            `object`
-        )
-        publish(queueName, body, routingKey)
-    }
-
-    @PublicAPI
-    @JvmStatic
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <T> sendTo(`object`: T, to: String, routingKey: String = CorePluginConfig.i.serverName) {
-        val `annotation` =
-            `object`?.javaClass?.annotations?.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
-                ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
-        val queueName = `annotation`.value
-        ensureExchange(queueName)
-        val body = Serializers.cbor.encodeToByteArray(
-            Serializers.cbor.serializersModule.serializer(
-                `object`.javaClass.kotlin.createType(
-                    emptyList(),
-                    false,
-                    emptyList()
-                )
-            ),
-            `object`
-        )
-        publish(queueName, body, routingKey, props = PropertiesBuilder().replyTo(to))
-    }
-
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <T : Any> recv(klass: Class<T>, cb: (T) -> Unit): Cancel {
-        val `annotation` = klass.annotations.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
-            ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
-        val queueName = `annotation`.value
-        ensureExchange(queueName)
-        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE / 2)}-${System.currentTimeMillis()}"
-        val tag = channel.basicConsume(queue(queueName), false, consumerTag, true, false, emptyMap(), { _, msg ->
-            val deliveryTag = msg.envelope.deliveryTag
-            if (msg.properties.appId?.equals(CorePluginConfig.i().serverName) ?: true) {
-                channel.basicNack(deliveryTag, false, true)
-                return@basicConsume
-            }
-            if (msg.properties.replyTo != null && msg.properties.replyTo != CorePluginConfig.i().serverName) {
-                channel.basicNack(deliveryTag, false, true)
-                return@basicConsume
-            }
-            if (msg.properties.contentEncoding != "text/cbor" && msg.properties.contentEncoding != null) {
-                // don't requeue because all messages should be in cbor, requeue may cause infinity loop
-                channel.basicNack(deliveryTag, false, false)
-                return@basicConsume
-            }
-
+    suspend fun lock(name: ByteArray): RabbitMQLock? {
+        val name = "lock.${sha256(name)}"
+        if (shared.mutb { it.acquiredLocks.contains(name) }) return null
+        val future = CompletableFuture<RabbitMQLock?>()
+        resumeTasks {
             try {
-                val `object`: T = Serializers.cbor.decodeFromByteArray(
-                    Serializers.cbor.serializersModule.serializer(
-                        klass.kotlin.createType(
-                            emptyList(),
-                            false,
-                            emptyList()
-                        )
-                    ),
-                    msg.body
-                ) as T
-                sentBy[`object`] = msg.properties.appId
-                correlationId[`object`] = msg.properties.correlationId
-
-                channel.basicAck(deliveryTag, false)
-                // Pray to God that there are no exceptions below.
-                Core.app.run { cb(`object`) }
-            } catch (e: Exception) {
-                // bad cbor, don't requeue
-                Log.err(e)
-                Log.err("Bad cbor is ${Base64.getEncoder().encodeToString(msg.body)}")
-                channel.basicNack(deliveryTag, false, false)
+                val channel = connection.createChannel()
+                channel.queueDeclare(name, /*durable*/false, /*exclusive*/true, /*autoDelete*/true, emptyMap())
+                shared.mutv { it.acquiredLocks.add(name) }
+                future.complete(RabbitMQLock(this, channel, name))
+            } catch (_: IOException) {
+                future.complete(null)
+            } catch (t: Throwable) {
+                future.completeExceptionally(t)
             }
-        }, {}, { _, _ -> })
-
-        return Cancel {
-            Async.run { task {
-                channel.basicCancel(tag)
-            } }
         }
-    }
-
-    @PublicAPI
-    @JvmStatic
-    fun <T> sentBy(`object`: T): String? = sentBy[`object`]
-
-    @PublicAPI
-    @JvmStatic
-    fun <T> correlationId(`object`: T): String? = correlationId[`object`]
-
-    @PublicAPI
-    @JvmStatic
-    @Throws(TookTooLongExeption::class)
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <R, T> request(`object`: T, timeout: Float, recv: Cons<R>) {
-        val networkEvent =
-            `object`?.javaClass?.annotations?.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
-                ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
-        val networkRequest =
-            `object`.javaClass.annotations.find { it.annotationClass == NetworkRequest::class } as NetworkRequest?
-                ?: throw IllegalArgumentException("can only send requests annotated with '@NetworkRequest'")
-        val queueName = networkEvent.value
-        ensureExchange(queueName)
-        val body = Serializers.cbor.encodeToByteArray(
-            Serializers.cbor.serializersModule.serializer(
-                `object`.javaClass.kotlin.createType(
-                    emptyList(),
-                    false,
-                    emptyList()
-                )
-            ),
-            `object`
-        )
-        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE / 2)}-${System.currentTimeMillis()}"
-        val tag = task { channel.basicConsume(
-            "Q$queueName-${CorePluginConfig.i.serverName}",
-            true,
-            consumerTag,
-            true,
-            false,
-            emptyMap(),
-            { _, msg ->
-                if (msg.properties.replyTo != null && msg.properties.replyTo != CorePluginConfig.i().serverName) return@basicConsume
-                if (msg.properties.contentEncoding != "text/cbor" && msg.properties.contentEncoding != null) return@basicConsume
-
-                val `object`: R = Serializers.cbor.decodeFromByteArray(
-                    Serializers.cbor.serializersModule.serializer(
-                        networkRequest.value.createType(
-                            emptyList(),
-                            false,
-                            emptyList()
-                        )
-                    ),
-                    msg.body
-                ) as R
-
-                sentBy[`object`] = msg.properties.appId
-                correlationId[`object`] = msg.properties.correlationId
-
-                recv[`object`]
-            },
-            {},
-            { _, _ -> }) }
-        publish(queueName, body)
-        task {
-            channel.basicPublish(
-                "Ex$queueName",
-                CorePluginConfig.i().serverName,
-                true, false,
-                PropertiesBuilder()
-                    .appId(CorePluginConfig.i().serverName)
-                    .contentEncoding("text/cbor")
-                    .build(),
-                body
-            )
-        }
-        Timer.schedule({ Async.run { task { channel.basicCancel(tag) } } }, timeout)
-    }
-
-    @PublicAPI
-    @JvmStatic
-    @Throws(TookTooLongExeption::class)
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <T, R> requestOnce(`object`: T, timeout: Float): R {
-        val future = CompletableFuture<R>()
-
-        @OptIn(UnsafeNull::class)
-        val timer = Ref<Timer.Task>(nodecl())
-        val networkEvent =
-            `object`?.javaClass?.annotations?.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
-                ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
-        val networkRequest =
-            `object`.javaClass.annotations.find { it.annotationClass == NetworkRequest::class } as NetworkRequest?
-                ?: throw IllegalArgumentException("can only send requests annotated with '@NetworkRequest'")
-        val queueName = networkEvent.value
-        ensureExchange(queueName)
-        val body = Serializers.cbor.encodeToByteArray(
-            Serializers.cbor.serializersModule.serializer(
-                `object`.javaClass.kotlin.createType(
-                    emptyList(),
-                    false,
-                    emptyList()
-                )
-            ),
-            `object`
-        )
-        val consumerTag = "temp-tag-${Mathf.random(Int.MAX_VALUE / 2)}-${System.currentTimeMillis()}"
-        val tag = Ref("")
-        tag.r = task {
-            val x = channel.basicConsume(
-                "Q$queueName-${CorePluginConfig.i.serverName}",
-                true,
-                consumerTag,
-                true,
-                false,
-                emptyMap(),
-                { _, msg ->
-                    if (msg.properties.replyTo != null && msg.properties.replyTo != CorePluginConfig.i().serverName) return@basicConsume
-                    if (msg.properties.contentEncoding != "text/cbor" && msg.properties.contentEncoding != null) return@basicConsume
-
-                    val `object`: R = Serializers.cbor.decodeFromByteArray(
-                        Serializers.cbor.serializersModule.serializer(
-                            networkRequest.value.createType(
-                                emptyList(),
-                                false,
-                                emptyList()
-                            )
-                        ),
-                        msg.body
-                    ) as R
-
-                    sentBy[`object`] = msg.properties.appId
-                    correlationId[`object`] = msg.properties.correlationId
-
-                    timer.r.cancel()
-                    channel.basicCancel(tag.r)
-                    future.complete(`object`)
-                },
-                {},
-                { _, _ -> })
-            channel.basicPublish(
-                "Ex$queueName",
-                CorePluginConfig.i().serverName,
-                true, false,
-                PropertiesBuilder()
-                    .appId(CorePluginConfig.i().serverName)
-                    .contentEncoding("text/cbor")
-                    .build(),
-                body)
-
-            x
-        }
-        timer.r = Timer.schedule({
-            channel.basicCancel(tag.r)
-            future.completeExceptionally(TookTooLongExeption("could not receive an event in required time"))
-        }, timeout)
         return future.await()
     }
 
-    @PublicAPI
-    @JvmStatic
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    suspend fun <E, M> reply(event: E, message: M) {
-        val sentBy = sentBy(event)
-        val correlationId = correlationId(event)
+    fun close() {
+        resumeTasks { connection.close() }.join()
+    }
+}
 
-        val `annotation` =
-            message?.javaClass?.annotations?.find { it.annotationClass == NetworkEvent::class } as NetworkEvent?
-                ?: throw IllegalArgumentException("can only send objects annotated with '@NetworkEvent'")
-        val queueName = `annotation`.value
-        ensureExchange(queueName)
-        val body = Serializers.cbor.encodeToByteArray(
-            Serializers.cbor.serializersModule.serializer(
-                message.javaClass.kotlin.createType(
-                    emptyList(),
-                    false,
-                    emptyList()
-                )
-            ),
-            message
-        )
-        publish(queueName, body, props = PropertiesBuilder().replyTo(sentBy).correlationId(correlationId))
+object RabbitMQ {
+    private lateinit var worker: RabbitMQWorker
+
+    @JvmStatic
+    internal fun init() {
+        worker = RabbitMQWorker()
     }
 
-    suspend fun lock(data: String): Lock? = task { heldLocks.mut { heldLocks ->
-        val queueName = "lock.${sha256(data)}"
-        if (heldLocks.contains(queueName)) return@mut null
-        return@mut try {
-            val localChannel = connection.createChannel()
-            localChannel.queueDeclare(queueName, /*durable=*/false, /*exclusive=*/true, /*autoDelete=*/true, emptyMap())
-            heldLocks.add(queueName)
-            Lock(localChannel, queueName)
-        } catch (_: IOException) {
-            null
-        }
-    } }
-
+    /**
+     * Collect all events of the provided type.
+     *
+     * You probably want to use [mindurka.api.Events] instead.
+     */
     @PublicAPI
-    fun flush() {
-        tasks.mut {
-            it.shittingDown = true
-            if (!it.running) {
-                it.shutDown = true
-                null
-            } else it.currentThread
-        }?.join()
+    @JvmStatic
+    fun <T: Any> collectAll(klass: Class<T>, newMessage: Cons<T>) = worker.collectAll(klass, newMessage)
+    /**
+     * Collect all events of the provided type.
+     *
+     * You probably want to use [mindurka.api.Events] instead.
+     */
+    @PublicAPI
+    @JvmStatic
+    inline fun <reified T: Any> collectAll(newMessage: Cons<T>) = collectAll(T::class.java, newMessage)
+
+    /**
+     * Broadcast a message.
+     *
+     * You probably want to use [mindurka.api.Events] instead.
+     */
+    @PublicAPI
+    @JvmStatic
+    fun <T: Any> broadcast(message: T) = worker.broadcast(message)
+
+    /**
+     * Send a message to a particular target.
+     */
+    @PublicAPI
+    @JvmStatic
+    fun <T: Any> send(message: T, routingKey: String) = worker.send(message, routingKey)
+
+    /**
+     * Obtain message metadata.
+     */
+    @PublicAPI
+    @JvmStatic
+    fun <T: Any> metadata(message: T): BasicProperties? = worker.metadata[message]
+
+    /**
+     * Get the ID of the application that sent the message.
+     */
+    @PublicAPI
+    @JvmStatic
+    fun <T: Any> sentBy(message: T): String = worker.metadata[message]!!.appId
+
+    /**
+     * Send a message to a particular target.
+     */
+    @PublicAPI
+    @JvmStatic
+    fun <T: Any, Y: Any> reply(to: T, with: Y) = worker.send(with, sentBy(to))
+
+    /**
+     * Create a distributed lock.
+     */
+    @PublicAPI
+    @JvmStatic
+    suspend fun lock(name: String): RabbitMQLock? = worker.lock(name.toByteArray(Vars.charset))
+
+    /**
+     * Create a distributed lock.
+     */
+    @PublicAPI
+    @JvmStatic
+    suspend fun lock(name: ByteArray): RabbitMQLock? = worker.lock(name)
+
+    @JvmStatic
+    internal fun close() {
+        worker.close()
     }
 }

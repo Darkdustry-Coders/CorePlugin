@@ -10,8 +10,11 @@ import mindurka.config.Serializers
 
 @Serializable
 data class Config(
+    @JvmField
     val serverName: String = "unnamed-server-${Mathf.random(Int.MAX_VALUE)}",
+    @JvmField
     val gamemode: String = "unknown",
+    @JvmField
     val sharedConfigPath: String = Vars.dataDirectory.child("sharedConfig.toml").path(),
 ) {
     companion object {
@@ -32,7 +35,7 @@ data class Config(
             instance
         }
 
-        val i: Config get() = config
+        inline val i: Config get() = config
         @Suppress("NOTHING_TO_INLINE") // ik it's insignificant.
                                        // Still removes a stack frame to get a property tho and I like to type less characters.
         inline fun i(): Config = config

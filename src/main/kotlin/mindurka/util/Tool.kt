@@ -2,6 +2,7 @@ package mindurka.util
 
 import arc.struct.ObjectIntMap
 import arc.struct.ObjectMap
+import arc.struct.Seq
 import arc.util.Strings
 import arc.util.Time
 import buj.tl.Script
@@ -299,4 +300,14 @@ inline fun <T, Y> ObjectMap<T, Y>.getOrPut(key: T, supplier: () -> Y): Y = run {
         put(key, x)
         x
     }
+}
+
+inline fun <reified T> newSeq(capacity: Int = 16, ordered: Boolean = true): Seq<T> {
+    return Seq<T>(ordered, capacity, T::class.java)
+}
+inline fun <reified T> seqOf(vararg objs: T): Seq<T> = Seq<T>(objs)
+inline fun <reified T> seqBy(size: Int, initfun: (Int) -> T): Seq<T> {
+    val seq = newSeq<T>(size)
+    for (i in 0..<size) seq.add(initfun(i))
+    return seq
 }

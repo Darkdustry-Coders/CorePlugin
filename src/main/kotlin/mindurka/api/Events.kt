@@ -459,7 +459,7 @@ suspend inline fun <T: Any> future(fn: (CompletableFuture<T>) -> kotlin.Unit): T
  * @return Cancellation for that event handler.
  */
 @PublicAPI
-inline fun <reified T> on(
+inline fun <reified T: Any> on(
     lifetime: Lifetime = Lifetime.Forever,
     priority: Priority = Priority.Normal,
     once: Boolean = false,
@@ -471,7 +471,7 @@ inline fun <reified T> on(
  *
  * This will handle both Mindustry and network events.
  */
-@PublicAPI fun <T> emit(event: T) = Events.fire(event)
+@PublicAPI fun <T: Any> emit(event: T) = Events.fire(event)
 
 private data class EventContainer (
     val cons: Cons<*>,
@@ -496,7 +496,7 @@ object Events {
      */
     @JvmStatic
     @JvmOverloads
-    fun <T> on(
+    fun <T: Any> on(
         lifetime: Lifetime = Lifetime.Forever,
         priority: Priority = Priority.Normal,
         once: Boolean = false,
@@ -522,8 +522,8 @@ object Events {
                     }
                 }
                 if (cls.annotations.any{ it.annotationClass == NetworkEvent::class }) {
-                    if (handlingNetworkEvents.addUnique(cls)) { Async.run {
-                        RabbitMQ.recv(cls as Class<*>) {
+                    if (handlingNetworkEvents.addUnique(cls)) {
+                        RabbitMQ.collectAll(cls) {
                             try {
                                 arc.Events.fire(it)
                             } catch (why: Exception) {
@@ -531,7 +531,7 @@ object Events {
                                 throw why
                             }
                         }
-                    } }
+                    }
                 }
                 val array = Array<Seq<EventContainer>?>(Priority.entries.size) { null }
                 eventHandlers.put(cls, array)
@@ -563,14 +563,14 @@ object Events {
     // TODO: Make this API thread-safe and remove `Bus`
     /** Emit an event. */
     @JvmStatic
-    fun <T> fire(event: T) {
-        if (event?.javaClass?.annotations?.any{ it.annotationClass == NetworkEvent::class } == true) Async.run { RabbitMQ.send(event) }
+    fun <T: Any> fire(event: T) {
+        if (event.javaClass.annotations.any { it.annotationClass == NetworkEvent::class }) Async.run { RabbitMQ.broadcast(event) }
         else arc.Events.fire(event)
     }
 
     /** Remove an event handler. */
     @JvmStatic
-    fun <T> remove(ty: Class<T>, listener: Cons<T>) {
+    fun <T: Any> remove(ty: Class<T>, listener: Cons<T>) {
         val handlers = eventHandlers.get(ty) ?: return
         for (a in handlers) {
             a?.removeAll {

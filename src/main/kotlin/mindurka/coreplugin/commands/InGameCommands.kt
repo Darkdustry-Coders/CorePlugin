@@ -440,20 +440,3 @@ private fun nick(caller: Player, @Rest name: String?) = Async.run {
 
     caller.setCooldown("/nick", 3f)
 }
-
-@Command
-private fun hub(caller: Player) = Async.run {
-    if (caller.checkOnCooldown("/hub")) return@run
-
-    for (server in CorePlugin.hubServers.copy()) {
-        val i = server.ip.indexOf(':')
-        val host = server.ip.substring(0, i)
-        val port = server.ip.substring(i + 1).toInt()
-
-        if (AsyncCall.connect(caller, host, port)) return@run
-    }
-
-    Tl.send(caller).done("{commands.hub.errors.hub-down}")
-
-    caller.setCooldown("/hub", 10f)
-}

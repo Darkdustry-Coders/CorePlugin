@@ -101,7 +101,7 @@ class PlayerData(player: Player) {
         player.get()?.name = fullName()
     }
 
-    val locks = Seq<RabbitMQ.Lock>(RabbitMQ.Lock::class.java)
+    val locks = Seq<RabbitMQLock>(RabbitMQLock::class.java)
     suspend fun releaseLocks() {
         for (lock in locks) lock.release()
         locks.clear()
