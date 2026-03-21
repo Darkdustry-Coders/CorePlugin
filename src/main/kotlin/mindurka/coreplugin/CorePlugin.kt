@@ -294,7 +294,7 @@ object CorePlugin {
                     currentGlobalVote!!.playerLeft(SendMessage.All, player)
                 if (teamVotes[player.team().id] != null)
                     teamVotes[player.team().id]!!.playerLeft(SendMessage.Multi(player.team()), player)
-                player.sessionData.releaseLocks()
+                player.sessionData.playerLeft(player)
             }
         }
         on<EventType.MenuOptionChooseEvent>(listener = ::handleUiEvent)

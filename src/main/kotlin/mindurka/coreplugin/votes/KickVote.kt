@@ -22,6 +22,7 @@ class KickVote(initiator: Player, val player: Player, val reason: String): Simpl
                 votesFor,
                 reason
             )
+            player.sessionData.playerLeft(player)
         }
     }
 

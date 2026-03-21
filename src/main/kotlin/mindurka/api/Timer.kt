@@ -1,7 +1,9 @@
 package mindurka.api
 
+import arc.util.Log
 import mindurka.annotations.PublicAPI
 import mindurka.util.K
+import mindurka.util.debug
 import java.util.concurrent.CompletableFuture
 import arc.util.Timer as ArcTimer
 
@@ -52,7 +54,10 @@ object Timer {
     @JvmStatic
     fun schedule(runnable: Runnable, delaySeconds: Float, intervalSeconds: Float): Cancel {
         val task = ArcTimer.schedule(runnable, delaySeconds, intervalSeconds)
-        return Cancel.get { task.cancel() }
+        return Cancel.get {
+            Log.info("Cancelled interval???")
+            task.cancel()
+        }
     }
 
     /**

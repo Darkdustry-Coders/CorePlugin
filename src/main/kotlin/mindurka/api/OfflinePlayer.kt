@@ -20,6 +20,10 @@ import net.buj.surreal.Query
  */
 @PublicAPI
 class OfflinePlayer internal constructor(var lastName: String?, val uuid: String, val usid: String?, val userId: String, val profileId: String) {
+    fun sessionData() {
+        TODO("Not yet implemented")
+    }
+
     companion object {
         private val cache = ObjectMap<String, OfflinePlayer?>()
         private val playerCache = ObjectMap<Player, OfflinePlayer>()

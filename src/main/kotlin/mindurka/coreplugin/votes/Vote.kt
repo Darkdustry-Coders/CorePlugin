@@ -75,10 +75,10 @@ abstract class Vote(val initiator: Player, val team: Team?) {
         if (finished) return
 
         val selector = Boolf<Player> { filter(it) && if (team == null) (!it.team().isServiceTeam || votesFor.contains(it) || votesAgainst.contains(it)) else it.team() == team }
-        totalPlayers = Groups.player.count(selector)
+        totalPlayers = Groups.player.count(selector) / 2 + 1
         votesForNumber = votesFor.count(selector) - votesAgainst.count(selector)
 
-        if (votesForNumber >= totalPlayers / 2 + 1) {
+        if (votesForNumber >= totalPlayers) {
             finished = true
             if (commit) {
                 if (team == null) CorePlugin.currentGlobalVote = null

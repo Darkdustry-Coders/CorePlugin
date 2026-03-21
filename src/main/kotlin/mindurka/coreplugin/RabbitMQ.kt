@@ -56,6 +56,7 @@ class RabbitMQLock internal constructor(private val worker: RabbitMQWorker, chan
             channel.queueDelete(queueName)
             assert(worker.shared.mutb { it.acquiredLocks.remove(queueName) })
             channel.close()
+            debug("[RabbitMQ] Released lock $queueName")
         }.await()
     }
 }
@@ -253,15 +254,20 @@ internal class RabbitMQWorker() {
     }
     suspend fun lock(name: ByteArray): RabbitMQLock? {
         val name = "lock.${sha256(name)}"
-        if (shared.mutb { it.acquiredLocks.contains(name) }) return null
+        if (shared.mutb { it.acquiredLocks.contains(name) }) {
+            debug("[RabbitMQ] Failed to acquire lock $name")
+            return null
+        }
         val future = CompletableFuture<RabbitMQLock?>()
         resumeTasks {
             try {
                 val channel = connection.createChannel()
                 channel.queueDeclare(name, /*durable*/false, /*exclusive*/true, /*autoDelete*/true, emptyMap())
                 shared.mutv { it.acquiredLocks.add(name) }
+                debug("[RabbitMQ] Acquired lock $name")
                 future.complete(RabbitMQLock(this, channel, name))
             } catch (_: IOException) {
+                debug("[RabbitMQ] Failed to acquire lock $name")
                 future.complete(null)
             } catch (t: Throwable) {
                 future.completeExceptionally(t)

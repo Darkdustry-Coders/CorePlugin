@@ -8,6 +8,7 @@ import arc.util.Strings
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import mindurka.annotations.Command
+import mindurka.annotations.ConsoleCommand
 import mindurka.annotations.EnabledIf
 import mindurka.annotations.Hidden
 import mindurka.annotations.RequiresPermission
@@ -15,6 +16,7 @@ import mindurka.annotations.Rest
 import mindurka.api.Consts
 import mindurka.api.Gamemode
 import mindurka.api.MapHandle
+import mindurka.api.OfflinePlayer
 import mindurka.api.RoundEndEvent
 import mindurka.api.emit
 import mindurka.build.CommandType
@@ -56,6 +58,7 @@ import java.util.Arrays
 import kotlin.collections.iterator
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlin.time.Duration
 
 /** List commands */
 @Command
@@ -70,7 +73,7 @@ private fun help(caller: Player, pageInit: Int?) = Async.run async@{
         .filter {
             val commands = metadataForCommand(it.text, CommandType.Player).collect(Seq())
             commands.isEmpty || !commands.iterator().all { it.hidden || it.minPermissionLevel > permissionLevel ||
-                Arrays.stream(it.constraints).allMatch { !(it as CommandConstraint).enabled(caller) }
+                Arrays.stream(it.constraints).anyMatch { !(it as CommandConstraint).enabled(caller) }
             }
         }
         .map { Tl.fmt(caller).put("command", it.text).done("{commands.help.command}") }

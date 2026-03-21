@@ -10,6 +10,7 @@ import mindurka.coreplugin.RabbitMQ
 import mindurka.util.Async
 import mindurka.util.Ref
 import mindurka.util.UnsafeNull
+import mindurka.util.debug
 import mindurka.util.nodecl
 import mindurka.util.unreachable
 import mindustry.Vars
@@ -208,7 +209,6 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
     companion object {
         private var bigCacheWarning = false
         private val cache = Seq<Cancel>()
-        private val nullRunnable = Runnable { unreachable("This callback should have never been called") }
 
         /**
          * Obtain a new [Cancel] from the cache.
@@ -221,7 +221,7 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
             val cancel = cache.pop()
             cancel.callback = callback
             cancel.id = lastCancelId++
-            Log.debug{"Created cancel ${cancel.id}"}
+            debug{"Created cancel ${cancel.id}"}
 
             return cancel
         }
@@ -251,7 +251,7 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
     private val backwardsBound = Seq<Cancellable>()
 
     init {
-        Log.debug{"Created cancel $id"}
+        debug{"Created cancel $id"}
     }
 
     @OptIn(CancellableInternals::class)
@@ -291,7 +291,7 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
      */
     override fun cancel() {
         val cbold = callback ?: return
-        Log.debug{"Cancelling cancel $id"}
+        debug{"Cancelling cancel $id"}
 
         cbold.run()
         callback = null
@@ -301,7 +301,7 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
 
         alsoCancel.clear()
         backwardsBound.clear()
-        callback = nullRunnable
+        callback = null
     }
     override fun run() = cancel()
 
@@ -393,7 +393,7 @@ open class Lifetime(parent: Cancellable? = null): Cancellable {
     private val id = lastLifetimeId++
 
     init {
-        Log.debug{"Created lifetime $id"}
+        debug{"Created lifetime $id"}
         parent?.let(::alsoCancel)
         uponStart()
     }
@@ -432,7 +432,7 @@ open class Lifetime(parent: Cancellable? = null): Cancellable {
     override fun cancel() {
         if (cancelled) return
         cancelled = true
-        Log.debug{"Cancelled lifetime $id"}
+        debug{"Cancelled lifetime $id"}
 
         this.alsoCancel.each(Cancellable::cancel)
         backwardsBound.each { it.unbind(this) }

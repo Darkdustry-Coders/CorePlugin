@@ -38,6 +38,7 @@ import mindustry.core.NetServer
 import mindustry.game.EventType
 import mindustry.gen.Call
 import mindustry.gen.Player
+import mindustry.gen.SendChatMessageCallPacket
 import mindustry.gen.ServerBinaryPacketReliableCallPacket
 import mindustry.gen.ServerBinaryPacketUnreliableCallPacket
 import mindustry.gen.ServerPacketReliableCallPacket
@@ -172,6 +173,14 @@ class OServerPacketUnreliableCallPacket: ServerPacketUnreliableCallPacket() {
     }
 }
 
+class OSendChatMessageCallPacket: SendChatMessageCallPacket() {
+    override fun handleServer(con: NetConnection) {
+        if (con.player != null && !con.kicked) {
+            chatHandleMessage(con.player, message);
+        }
+    }
+}
+
 class Protocol {
     companion object {
         internal val AUTH_HEADER = byteArrayOf(43, 76, 12, 45)
@@ -233,6 +242,7 @@ class Protocol {
         overridePacket<ServerBinaryPacketUnreliableCallPacket, OServerBinaryPacketUnreliableCallPacket> { OServerBinaryPacketUnreliableCallPacket() }
         overridePacket<ServerPacketReliableCallPacket, OServerPacketReliableCallPacket> { OServerPacketReliableCallPacket() }
         overridePacket<ServerPacketUnreliableCallPacket, OServerPacketUnreliableCallPacket> { OServerPacketUnreliableCallPacket() }
+        overridePacket<SendChatMessageCallPacket, OSendChatMessageCallPacket> { OSendChatMessageCallPacket() }
 
         Vars.net.handleServer(Packets.Connect::class.java) { con, packet ->
             val realCon: Connection = Reflect.get(con.javaClass, con, "connection")
@@ -469,8 +479,7 @@ class Protocol {
         try {
             val session = player.sessionData
             (RabbitMQ.lock("player-uuid.${player.uuid()}") ?: run {
-                player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
-                session.releaseLocks()
+                player.cskick(Tl.fmt(player).done("{generic.kick.another-location}"))
                 return@login
             }).let { session.locks.add(it); K }
 
@@ -479,8 +488,7 @@ class Protocol {
                 session.publicKey = state.key
                 session.mindurkaCompatVersion = state.mindurkaCompatVersion
                 (RabbitMQ.lock("player-key.${sha256(state.key.encoded)}") ?: run {
-                    player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
-                    session.releaseLocks()
+                    player.cskick(Tl.fmt(player).done("{generic.kick.another-location}"))
                     return@login
                 }).let { session.locks.add(it); K }
             }
@@ -491,44 +499,46 @@ class Protocol {
             try {
                 Database.login(player.uuid(), player.usid(), player.con.address, isp?.isp, session.publicKey, player.coloredName(), session)
             } catch (_: MergedAccountException) {
-                player.con.kick(Tl.fmt(player).done("{generic.kick.merged}"))
+                player.cskick(Tl.fmt(player).done("{generic.kick.merged}"))
                 return
             } catch (_: DisconnectedAccountException) {
-                player.con.kick(Tl.fmt(player).done("{generic.kick.disconnected}"))
+                player.cskick(Tl.fmt(player).done("{generic.kick.disconnected}"))
                 return
             } catch (_: KeyValidationFailure) {
-                player.con.kick(Tl.fmt(player).done("{generic.kick.key-validation-failure-${if (player.hasMindurkaCompat) "mdc" else "no-mdc"}}"))
+                player.ckick(Tl.fmt(player).done("{generic.kick.key-validation-failure-${if (player.hasMindurkaCompat) "mdc" else "no-mdc"}}"))
                 return
             } catch (_: DisabledAccountException) {
-                player.con.kick(Tl.fmt(player).done("{generic.kick.disabled}"))
+                player.cskick(Tl.fmt(player).done("{generic.kick.disabled}"))
                 return
             } catch (_: SharedAccountException) {
-                player.con.kick(Tl.fmt(player).done("{generic.kick.shared}"))
+                player.cskick(Tl.fmt(player).done("{generic.kick.shared}"))
                 return
             } catch (ban: BannedAccountException) {
                 Database.banConnection(player.con, ban.banId, player.locale, ban.reason, ban.expires, ban.admin)
+                session.playerLeft(player)
                 return
             } catch (kick: KickedAccountException) {
                 Database.kickConnection(player.con, kick.kickId, player.locale, kick.reason, kick.expires, kick.admin)
+                session.playerLeft(player)
                 return
             } catch (kick: VotekickedAccountException) {
                 Database.votekickConnection(player.con, kick.votekickId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
+                session.playerLeft(player)
                 return
             } catch (_: BlacklistedException) {
                 player.con.close()
+                session.playerLeft(player)
                 Vars.netServer.admins.blacklistDos(player.con.address)
                 emit(AddFirewallBan(player.con.address))
                 return
             } catch (t: Throwable) {
-                player.con.kick("Internal error.")
+                player.ckick("Internal error.")
                 Log.err(t)
-                session.releaseLocks()
                 return
             }
 
             (RabbitMQ.lock("player-profile.${sha256(session.profileId)}") ?: run {
-                player.kick(Tl.fmt(player).done("{generic.kick.another-location}"))
-                session.releaseLocks()
+                player.cskick(Tl.fmt(player).done("{generic.kick.another-location}"))
                 return@login
             }).let { session.locks.add(it); K }
 
@@ -536,9 +546,8 @@ class Protocol {
                 Reflect.get<ReusableByteOutStream>(Vars.netServer, "writeBuffer").reset()
                 player.write(Reflect.get(Vars.netServer, "outputBuffer"))
             } catch (t: Throwable) {
-                player.con.kick(Packets.KickReason.nameEmpty)
+                player.ckick(Packets.KickReason.nameEmpty)
                 Log.err(t)
-                session.releaseLocks()
                 return
             }
 
@@ -552,11 +561,11 @@ class Protocol {
             Call.hideHudText(player.con) // holy annoying otherwise
             Vars.netServer.sendWorldData(player)
 
-            done = true
             emit(EventType.PlayerConnect(player))
+            done = true
         } finally {
             loggingIn.remove(playerUuid)
-            if (!done) player.sessionData.releaseLocks()
+            if (!done) PlayerData.of(player).playerLeft(player)
         }
     }
 }

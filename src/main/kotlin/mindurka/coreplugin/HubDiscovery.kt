@@ -1,5 +1,6 @@
 package mindurka.coreplugin
 
+import arc.Core
 import arc.struct.ObjectMap
 import buj.tl.Tl
 import mindurka.annotations.Command
@@ -15,6 +16,7 @@ import mindurka.util.AsyncCall
 import mindurka.util.checkOnCooldown
 import mindurka.util.setCooldown
 import mindustry.Vars
+import mindustry.game.EventType
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.net.Administration
@@ -44,6 +46,8 @@ private fun serverInfo(): ServerInfo? {
 // TODO: Increase rates on all of these.
 internal fun initHubDiscovery() {
     on<ServersRefresh> { serverInfo()?.let { info -> Async.run { RabbitMQ.reply(it, info) } } }
+    on<EventType.PlayerJoin> { Core.app.run { serverInfo()?.let { info -> Async.run { RabbitMQ.broadcast(info) } } } }
+    on<EventType.PlayerLeave> { Core.app.run { serverInfo()?.let { info -> Async.run { RabbitMQ.broadcast(info) } } } }
     interval(30f) { serverInfo()?.let(::emit) }
 
     interval(30f) {

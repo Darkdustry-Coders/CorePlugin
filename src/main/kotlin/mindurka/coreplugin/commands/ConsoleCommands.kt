@@ -68,6 +68,9 @@ private fun pardon(player: OfflinePlayer) = Async.run {
 @ConsoleCommand
 private fun kick(player: OfflinePlayer, duration: Duration?, reason: String) = Async.run {
     Database.kick(player, null, duration, reason)
+    player.player?.let { player ->
+        player.sessionData.playerLeft(player)
+    }
     Log.info("Kicked player ${player.lastName}")
 }
 
@@ -82,6 +85,9 @@ private fun unban(player: OfflinePlayer) = Async.run {
 @ConsoleCommand
 private fun ban(player: OfflinePlayer, duration: Duration?, reason: String) = Async.run {
     Database.ban(player, null, duration, reason)
+    player.player?.let { player ->
+        player.sessionData.playerLeft(player)
+    }
     Log.info("Banned player ${player.lastName}")
 }
 
