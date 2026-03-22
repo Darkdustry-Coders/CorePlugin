@@ -1,11 +1,14 @@
 package mindurka.util
 
 import arc.struct.Seq
+import arc.util.Log
+import mindurka.coreplugin.mindurkaCompat
 import mindurka.util.Schematic.Options
 import mindustry.Vars
 import mindustry.content.Blocks
 import mindustry.game.Team
 import mindustry.gen.Call
+import mindustry.gen.Groups
 import mindustry.world.Block
 import mindustry.world.Tiles
 import mindustry.world.blocks.environment.Floor
@@ -16,6 +19,9 @@ private val DEFAULT: Options = Options()
 
 class Schematic(val width: Int, val height: Int) {
     companion object {
+        internal val arr = ByteArray(12) { 0 }
+        internal val buf = ByteBuffer.wrap(arr)
+
         @JvmStatic
         val EMPTY: Schematic = Schematic(0, 0)
 
@@ -247,6 +253,7 @@ class Schematic(val width: Int, val height: Int) {
         paste(x, y, w, h, dst, dstx, dsty, DEFAULT)
     }
 
+    @OptIn(UnsafeNull::class)
     fun paste(x: Int, y: Int, w: Int, h: Int, dst: Tiles, dstx: Int, dsty: Int, options: Options) {
         var x = x
         var y = y
@@ -296,11 +303,14 @@ class Schematic(val width: Int, val height: Int) {
 
             val tile = dst.get(dstx + dx, dsty + dy) ?: continue
 
+            var updateData = false
+
             val data = this.build[idx]
             block@while (blocks[idx] != null && !(blocks[idx] === Blocks.air && options.skipAir)) {
                 if (options.skipBuildings && tile.build != null || this.build[idx] != null) break@block
                 if (options.updateNet) tile.setNet(blocks[idx], options.team, data?.rotation ?: 0)
                 else tile.setBlock(blocks[idx], options.team, data?.rotation ?: 0)
+                if (notnull(blocks[idx]).saveData) updateData = true
                 break
             }
             val floorChanged = floors[idx] != null && !(blocks[idx] === Blocks.empty && options.skipEmpty)
@@ -311,26 +321,32 @@ class Schematic(val width: Int, val height: Int) {
                     tile.setOverlay(overlays[idx])
                     tile.setFloor(floors[idx])
                 }
+                if (notnull(floors[idx]).saveData) updateData = true
+                if (notnull(overlays[idx]).saveData) updateData = true
             } else if (floorChanged) {
                 if (options.updateNet) tile.setFloorNet(floors[idx], tile.overlay())
                 else tile.setFloor(floors[idx])
+                if (notnull(floors[idx]).saveData) updateData = true
             } else if (overlayChanged) {
                 if (options.updateNet) tile.setOverlayNet(overlays[idx])
                 else tile.setOverlay(overlays[idx])
+                if (notnull(overlays[idx]).saveData) updateData = true
             }
 
-            val dataChanged = tile.data.toLong() != this.data[idx]
+            if (updateData) {
+                val dataChanged = tile.data.toLong() != this.data[idx]
 
-            tile.setPackedData(this.data[idx])
-            if (options.updateNet && dataChanged) {
-                // TODO: Move this to MindurkaCompat cuz otherwise this crashes hard.
-                val arr = ByteArray(16) { 0 }
-                val buf = ByteBuffer.wrap(arr)
-                buf.putInt(0, x + dx)
-                buf.putInt(4, y + dy)
-                buf.putLong(8, this.data[idx])
+                tile.setPackedData(this.data[idx])
+                if (options.updateNet && dataChanged) {
+                    buf.putShort(0, tile.x)
+                    buf.putShort(2, tile.y)
+                    buf.putLong(4, this.data[idx])
 
-                Call.serverBinaryPacketReliable("mindurka.setData", arr)
+                    for (player in Groups.player) {
+                        if (player.mindurkaCompat.setData)
+                            Call.clientBinaryPacketReliable(player.con, "mindurka.setData", arr.clone())
+                    }
+                }
             }
         }
     }

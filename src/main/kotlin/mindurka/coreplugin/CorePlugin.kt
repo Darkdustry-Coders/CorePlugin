@@ -37,6 +37,7 @@ import mindurka.ui.handleUiEvent
 import mindurka.util.Async
 import mindurka.util.ModifyWorld
 import mindurka.util.SendMessage
+import mindurka.util.debug
 import mindurka.util.filter
 import mindurka.util.map
 import mindurka.util.random
@@ -223,7 +224,7 @@ object CorePlugin {
                     patch.append("}\n")
                 }
 
-                Log.info("$patch")
+                debug{"$patch"}
 
                 patch.toString()
             }) })
@@ -310,6 +311,10 @@ object CorePlugin {
                 Tl.fmt(it.player).done("{generic.welcome-message-title}"),
                 Tl.fmt(it.player).done("{generic.welcome-message}"),
                 arrayOf(arrayOf(Tl.fmt(it.player).done("{generic.close}"))))
+
+            if (it.player.mindurkaCompat.updateRequired) {
+                Tl.send(it.player).done("{generic.mdc-outdated}")
+            }
         }
 
         on<EventType.BlockBuildEndEvent>(priority = Priority.After) {

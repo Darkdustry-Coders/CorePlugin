@@ -29,7 +29,7 @@ class StringRead(val source: String) : mindurka.util.Read<FormatException> {
             seek += 2
             return 0
         }
-        val `val` = arc.util.Strings.parseLong(source, 10, 0, seek, (seek + length).toLong())
+        val `val` = arc.util.Strings.parseLong(source, 10, seek, seek + length, 0)
         if (`val` == 0L) throw FormatException("Not an integer")
         seek += length + 1
         return `val`

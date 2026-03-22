@@ -11,6 +11,7 @@ import mindurka.util.Async
 import mindurka.util.Ref
 import mindurka.util.UnsafeNull
 import mindurka.util.debug
+import mindurka.util.newSeq
 import mindurka.util.nodecl
 import mindurka.util.unreachable
 import mindustry.Vars
@@ -221,7 +222,7 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
             val cancel = cache.pop()
             cancel.callback = callback
             cancel.id = lastCancelId++
-            debug{"Created cancel ${cancel.id}"}
+            debug{"Created cancel ${cancel.id} (cache)"}
 
             return cancel
         }
@@ -247,8 +248,8 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
 
     /** Callback. `null` state is reserved for canceled state. */
     private var callback: Runnable? = callback
-    private val alsoCancel = Seq<Cancellable>()
-    private val backwardsBound = Seq<Cancellable>()
+    private val alsoCancel = newSeq<Cancellable>(ordered = false)
+    private val backwardsBound = newSeq<Cancellable>(ordered = false)
 
     init {
         debug{"Created cancel $id"}
@@ -287,7 +288,7 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
      * Implementors must ensure that calling this method multiple times only
      * cancels once.
      *
-     * If you can ensure that
+     * If you can ensure that [cancel] will only be called once, consider using [release] for caching.
      */
     override fun cancel() {
         val cbold = callback ?: return
@@ -296,8 +297,8 @@ class Cancel private constructor(callback: Runnable) : Cancellable, Runnable {
         cbold.run()
         callback = null
 
-        alsoCancel.each(Cancellable::cancel)
-        backwardsBound.each { it.unbind(this) }
+        while (!alsoCancel.isEmpty) alsoCancel[alsoCancel.size - 1].cancel()
+        while (!backwardsBound.isEmpty) backwardsBound[backwardsBound.size - 1].unbind(this)
 
         alsoCancel.clear()
         backwardsBound.clear()
@@ -387,8 +388,8 @@ open class Lifetime(parent: Cancellable? = null): Cancellable {
 
     protected var cancelled: Boolean = false
 
-    private val alsoCancel = Seq<Cancellable>()
-    private val backwardsBound = Seq<Cancellable>()
+    private val alsoCancel = newSeq<Cancellable>(ordered = true)
+    private val backwardsBound = newSeq<Cancellable>(ordered = true)
 
     private val id = lastLifetimeId++
 
@@ -434,8 +435,8 @@ open class Lifetime(parent: Cancellable? = null): Cancellable {
         cancelled = true
         debug{"Cancelled lifetime $id"}
 
-        this.alsoCancel.each(Cancellable::cancel)
-        backwardsBound.each { it.unbind(this) }
+        while (!alsoCancel.isEmpty) alsoCancel[alsoCancel.size - 1].cancel()
+        while (!backwardsBound.isEmpty) backwardsBound[backwardsBound.size - 1].unbind(this)
 
         this.alsoCancel.clear()
         backwardsBound.clear()

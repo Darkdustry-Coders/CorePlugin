@@ -311,3 +311,18 @@ inline fun <reified T> seqBy(size: Int, initfun: (Int) -> T): Seq<T> {
     for (i in 0..<size) seq.add(initfun(i))
     return seq
 }
+
+fun keyHasHeadByte(key: String, head: String): Boolean {
+    val end = head.length
+    if (!key.startsWith(head)) return false
+    return when (key.length - head.length) {
+        1 -> ('1'..'9').contains(key[end])
+        2 -> ('1'..'9').contains(key[end]) && ('0'..'9').contains(key[end + 1])
+        3 -> ('1'..'2').contains(key[end]) && (
+            ('0'..'4').contains(key[end + 1]) && ('0'..'9').contains(key[end + 2]) ||
+                key[end + 1] == '5' && ('0'..'4').contains(key[end + 2])
+            )
+        else -> false
+    }
+}
+fun keyHeadByte(key: String, head: String): Int = Strings.parseInt(key, 10, 0, head.length, key.length)

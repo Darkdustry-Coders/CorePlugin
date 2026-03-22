@@ -57,4 +57,53 @@ public class Ops {
         for (long other: others) first |= other;
         return first;
     }
+
+    /**
+     * Get a bitwise and of several values.
+     *
+     * @param first First value
+     * @param others All the other values
+     *
+     * @return All values and-d
+     */
+    public static byte bitAnd(byte first, byte... others) {
+        for (byte other: others) first &= other;
+        return first;
+    }
+    /**
+     * Get a bitwise and of several values.
+     *
+     * @param first First value
+     * @param others All the other values
+     *
+     * @return All values and-d
+     */
+    public static short bitAnd(short first, short... others) {
+        for (short other: others) first &= other;
+        return first;
+    }
+    /**
+     * Get a bitwise and of several values.
+     *
+     * @param first First value
+     * @param others All the other values
+     *
+     * @return All values and-d
+     */
+    public static int bitAnd(int first, int... others) {
+        for (int other: others) first &= other;
+        return first;
+    }
+    /**
+     * Get a bitwise and of several values.
+     *
+     * @param first First value
+     * @param others All the other values
+     *
+     * @return All values and-d
+     */
+    public static long bitAnd(long first, long... others) {
+        for (long other: others) first &= other;
+        return first;
+    }
 }

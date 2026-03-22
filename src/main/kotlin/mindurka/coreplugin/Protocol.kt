@@ -26,6 +26,7 @@ import mindurka.coreplugin.database.IspTables
 import mindurka.coreplugin.database.KeyValidationFailure
 import mindurka.coreplugin.database.KickedAccountException
 import mindurka.coreplugin.database.MergedAccountException
+import mindurka.coreplugin.database.PermLevels
 import mindurka.coreplugin.database.SharedAccountException
 import mindurka.coreplugin.database.VotekickedAccountException
 import mindurka.coreplugin.messages.AddFirewallBan
@@ -479,7 +480,7 @@ class Protocol {
         try {
             val session = player.sessionData
             (RabbitMQ.lock("player-uuid.${player.uuid()}") ?: run {
-                player.cskick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                player.ckick(Tl.fmt(player).done("{generic.kick.another-location}"))
                 return@login
             }).let { session.locks.add(it); K }
 
@@ -488,7 +489,7 @@ class Protocol {
                 session.publicKey = state.key
                 session.mindurkaCompatVersion = state.mindurkaCompatVersion
                 (RabbitMQ.lock("player-key.${sha256(state.key.encoded)}") ?: run {
-                    player.cskick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                    player.ckick(Tl.fmt(player).done("{generic.kick.another-location}"))
                     return@login
                 }).let { session.locks.add(it); K }
             }
@@ -499,19 +500,19 @@ class Protocol {
             try {
                 Database.login(player.uuid(), player.usid(), player.con.address, isp?.isp, session.publicKey, player.coloredName(), session)
             } catch (_: MergedAccountException) {
-                player.cskick(Tl.fmt(player).done("{generic.kick.merged}"))
+                player.ckick(Tl.fmt(player).done("{generic.kick.merged}"))
                 return
             } catch (_: DisconnectedAccountException) {
-                player.cskick(Tl.fmt(player).done("{generic.kick.disconnected}"))
+                player.ckick(Tl.fmt(player).done("{generic.kick.disconnected}"))
                 return
             } catch (_: KeyValidationFailure) {
                 player.ckick(Tl.fmt(player).done("{generic.kick.key-validation-failure-${if (player.hasMindurkaCompat) "mdc" else "no-mdc"}}"))
                 return
             } catch (_: DisabledAccountException) {
-                player.cskick(Tl.fmt(player).done("{generic.kick.disabled}"))
+                player.ckick(Tl.fmt(player).done("{generic.kick.disabled}"))
                 return
             } catch (_: SharedAccountException) {
-                player.cskick(Tl.fmt(player).done("{generic.kick.shared}"))
+                player.ckick(Tl.fmt(player).done("{generic.kick.shared}"))
                 return
             } catch (ban: BannedAccountException) {
                 Database.banConnection(player.con, ban.banId, player.locale, ban.reason, ban.expires, ban.admin)
@@ -538,7 +539,7 @@ class Protocol {
             }
 
             (RabbitMQ.lock("player-profile.${sha256(session.profileId)}") ?: run {
-                player.cskick(Tl.fmt(player).done("{generic.kick.another-location}"))
+                player.ckick(Tl.fmt(player).done("{generic.kick.another-location}"))
                 return@login
             }).let { session.locks.add(it); K }
 
@@ -554,7 +555,7 @@ class Protocol {
             val info = Vars.netServer.admins.getInfo(player.uuid())
             Vars.netServer.admins.updatePlayerJoined(player.uuid(), player.con.address, player.name)
 
-            player.admin = session.permissionLevel > 100 && (session.keySet || Vars.netServer.admins.isAdmin(player.uuid(), player.usid()))
+            player.admin = session.permissionLevel >= PermLevels.moderator && (session.keySet || Vars.netServer.admins.isAdmin(player.uuid(), player.usid()))
 
             if (!info.admin && !player.admin) info.adminUsid = player.usid()
 

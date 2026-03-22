@@ -39,6 +39,9 @@ can-use-public-key = [accent][{col.mdc}]MindurkaCompat[] supports public key aut
                    = Public key authorization is more secure than traditional uuid-based authorization.
                    = To switch to use public key instead of uuid, type [green]/setkey[].
                    = See [#ec5784]/help setkey[] for more information.
+mdc-outdated = [accent]Your version of [{col.mdc}]MindurkaCompat[] is out of date.[]
+             =
+             = [accent]Update the mod to the latest version from mod explorer.
 
 chat = [scarlet][[{player}]: [white]{message}
 chat.team = [[ Team]
@@ -312,8 +315,8 @@ params = [map]
 params.map = map
 
 vote.update = [{col.sysmsg}]{player} wants to change the current map to [yellow]{map}[].
-vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] changing the map to [yellow]{map}[].
-vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] changing the map to [yellow]{map}[].
+vote.for = [{col.sysmsg}]{voter} voted [{col.ok}]for[] changing the map to [yellow]{map}[].
+vote.against = [{col.sysmsg}]{voter} voted [{col.err}]against[] changing the map to [yellow]{map}[].
 vote.commit = [{col.ok}]Changing map to [yellow]{map}[].
 vote.cancel = [{col.err}]Not enough votes to change the current map.
 
@@ -327,8 +330,8 @@ params = [map]
 params.map = map
 
 vote.update = [{col.sysmsg}]{player} wants to play [yellow]{map}[] next.
-vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] playing [yellow]{map}[] next.
-vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] playing [yellow]{map}[] next.
+vote.for = [{col.sysmsg}]{voter} voted [{col.ok}]for[] playing [yellow]{map}[] next.
+vote.against = [{col.sysmsg}]{voter} voted [{col.err}]against[] playing [yellow]{map}[] next.
 vote.commit = [{col.ok}]Next map is now set to [yellow]{map}[].
 vote.cancel = [{col.err}]Not enough votes to set the next map.
 
@@ -346,8 +349,8 @@ params.player = player
 params.reason = reason
 
 vote.update = [{col.sysmsg}]{player} wants to kick {target} for [yellow]{reason}[].
-vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] kicking {target}.
-vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] kicking {target}.
+vote.for = [{col.sysmsg}]{voter} voted [{col.ok}]for[] kicking {target}.
+vote.against = [{col.sysmsg}]{voter} voted [{col.err}]against[] kicking {target}.
 vote.commit = [{col.ok}]Kicked player {target} for [yellow]{reason}[] for [yellow]30 minutes[].
 vote.cancel = [{col.err}]Not enough votes to kick {target}.
 
@@ -484,7 +487,7 @@ manpage = Start a vote for surrendering your team.
         = If the vote succeeds, all cores of your team will be destroyed.
 
 vote.update = [{col.sysmsg}]{player} wants to surrender.
-vote.for = [{col.sysmsg}]{player} voted [{col.ok}]for[] surrendering.
-vote.against = [{col.sysmsg}]{player} voted [{col.err}]against[] surrendering.
+vote.for = [{col.sysmsg}]{voter} voted [{col.ok}]for[] surrendering.
+vote.against = [{col.sysmsg}]{voter} voted [{col.err}]against[] surrendering.
 vote.commit = [{col.ok}]Team has surrendered.
 vote.cancel = [{col.err}]Not enough votes to surrender.

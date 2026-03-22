@@ -48,16 +48,13 @@ object Timer {
     @JvmStatic
     fun schedule(runnable: Runnable, delaySeconds: Float): Cancel {
         val task = ArcTimer.schedule(runnable, delaySeconds)
-        return Cancel.get { task.cancel() }
+        return Cancel.get(task::cancel)
     }
     @PublicAPI
     @JvmStatic
     fun schedule(runnable: Runnable, delaySeconds: Float, intervalSeconds: Float): Cancel {
         val task = ArcTimer.schedule(runnable, delaySeconds, intervalSeconds)
-        return Cancel.get {
-            Log.info("Cancelled interval???")
-            task.cancel()
-        }
+        return Cancel.get(task::cancel)
     }
 
     /**

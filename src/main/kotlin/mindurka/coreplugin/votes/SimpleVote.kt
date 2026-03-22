@@ -28,7 +28,7 @@ abstract class SimpleVote(protected val category: String, initiator: Player, tea
     }
 
     override fun voted(send: SendMessage, player: Player, fo: Boolean) {
-        send.send().put("player", player.sessionData.simpleName())
+        send.send().put("voter", player.sessionData.simpleName())
             .put("votes", votesForNumber.toString())
             .put("threshold", totalPlayers.toString())
             .apply(::formatParams)
