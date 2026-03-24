@@ -146,8 +146,9 @@ class PlayerData private constructor(player: Player) {
 
     val locks = Seq<RabbitMQLock>(RabbitMQLock::class.java)
     suspend fun releaseLocks() {
+        val locks = locks.copy()
+        this.locks.clear()
         for (lock in locks) lock.release()
-        locks.clear()
     }
 
     internal fun handleUpdateOutput(out: Json) {
@@ -183,6 +184,7 @@ class PlayerData private constructor(player: Player) {
      * This MUST be called.
      */
     suspend fun playerLeft(player: Player) {
+        if (exitHandledCorrectly) return
         exitHandledCorrectly = true
         releaseLocks()
     }
