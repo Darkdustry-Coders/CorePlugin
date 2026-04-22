@@ -27,9 +27,12 @@ abstract class Vote(val initiator: Player, val team: Team?) {
 
     open fun playerLeft(send: SendMessage, player: Player) {
         if (finished) return
+        val had = votesFor.contains(player) || votesAgainst.contains(player)
 
-        votesFor.remove(player)
-        votesAgainst.remove(player)
+        if (had) {
+            votesFor.remove(player)
+            votesAgainst.remove(player)
+        }
 
         refresh(false)
         send.send().put("player", player.sessionData.simpleName())

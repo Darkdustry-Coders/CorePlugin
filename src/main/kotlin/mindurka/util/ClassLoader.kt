@@ -2,7 +2,8 @@ package mindurka.util
 
 import arc.files.Fi
 import arc.struct.ObjectMap
-import mindurka.coreplugin.Build
+import arc.util.Log
+import mindustry.NiMetadata
 import java.io.InputStream
 import java.net.URL
 import java.util.jar.JarFile
@@ -38,17 +39,18 @@ private val prefixedCache = ObjectMap<String, ClassLoader>()
  * Classloaders are cached.
  */
 fun ClassLoader.prefixed(prefix: String): ClassLoader {
-    return if (Build.nativeImage) prefixedCache.getOrPut(prefix) { object : ClassLoader(this) {
+    return if (NiMetadata.isNative) prefixedCache.getOrPut(prefix) { object : ClassLoader(this) {
         override fun getResource(name: String): URL? {
-            return super.getResource("$prefix/$name")
+            return parent.getResource("$prefix/$name")
         }
 
         override fun getResourceAsStream(name: String): InputStream? {
-            return super.getResourceAsStream("$prefix/$name")
+            Log.info("Loading resource '$prefix/$name'")
+            return parent.getResourceAsStream("$prefix/$name")
         }
 
         override fun getResources(name: String): Enumeration<URL?>? {
-            return super.getResources("$prefix/$name")
+            return parent.getResources("$prefix/$name")
         }
     } } else this
 }

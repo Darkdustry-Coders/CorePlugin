@@ -17,3 +17,21 @@ data class ServerMessage (
     /** Displayed avatar. */
     val avatarUrl: String?,
 )
+
+@Serializable
+@NetworkEvent("mindustry.player-join", ttl = 5)
+data class PlayerJoined (
+    /** Shared user ID. */
+    val user: String,
+    /** Displayed username. */
+    val username: String,
+)
+
+@Serializable
+@NetworkEvent("mindustry.player-left", ttl = 5)
+data class PlayerLeft (
+    /** Shared user ID. */
+    val user: String,
+    /** Displayed username. */
+    val username: String,
+)

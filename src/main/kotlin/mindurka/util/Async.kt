@@ -30,6 +30,7 @@ import mindustry.gen.Player
 import mindustry.net.Host
 import java.net.HttpURLConnection
 import java.net.URI
+import kotlin.system.exitProcess
 
 internal class MainMindustryDispatcher: MainCoroutineDispatcher() {
     override fun dispatch(context: CoroutineContext, block: Runnable) {
@@ -167,11 +168,15 @@ object AsyncCall {
 
         Log.info("Sending player ${Strings.stripColors(player.name)} to $address:$port")
 
-        player.sessionData.releaseLocks()
-        player.sessionData.flush()
-        Call.connect(player.con, address, port)
-        player.con.close()
+        try {
+            player.sessionData.playerLeft(player)
+            Call.connect(player.con, address, port)
+            player.con.close()
 
-        return true
+            return true
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            exitProcess(1)
+        }
     }
 }

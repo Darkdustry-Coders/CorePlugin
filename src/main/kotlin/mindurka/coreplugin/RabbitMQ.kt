@@ -33,6 +33,7 @@ import java.net.ConnectException
 import java.util.WeakHashMap
 import java.util.concurrent.CompletableFuture
 import kotlin.jvm.kotlin
+import kotlin.reflect.KClass
 import kotlin.reflect.full.createType
 import kotlin.system.exitProcess
 import kotlin.uuid.ExperimentalUuidApi
@@ -56,7 +57,6 @@ class RabbitMQLock internal constructor(private val worker: RabbitMQWorker, chan
             channel.queueDelete(queueName)
             assert(worker.shared.mutb { it.acquiredLocks.remove(queueName) })
             channel.close()
-            debug("[RabbitMQ] Released lock $queueName")
         }.await()
     }
 }
@@ -125,9 +125,9 @@ internal class RabbitMQWorker() {
         resumeTasks {
             try {
                 val x = exec.get()
-                Core.app.run { future.complete(x) }
+                Core.app.post { future.complete(x) }
             } catch (x: Throwable) {
-                Core.app.run { future.completeExceptionally(x) }
+                Core.app.post { future.completeExceptionally(x) }
             }
         }
         return future
@@ -136,97 +136,104 @@ internal class RabbitMQWorker() {
     @JvmField
     val metadata = WeakHashMap<Any, BasicProperties>()
 
-    @OptIn(ExperimentalUuidApi::class, ExperimentalSerializationApi::class)
-    fun <T: Any> collectAll(klass: Class<T>, newMessage: Cons<T>) {
-        val annotation = klass.annotations.find { it is NetworkEvent } as NetworkEvent? ?: throw IllegalArgumentException("All network messages must be annotated with '@NetworkEvent'")
+    private inline fun <reified T: Any> ensureExchange(name: String, addListener: Cons<T>? = null) = ensureExchange(T::class, name, addListener)
+    @OptIn(ExperimentalSerializationApi::class)
+    private fun <T: Any> ensureExchange(ty: KClass<T>, name: String, addListener: Cons<T>? = null) {
         if (shared.mutb {
-            if (it.exchangesFor.containsKey(annotation.value)) {
-                it.exchangesFor.get(annotation.value).add(newMessage)
-                true
-            } else {
-                it.exchangesFor.put(annotation.value, Seq<Cons<*>>().add(newMessage))
-                false
-            }
-        }) return
+                if (it.exchangesFor.containsKey(name)) {
+                    addListener?.let { l -> it.exchangesFor.get(name).add(l) }
+                    true
+                } else {
+                    it.exchangesFor.put(name, Seq<Cons<*>>().apply { addListener?.let(::add) })
+                    false
+                }
+            }) return
 
-        val queueName = "${annotation.value}.mindustry.${Config.i.serverName}"
+        val queueName = "$name.mindustry.${Config.i.serverName}"
         val routingKey = Config.i.serverName
         val consumerKey = "${run {shared.mutl {
             val x = it.nextConsumerId
             it.nextConsumerId += 1
             x
-        }}}.${annotation.value}"
+        }}}.$name"
+
+        mainChannel.exchangeDeclare(name, BuiltinExchangeType.DIRECT, /*durable*/false, /*autoDelete*/true, /*internal*/false, emptyMap())
+        mainChannel.queueDeclare(queueName, /*durable*/false, /*exclusive*/false, /*autoDelete*/true, emptyMap())
+        mainChannel.queueBind(queueName, name, routingKey)
+        mainChannel.queueBind(queueName, name, "#")
+        mainChannel.basicConsume(queueName, false, consumerKey, object : Consumer {
+            override fun handleConsumeOk(consumerTag: String) {}
+            override fun handleCancelOk(consumerTag: String) {}
+            override fun handleCancel(consumerTag: String) {}
+            override fun handleShutdownSignal(
+                consumerTag: String,
+                sig: ShutdownSignalException
+            ) {}
+            override fun handleRecoverOk(consumerTag: String) {}
+
+            override fun handleDelivery(
+                consumerTag: String,
+                envelope: Envelope,
+                properties: AMQP.BasicProperties,
+                body: ByteArray
+            ) {
+                debug{"[RabbitMQ] Recvd $queueName (mime=${properties.contentEncoding}, from=${properties.appId})"}
+                val ktype = ty.createType(emptyList(), false, emptyList())
+
+                val o = when (properties.contentEncoding) {
+                    "application/cbor" ->
+                        try {
+                            Serializers.cbor.decodeFromByteArray(Serializers.cbor.serializersModule.serializer(ktype), body)
+                        } catch (t: Throwable) {
+                            mainChannel.basicNack(envelope.deliveryTag, false, false)
+                            Core.app.post { Log.err("Failed to parse message (${queueName})", t) }
+                            return
+                        }
+                    "application/json" ->
+                        try {
+                            Serializers.json.decodeFromString(Serializers.json.serializersModule.serializer(ktype), body.toString(Vars.charset))
+                        } catch (t: Throwable) {
+                            mainChannel.basicNack(envelope.deliveryTag, false, false)
+                            Core.app.post { Log.err("Failed to parse message (${queueName})", t) }
+                            return
+                        }
+                    "application/toml" ->
+                        try {
+                            Serializers.toml.decodeFromString(Serializers.toml.serializersModule.serializer(ktype), body.toString(Vars.charset))
+                        } catch (t: Throwable) {
+                            mainChannel.basicNack(envelope.deliveryTag, false, false)
+                            Core.app.post { Log.err("Failed to parse message (${queueName})", t) }
+                            return
+                        }
+                    else -> {
+                        mainChannel.basicNack(envelope.deliveryTag, false, false)
+                        Core.app.post { Log.err("Failed to parse message (${queueName}): Unsupported format ${properties.contentEncoding}") }
+                        return
+                    }
+                } as T
+
+                mainChannel.basicAck(envelope.deliveryTag, false)
+
+                Core.app.post { try {
+                    metadata[o] = properties
+                    shared.mutv { (it.exchangesFor[name] as Seq<Cons<T>>?)?.each { it.get(o) } }
+                } catch (t: Throwable) {
+                    Log.err("Fatal error", t)
+                    exitProcess(1)
+                } }
+            }
+        })
+    }
+
+    @OptIn(ExperimentalUuidApi::class, ExperimentalSerializationApi::class)
+    fun <T: Any> collectAll(klass: Class<T>, newMessage: Cons<T>) {
+        val annotation = klass.getAnnotation(NetworkEvent::class.java) ?: throw IllegalArgumentException("All network messages must be annotated with '@NetworkEvent'")
 
         resumeTasks {
             try {
-                mainChannel.exchangeDeclare(annotation.value, BuiltinExchangeType.DIRECT, /*durable*/false, /*autoDelete*/true, /*internal*/false, emptyMap())
-                mainChannel.queueDeclare(queueName, /*durable*/false, /*exclusive*/false, /*autoDelete*/true, emptyMap())
-                mainChannel.queueBind(queueName, annotation.value, routingKey)
-                mainChannel.queueBind(queueName, annotation.value, "#")
-                mainChannel.basicConsume(queueName, false, consumerKey, object : Consumer {
-                    override fun handleConsumeOk(consumerTag: String) {}
-                    override fun handleCancelOk(consumerTag: String) {}
-                    override fun handleCancel(consumerTag: String) {}
-                    override fun handleShutdownSignal(
-                        consumerTag: String,
-                        sig: ShutdownSignalException
-                    ) {}
-                    override fun handleRecoverOk(consumerTag: String) {}
-
-                    override fun handleDelivery(
-                        consumerTag: String,
-                        envelope: Envelope,
-                        properties: AMQP.BasicProperties,
-                        body: ByteArray
-                    ) {
-                        debug{"[RabbitMQ] Recvd $queueName (mime=${properties.contentEncoding}, from=${properties.appId})"}
-                        val ktype = klass.kotlin.createType(emptyList(), false, emptyList())
-
-                        val o = when (properties.contentEncoding) {
-                            "application/cbor" ->
-                                try {
-                                    Serializers.cbor.decodeFromByteArray(Serializers.cbor.serializersModule.serializer(ktype), body)
-                                } catch (t: Throwable) {
-                                    mainChannel.basicNack(envelope.deliveryTag, false, false)
-                                    Core.app.run { Log.err("Failed to parse message (${queueName})", t) }
-                                    return
-                                }
-                            "application/json" ->
-                                try {
-                                    Serializers.json.decodeFromString(Serializers.json.serializersModule.serializer(ktype), body.toString(Vars.charset))
-                                } catch (t: Throwable) {
-                                    mainChannel.basicNack(envelope.deliveryTag, false, false)
-                                    Core.app.run { Log.err("Failed to parse message (${queueName})", t) }
-                                    return
-                                }
-                            "application/toml" ->
-                                try {
-                                    Serializers.toml.decodeFromString(Serializers.toml.serializersModule.serializer(ktype), body.toString(Vars.charset))
-                                } catch (t: Throwable) {
-                                    mainChannel.basicNack(envelope.deliveryTag, false, false)
-                                    Core.app.run { Log.err("Failed to parse message (${queueName})", t) }
-                                    return
-                                }
-                            else -> {
-                                mainChannel.basicNack(envelope.deliveryTag, false, false)
-                                Core.app.run { Log.err("Failed to parse message (${queueName}): Unsupported format ${properties.contentEncoding}") }
-                                return
-                            }
-                        } as T
-
-                        mainChannel.basicAck(envelope.deliveryTag, false)
-
-                        Core.app.run { try {
-                            metadata[o] = properties
-                            shared.mutv { (it.exchangesFor[annotation.value] as Seq<Cons<T>>?)?.each { it.get(o) } }
-                        } catch (t: Throwable) {
-                            Log.err("Fatal error", t)
-                            exitProcess(1)
-                        } }
-                    }
-                })
+                ensureExchange(klass.kotlin, annotation.value, newMessage)
             } catch (err: Throwable) {
-                Core.app.run {
+                Core.app.post {
                     Log.err("Fatal RabbitMQ error", err)
                     exitProcess(1)
                 }
@@ -240,6 +247,9 @@ internal class RabbitMQWorker() {
     fun <T: Any> send(o: T, routingKey: String) {
         resumeTasks {
             val annotation = o.javaClass.annotations.find { it is NetworkEvent } as NetworkEvent? ?: throw IllegalArgumentException("All network messages must be annotated with '@NetworkEvent'")
+
+            ensureExchange(o::class, annotation.value)
+
             val props = AMQP.BasicProperties.Builder()
             props.contentEncoding("application/cbor")
             props.appId(Config.i.serverName)

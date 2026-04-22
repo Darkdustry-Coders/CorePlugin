@@ -3,6 +3,7 @@ package mindurka.coreplugin.commands
 import arc.util.Log
 import mindurka.annotations.BaseCommandConstraint
 import mindurka.api.Gamemode
+import mindurka.api.SpecialSettings
 import mindustry.Vars
 import mindustry.gen.Player
 
@@ -44,5 +45,5 @@ object SurrenderEnabled: CommandConstraint {
     @JvmStatic
     fun obtain(): CommandConstraint = RtvEnabled
 
-    override fun enabled(player: Player): Boolean = Gamemode.enableSurrender && Vars.state.rules.pvp
+    override fun enabled(player: Player): Boolean = Gamemode.enableSurrender && SpecialSettings.currentMap().enableSurrender && Vars.state.rules.pvp
 }

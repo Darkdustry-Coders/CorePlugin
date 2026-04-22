@@ -13,8 +13,8 @@ import mindurka.util.UnsafeNull
 import mindurka.util.debug
 import mindurka.util.newSeq
 import mindurka.util.nodecl
-import mindurka.util.unreachable
 import mindustry.Vars
+import mindustry.NiMetadata
 import mindustry.content.Blocks
 import mindustry.world.Block
 import mindustry.world.Tile
@@ -97,13 +97,13 @@ data class BuildEvent (
         else replacementBlock as Block
     fun team(): Team = replacementTeam
     fun rotation(): Int = replacementRotation
-    fun health(): Float =
-        if (replacementHealth != null) replacementHealth as Float
-        else if (replacementBlock != null)
-            (replacementBlock as Block).health.toFloat() *
-                Vars.state.rules.blockHealthMultiplier *
-                Vars.state.rules.teams.get(team()).blockHealthMultiplier
-        else tile.block().health.toFloat()
+    fun health(): Float = replacementHealth ?: tile.block().health.toFloat()
+        // if (replacementHealth != null) replacementHealth as Float
+        // else if (replacementBlock != null)
+        //     (replacementBlock as Block).health.toFloat() *
+        //         Vars.state.rules.blockHealthMultiplier *
+        //         Vars.state.rules.teams.get(team()).blockHealthMultiplier
+        // else tile.block().health.toFloat()
 }
 
 /**
@@ -524,12 +524,14 @@ object Events {
                 }
                 if (cls.annotations.any{ it.annotationClass == NetworkEvent::class }) {
                     if (handlingNetworkEvents.addUnique(cls)) {
-                        RabbitMQ.collectAll(cls) {
-                            try {
-                                arc.Events.fire(it)
-                            } catch (why: Exception) {
-                                Log.error("Failure processing event", why)
-                                throw why
+                        if (!NiMetadata.shortcircuit()) {
+                            RabbitMQ.collectAll(cls) {
+                                try {
+                                    arc.Events.fire(it)
+                                } catch (why: Exception) {
+                                    Log.error("Failure processing event", why)
+                                    throw why
+                                }
                             }
                         }
                     }
@@ -565,7 +567,7 @@ object Events {
     /** Emit an event. */
     @JvmStatic
     fun <T: Any> fire(event: T) {
-        if (event.javaClass.annotations.any { it.annotationClass == NetworkEvent::class }) Async.run { RabbitMQ.broadcast(event) }
+        if (event.javaClass.getAnnotation(NetworkEvent::class.java) != null) { if (!NiMetadata.shortcircuit()) Async.run { RabbitMQ.broadcast(event) } }
         else arc.Events.fire(event)
     }
 

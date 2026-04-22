@@ -22,6 +22,7 @@ import mindurka.util.Async
 import mindurka.util.UnreachableException
 import mindurka.util.collect
 import mindurka.util.durationToTlString
+import mindurka.util.ip
 import mindurka.util.map
 import mindurka.util.prefixed
 import mindurka.util.random
@@ -29,6 +30,7 @@ import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
+import mindustry.net.Administration
 import mindustry.net.NetConnection
 import net.buj.surreal.Driver
 import net.buj.surreal.EventCallback
@@ -124,6 +126,10 @@ internal object DatabaseScripts {
     val pardonScript: String = Streams.copyString(loader.getResourceAsStream("sql/pardon.surrealql"))
     val banScript: String = Streams.copyString(loader.getResourceAsStream("sql/ban.surrealql"))
     val unbanScript: String = Streams.copyString(loader.getResourceAsStream("sql/unban.surrealql"))
+    val statsScript: String = Streams.copyString(loader.getResourceAsStream("sql/stats.surrealql"));
+    val gamePlayedScript: String = Streams.copyString(loader.getResourceAsStream("sql/game_played.surrealql"));
+
+    fun noop() {}
 }
 
 object Database {
@@ -350,7 +356,8 @@ object Database {
                 .apply { isp?.let { x("isp", it) } }
                 .x("server", Config.i.serverName)
                 .x("key", key?.encoded?.let(Base64.withPadding(Base64.PaddingOption.ABSENT)::encode))
-                .x("new_name", newName)).ok()) {
+                .x("new_name", newName)
+                .x("server_ip", "${SharedConfig.i.serverIp}:${Administration.Config.port.get()}")).ok()) {
                 if (x.result.isNull) continue
                 return@run x
             }
@@ -548,11 +555,11 @@ object Database {
      */
     @PublicAPI
     suspend fun ban(player: Player, admin: Player?, duration: Duration?, reason: String) {
+        // Sending an IP address doesn't work because fuck me ig.
         val isp = IspTables.of(player.con.address)
         val id = abstractQuerySingle(Query(DatabaseScripts.banScript)
             .x("user", player.sessionData.userId)
             .x("admin", admin?.sessionData?.userId)
-            .x("ip", player.con.address)
             .apply { isp?.let { x("isp", it) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)

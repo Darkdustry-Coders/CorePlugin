@@ -3,6 +3,7 @@ package mindurka.util
 import arc.util.io.Writes
 import mindurka.api.Consts
 import mindustry.Vars
+import mindustry.content.Blocks
 import mindustry.game.Team
 import mindustry.gen.Building
 import mindustry.gen.Call
@@ -12,6 +13,7 @@ import mindustry.gen.SetTileCallPacket
 import mindustry.net.NetConnection
 import mindustry.world.Block
 import mindustry.world.Tile
+import mindustry.world.blocks.environment.Floor
 
 object ModifyWorld {
     /**
@@ -109,4 +111,26 @@ object ModifyWorld {
         packet.overlay = overlay;
         Vars.net.send(packet, true);
     }
+
+    /**
+     * Placement check that actually checks placement.
+     */
+    @JvmStatic
+    fun canPlaceOn(block: Block, tile: Tile?, team: Team, rotation: Int): Boolean {
+        val tile = tile ?: return false
+
+        if (!block.canPlaceOn(tile, team, rotation)) return false
+        if (block.isFloor) return true
+
+        block.eachBlockOffset(tile) { x, y ->
+            val tile = Vars.world.tile(x, y) ?: return@eachBlockOffset
+            if (!tile.floor().hasSurface()) return false
+            // TODO: Replace blocks that Mindustry allows replacing.
+            if (tile.block() != Blocks.air && !tile.block().alwaysReplace) return false
+        }
+
+        return true
+    }
 }
+
+fun Block.canActuallyPlaceOn(tile: Tile?, team: Team, rotation: Int): Boolean = ModifyWorld.canPlaceOn(this, tile, team, rotation)

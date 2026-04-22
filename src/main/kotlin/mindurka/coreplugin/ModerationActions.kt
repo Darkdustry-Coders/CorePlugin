@@ -15,7 +15,7 @@ import mindustry.gen.Player
 import mindustry.net.Packets
 import kotlin.time.Duration
 
-internal fun modActionsInit() {
+internal fun initModActions() {
     Vars.net.handleServer(AdminRequestCallPacket::class.java) { con, packet ->
         val admin = con.player
         val target = packet.other

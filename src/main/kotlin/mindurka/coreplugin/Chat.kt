@@ -37,7 +37,7 @@ internal val lastCommandArgs = WeakHashMap<Player, String>()
 internal val lastFailedCommand = WeakHashMap<Player, LastFailedCommand>()
 internal val carriedLastFailedCommand = WeakHashMap<Player, LastFailedCommand>()
 
-internal fun chatInit() {
+internal fun initChat() {
     Vars.netServer.invalidHandler = { player, response ->
         if (response.type == CommandHandler.ResponseType.manyArguments) {
             Tl.fmt(player)

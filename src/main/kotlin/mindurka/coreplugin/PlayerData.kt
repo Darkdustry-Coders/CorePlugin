@@ -116,6 +116,11 @@ class PlayerData private constructor(player: Player) {
         permissionLevel = level
     }
 
+    @JvmField var extraBlocksPlaced = 0
+    @JvmField var extraBlocksBroken = 0
+    @JvmField var extraGamesPlayed = 0
+    @JvmField var extraWaves = 0
+    @JvmField var extraWins = 0
     var shortId: Long? = null
         set(value) {
             field = value
@@ -144,11 +149,21 @@ class PlayerData private constructor(player: Player) {
         player.get()?.name = fullName()
     }
 
-    val locks = Seq<RabbitMQLock>(RabbitMQLock::class.java)
+    private val locks = newSeq<RabbitMQLock>()
+    suspend fun addLock(lock: RabbitMQLock) {
+        if (exitHandledCorrectly) {
+            lock.release()
+            return
+        }
+
+        locks.add(lock)
+    }
     suspend fun releaseLocks() {
         val locks = locks.copy()
         this.locks.clear()
-        for (lock in locks) lock.release()
+        for (lock in locks) {
+            lock.release()
+        }
     }
 
     internal fun handleUpdateOutput(out: Json) {
@@ -164,18 +179,48 @@ class PlayerData private constructor(player: Player) {
 
     private var lastPushed = TimeSource.Monotonic.markNow()
     suspend fun flush() {
+        if (profileId.isEmpty()) return
+        if (userId.isEmpty()) return
+
         val now = TimeSource.Monotonic.markNow()
         val elapsed = now - lastPushed
         lastPushed = now
 
-        val query = StringBuilder($$"update only type::record(\"mindustry_profile\", <uuid> $profile) set ")
+        val query = StringBuilder($$"let $profile_t = update only type::record(\"mindustry_profile\", <uuid> $profile) set ")
         query.append("total_play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
         query.append(", play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+        if (extraBlocksPlaced != 0) query.append(", blocks_placed += $extraBlocksPlaced")
+        if (extraBlocksBroken != 0) query.append(", blocks_broken += $extraBlocksBroken")
+        if (extraGamesPlayed != 0) query.append(", games_played += $extraGamesPlayed")
+        if (extraWaves != 0) query.append(", waves += $extraWaves")
+        query.append(";\n")
+        query.append($$"upsert only type::record(\"mindustry_profile_gamemode\", [$profile_t.id, type::record(\"mindustry_gamemode\", <string> $gamemode)]) set ")
+        query.append("play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+        if (extraGamesPlayed != 0) {
+            query.append(", games += $extraGamesPlayed")
+            extraGamesPlayed = 0
+        }
+        if (extraWins != 0) {
+            query.append(", wins += $extraWins")
+            extraWins = 0
+        }
+        if (extraWaves != 0) {
+            query.append(", waves += $extraWaves")
+            extraWaves = 0
+        }
+        if (extraBlocksPlaced != 0) {
+            query.append(", blocks_placed += $extraBlocksPlaced")
+            extraBlocksPlaced = 0
+        }
+        if (extraBlocksBroken != 0) {
+            query.append(", blocks_broken += $extraBlocksBroken")
+            extraBlocksBroken = 0
+        }
         query.append(";\n")
         query.append($$"return fn::mindustry_update_profile(type::record(\"mindustry_profile\", <uuid> $profile));")
 
         handleUpdateOutput(Database.abstractQuerySingle(Query(query.toString())
-            .x("profile", profileId)).ok().result)
+            .x("profile", profileId).x("gamemode", Config.i.gamemode)).ok().result)
     }
 
     /**
@@ -186,6 +231,7 @@ class PlayerData private constructor(player: Player) {
     suspend fun playerLeft(player: Player) {
         if (exitHandledCorrectly) return
         exitHandledCorrectly = true
+        flush()
         releaseLocks()
     }
 

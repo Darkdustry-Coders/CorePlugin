@@ -1,0 +1,6 @@
+[
+    {
+        "name": "mindurka.coreplugin.RabbitMQLock",
+        "unsafeAllocated": true
+    }
+]

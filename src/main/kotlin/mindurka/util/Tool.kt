@@ -11,8 +11,12 @@ import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.sessionData
 import mindustry.Vars
 import mindustry.game.Team
+import mindustry.gen.Call
 import mindustry.gen.Groups
 import mindustry.gen.Player
+import mindustry.gen.Posc
+import mindustry.world.Block
+import mindustry.world.Tile
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.WeakHashMap
@@ -302,8 +306,9 @@ inline fun <T, Y> ObjectMap<T, Y>.getOrPut(key: T, supplier: () -> Y): Y = run {
     }
 }
 
+@OptIn(UnsafeNull::class)
 inline fun <reified T> newSeq(capacity: Int = 16, ordered: Boolean = true): Seq<T> {
-    return Seq<T>(ordered, capacity, T::class.java)
+    return Seq.createUnsafe(Array<T>(capacity) { nodecl() }, 0, ordered)
 }
 inline fun <reified T> seqOf(vararg objs: T): Seq<T> = Seq<T>(objs)
 inline fun <reified T> seqBy(size: Int, initfun: (Int) -> T): Seq<T> {
@@ -326,3 +331,19 @@ fun keyHasHeadByte(key: String, head: String): Boolean {
     }
 }
 fun keyHeadByte(key: String, head: String): Int = Strings.parseInt(key, 10, 0, head.length, key.length)
+
+inline val Block.blockOffset: Int get() = -(size / 2)
+inline fun Block.eachBlockOffset(cb: (Int, Int) -> Unit) = eachBlockOffset(0, 0, cb)
+inline fun Block.eachBlockOffset(from: Tile, cb: (Int, Int) -> Unit) = eachBlockOffset(from.x.toInt(), from.y.toInt(), cb)
+inline fun Block.eachBlockOffset(from: Posc, cb: (Int, Int) -> Unit) = eachBlockOffset(from.tileX(), from.tileY(), cb)
+inline fun Block.eachBlockOffset(startX: Int, startY: Int, cb: (Int, Int) -> Unit) {
+    for (x in 0..<size) for (y in 0..<size) cb(startX + blockOffset + x, startY + blockOffset + y)
+}
+
+inline fun Player.sendBinaryPacket(packet: String, data: ByteArray, reliable: Boolean = true) = if (reliable) Call.clientBinaryPacketReliable(con, packet, data)
+                                                                                                else Call.clientBinaryPacketUnreliable(con, packet, data)
+inline fun Player.sendPacket(packet: String, data: String, reliable: Boolean = true) = if (reliable) Call.clientPacketReliable(con, packet, data)
+                                                                                       else Call.clientPacketUnreliable(con, packet, data)
+inline fun Player.copyClipboard(data: String) = Call.copyToClipboard(con, data)
+
+inline val Player.ip: String get() = if (con.address.contains('/')) con.address.substring(con.address.lastIndexOf('/') + 1) else con.address

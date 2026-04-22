@@ -1,0 +1,15 @@
+let $player = type::record("mindustry_profile", <uuid> $profile);
+return {
+    play_time: $player.play_time.secs(),
+    games_played: $player.games_played,
+    blocks_placed: $player.blocks_placed,
+    blocks_broken: $player.blocks_broken,
+    waves: $player.waves,
+    gamemodes: (select * omit id from (select *,
+                                              play_time.secs() as play_time,
+                                              id[1].display_name as name,
+                                              id[1].emoji as emoji,
+                                              id[1].color as color
+                                       from mindustry_profile_gamemode
+                                       where id[0] = $player)),
+};

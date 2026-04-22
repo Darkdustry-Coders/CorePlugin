@@ -216,6 +216,9 @@ object Gamemode {
      *
      * Only has an effect at the start of the round.
      */
+    /** Whether playing on the server updates statistics. */
+    @JvmField
+    var hasStats = true
     @JvmField
     var unlockSpecialBlocks = true
     /**

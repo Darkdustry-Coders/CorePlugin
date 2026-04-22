@@ -8,7 +8,6 @@ import arc.util.Strings
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import mindurka.annotations.Command
-import mindurka.annotations.ConsoleCommand
 import mindurka.annotations.EnabledIf
 import mindurka.annotations.Hidden
 import mindurka.annotations.RequiresPermission
@@ -27,25 +26,25 @@ import mindurka.coreplugin.database.DatabaseScripts
 import mindurka.coreplugin.database.PermLevels
 import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.hasMindurkaCompat
-import mindurka.coreplugin.lastFailedCommand
 import mindurka.coreplugin.sessionData
 import mindurka.coreplugin.votes.KickVote
 import mindurka.coreplugin.votes.NextMapVote
 import mindurka.coreplugin.votes.RtvVote
+import mindurka.coreplugin.votes.SurrenderVote
 import mindurka.ui.openMenu
 import mindurka.util.Async
-import mindurka.util.AsyncCall
 import mindurka.util.K
 import mindurka.util.SendMessage
 import mindurka.util.UnreachableException
 import mindurka.util.all
 import mindurka.util.checkOnCooldown
 import mindurka.util.collect
+import mindurka.util.copyClipboard
+import mindurka.util.durationToTlString
 import mindurka.util.filter
 import mindurka.util.join
 import mindurka.util.map
 import mindurka.util.minutes
-import mindurka.util.permissionLevel
 import mindurka.util.setCooldown
 import mindurka.util.skip
 import mindurka.util.take
@@ -53,12 +52,125 @@ import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
+import mindustry.gen.Call
 import net.buj.surreal.Query
 import java.util.Arrays
 import kotlin.collections.iterator
 import kotlin.math.ceil
 import kotlin.math.roundToInt
-import kotlin.time.Duration
+
+@Command
+private fun stats(caller: Player, @Rest target: OfflinePlayer?) {
+    val target = target ?: OfflinePlayer.of(caller)
+
+    Async.run {
+        target.player?.sessionData?.flush()
+
+        val resp = Database.abstractQuery(Query(DatabaseScripts.statsScript).x("profile", target.profileId)).ok().run { this[size - 1] }
+
+        // 0 - main page
+        // 1..(1+n) - info for nerds
+        var page = 0U
+
+        caller.openMenu {
+            if (page == 0U) {
+                title("{commands.stats.dialog-title}")
+                message("{commands.stats.dialog-content}").run {
+                    put("player", target.lastName)
+                    put("playtime", durationToTlString(resp.result.at("play_time").asLong().toFloat()))
+                    put("user-id", target.userId)
+                    put("profile-id", target.profileId)
+                    put("blocks-placed", resp.result.at("blocks_placed").asLong().toString())
+                    put("blocks-broken", resp.result.at("blocks_broken").asLong().toString())
+                    put("games-played", resp.result.at("games_played").asLong().toString())
+                    put("waves", resp.result.at("waves").asLong().toString())
+                    put("gamemode-stats", buildString {
+                        for (gamemode in resp.result.at("gamemodes").asJsonList()) {
+                            if (!isEmpty()) append("\n")
+                            append(Tl.fmt(caller)
+                                .put("name", if (gamemode.at("name").isNull) "???" else gamemode.at("name").asString())
+                                .put("color", if (gamemode.at("color").isNull) "red" else gamemode.at("color").asString())
+                                .put("emoji", if (gamemode.at("emoji").isNull) "\uE815" else gamemode.at("emoji").asString())
+                                .put("wins", gamemode.at("wins").asLong().toString())
+                                .put("ovas", gamemode.at("ovas").asLong().toString())
+                                .put("color", gamemode.at("color").asString())
+                                .done("{commands.stats.dialog-gamemode-stats}"))
+                        }
+
+                        if (isEmpty()) append(Tl.fmt(caller).done("{commands.stats.whoops}"))
+                    })
+                }
+
+                group {
+                    option("{commands.stats.dialog-profile-id}") {
+                        caller.copyClipboard(target.profileId)
+                        K
+                    }
+                    option("{commands.stats.dialog-user-id}") {
+                        caller.copyClipboard(target.userId)
+                        K
+                    }
+                }
+
+                if (resp.result.at("gamemodes").asJsonList().isNotEmpty())
+                    option("{commands.stats.dialog-more-data}") {
+                        page = 1U
+                        rerenderDialog()
+                    }
+
+                option("{generic.close}") { K }
+            } else {
+                val entries = resp.result.at("gamemodes").asJsonList()
+                val entry = entries[page.toInt() - 1]
+
+                title("{commands.stats.dialog-data-title}").apply {
+                    put("name", entry.at("name").asString())
+                    put("color", entry.at("color").asString())
+                    put("emoji", entry.at("emoji").asString())
+                }
+                message = buildString {
+                    val wins = entry.at("wins").asLong()
+                    val ovas = entry.at("ovas").asLong()
+                    append(Tl.fmt(caller).put("wins", wins.toString()).put("ovas", ovas.toString()).done("{commands.stats.dialog-data-wins}"))
+
+                    val blocksPlaced = entry.at("blocks_placed").asLong()
+                    append(Tl.fmt(caller).put("blocks-placed", blocksPlaced.toString()).done("\n{commands.stats.dialog-data-blocks-placed}"))
+
+                    val blocksBroken = entry.at("blocks_broken").asLong()
+                    append(Tl.fmt(caller).put("blocks-broken", blocksBroken.toString()).done("\n{commands.stats.dialog-data-blocks-broken}"))
+
+                    val games = entry.at("games").asLong()
+                    append(Tl.fmt(caller).put("games", games.toString()).done("\n{commands.stats.dialog-data-games}"))
+
+                    val waves = entry.at("waves").asLong()
+                    if (waves != 0L) append(Tl.fmt(caller).put("waves", waves.toString()).done("\n{commands.stats.dialog-data-waves}"))
+
+                    append(Tl.fmt(caller).put("playtime", durationToTlString(entry.at("play_time").asInteger().toFloat())).done("\n\n{commands.stats.dialog-data-playtime}"))
+
+                    // TODO: Rank.
+                }
+
+                if (entries.size != 1) {
+                    option("[gray]<<<") {
+                        page--
+                        if (page == 0U) page = entries.size.toUInt()
+                        rerenderDialog()
+                    }
+                    option("[gray]>>>") {
+                        page++
+                        if (page > entries.size.toUInt()) page = 1U
+                        rerenderDialog()
+                    }
+                }
+
+                option("{generic.close}") {
+                    page = 0U
+                    rerenderDialog()
+                }
+            }
+        }
+    }
+}
 
 /** List commands */
 @Command
@@ -343,6 +455,18 @@ private fun vote(caller: Player, vote: String) {
 }
 
 @Command
+@EnabledIf(SurrenderEnabled::class)
+private fun surrender(caller: Player) {
+    if (caller.checkOnCooldown("/surrender")) return
+
+    if (!CorePlugin.startVote(caller, SurrenderVote(caller))) {
+        Tl.send(caller).done("{generic.checks.vote}")
+        return
+    }
+    caller.setCooldown("/surrender", minutes(5f))
+}
+
+@Command
 @EnabledIf(RtvEnabled::class)
 private fun rtv(caller: Player, @Rest map: MapHandle?) {
     if (caller.checkOnCooldown("/rtv")) return
@@ -373,10 +497,25 @@ private fun vnm(caller: Player, @Rest map: MapHandle?) {
 @Command
 @RequiresPermission(PermLevels.admin)
 private fun artv(caller: Player, @Rest map: MapHandle?) {
-    val map = map ?: Gamemode.maps.next()
-    Consts.serverControl.play(false) {
-        emit(RoundEndEvent)
-        map.rtv()
+    Async.run {
+        val map = map ?: Gamemode.maps.next()
+
+        if (caller.openMenu<Boolean?> {
+            title("{commands.artv.dialog.title}")
+            message("{commands.artv.dialog.contents}").put("map", map.name())
+
+            group {
+                option("{generic.ok}") { true }
+                option("{generic.cancel}") { false }
+            }
+        }.await() != true) return@run
+
+        if (!caller.admin) return@run
+
+        Consts.serverControl.play(false) {
+            emit(RoundEndEvent)
+            map.rtv()
+        }
     }
 }
 

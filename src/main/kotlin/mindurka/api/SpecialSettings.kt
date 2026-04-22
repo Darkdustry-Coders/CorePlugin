@@ -89,15 +89,17 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
         @JvmField @PublicAPI val GAMEMODE = "$PREFIX.gamemode"
         @JvmField @PublicAPI val GAMEMODE_LEGACY = "mindurkaGamemode"
         @JvmField @PublicAPI val OVERDRIVE_IGNORES_CHEAT = "$PREFIX.overdriveIgnoresCheat"
+        @JvmField @PublicAPI val ENABLE_SURRENDER = "$PREFIX.enableSurrender"
     }
 
     /** String name of the gamemode. */
     @JvmField @PublicAPI val gamemode: String
     /** Patch version. Used by gamemodes to apply updates to older maps */
-    @PublicAPI val patch: Int
+    @JvmField @PublicAPI val patch: Int
     /** Context for rules parsing. */
     @JvmField @PublicAPI val rc: RulesContext = RulesContext(rules, this, mapWidth, mapHeight)
     @JvmField @PublicAPI var overdriveIgnoresCheat = rc.r(OVERDRIVE_IGNORES_CHEAT, false)
+    @JvmField @PublicAPI var enableSurrender = rc.r(ENABLE_SURRENDER, true)
 
     init {
         val tags = rules.tags;

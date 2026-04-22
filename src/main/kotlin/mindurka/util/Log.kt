@@ -10,23 +10,26 @@ import mindurka.coreplugin.CorePlugin
  * This function is mainly for languages that support string interpolation
  * to not allocate an extra string if it won't be ever used.
  *
- * If not on main thread, will use `Core.app.run`.
+ * If not on main thread, will use `Core.app.post`.
  */
 inline fun debug(msg: () -> String) {
     if (Log.level.ordinal > Log.LogLevel.debug.ordinal) return
-    if (Thread.currentThread() !== CorePlugin.mainThread) Core.app.run {
-        Log.debug(msg())
+    if (Thread.currentThread() !== CorePlugin.mainThread) {
+        val msg = msg()
+        Core.app.post {
+            Log.debug(msg)
+        }
     } else Log.debug(msg())
 }
 
 /**
  * Print a debug message.
  *
- * If not on main thread, will use `Core.app.run`.
+ * If not on main thread, will use `Core.app.post`.
  */
 fun debug(msg: String, vararg objs: Any) {
     if (Log.level.ordinal > Log.LogLevel.debug.ordinal) return
-    if (Thread.currentThread() !== CorePlugin.mainThread) Core.app.run {
+    if (Thread.currentThread() !== CorePlugin.mainThread) Core.app.post {
         Log.debug(msg, objs)
     } else Log.debug(msg, objs)
 }
@@ -34,11 +37,11 @@ fun debug(msg: String, vararg objs: Any) {
 /**
  * Print a debug message.
  *
- * If not on main thread, will use `Core.app.run`.
+ * If not on main thread, will use `Core.app.post`.
  */
 fun debug(msg: Any) {
     if (Log.level.ordinal > Log.LogLevel.debug.ordinal) return
-    if (Thread.currentThread() !== CorePlugin.mainThread) Core.app.run {
+    if (Thread.currentThread() !== CorePlugin.mainThread) Core.app.post {
         Log.debug(msg)
     } else Log.debug(msg)
 }

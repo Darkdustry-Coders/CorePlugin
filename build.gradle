@@ -1,6 +1,5 @@
 import groovy.json.JsonSlurper
 
-import java.lang.StringBuilder
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -57,15 +56,9 @@ publishing {
     }
 }
 
-allprojects {
-    tasks.withType(JavaCompile).configureEach {
-        targetCompatibility = JavaVersion.VERSION_17
-        sourceCompatibility = JavaVersion.VERSION_17
-    }
-}
-
-dependencies { 
-    compileOnly libs.bundles.mindustry
+dependencies {
+    // compileOnly libs.bundles.mindustry, { changing = true }
+    compileOnly files("$workspacePath/.bin/server-release.jar")
 
     implementation libs.bundles.kotlin.serialization
     implementation libs.kotlin.reflect
@@ -119,10 +112,6 @@ test {
     }
 }
 
-kotlin {
-    jvmToolchain(17)
-}
-
 tasks.named("compileKotlin") {
     dependsOn "generateExtras"
 }
@@ -155,10 +144,6 @@ tasks.register("generateExtras") {
         builder.append("    /** Commit hash of CorePlugin. */\n")
         builder.append("    @JvmField\n")
         builder.append("    val gitCommit = \"${"git rev-parse HEAD".execute().inputReader().readLine().trim()}\"\n")
-        builder.append("\n")
-        builder.append("    /** Whether CorePlugin is being built as a native image. */\n")
-        builder.append("    @JvmField\n")
-        builder.append("    val nativeImage = false\n")
         builder.append("}\n")
 
         Files.write(path.resolve("mindurka/coreplugin/Build.kt"), builder.toString().getBytes(StandardCharsets.UTF_8))

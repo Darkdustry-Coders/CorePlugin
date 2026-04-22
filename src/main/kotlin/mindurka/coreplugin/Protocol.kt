@@ -3,7 +3,6 @@ package mindurka.coreplugin
 import arc.Core
 import arc.func.Cons3
 import arc.func.Prov
-import arc.net.Connection
 import arc.struct.ObjectIntMap
 import arc.struct.ObjectMap
 import arc.struct.Seq
@@ -32,6 +31,7 @@ import mindurka.coreplugin.database.VotekickedAccountException
 import mindurka.coreplugin.messages.AddFirewallBan
 import mindurka.util.Async
 import mindurka.util.K
+import mindurka.util.ip
 import mindurka.util.sha256
 import mindurka.util.unreachable
 import mindustry.Vars
@@ -44,7 +44,6 @@ import mindustry.gen.ServerBinaryPacketReliableCallPacket
 import mindustry.gen.ServerBinaryPacketUnreliableCallPacket
 import mindustry.gen.ServerPacketReliableCallPacket
 import mindustry.gen.ServerPacketUnreliableCallPacket
-import mindustry.net.ArcNetProvider
 import mindustry.net.Net
 import mindustry.net.NetConnection
 import mindustry.net.Packet
@@ -246,11 +245,13 @@ class Protocol {
         overridePacket<SendChatMessageCallPacket, OSendChatMessageCallPacket> { OSendChatMessageCallPacket() }
 
         Vars.net.handleServer(Packets.Connect::class.java) { con, packet ->
-            val realCon: Connection = Reflect.get(con.javaClass, con, "connection")
-            if (realCon.remoteAddressTCP.address != realCon.remoteAddressUDP.address) {
-                con.close()
-                return@handleServer
-            }
+            // val realCon: Connection = Reflect.get(con.javaClass, con, "connection")
+
+            // if (realCon.remoteAddressTCP != null && realCon.remoteAddressUDP != null
+            //     && realCon.remoteAddressTCP.address != realCon.remoteAddressUDP.address) {
+            //     con.close()
+            //     return@handleServer
+            // }
 
             if (Vars.netServer.admins.isDosBlacklisted(con.address)) {
                 con.close()
@@ -277,6 +278,16 @@ class Protocol {
         }
 
         addBinaryPacketHandler<BeginState>("mindurka.connect") { con, packet, _ ->
+            // val realCon: Connection = Reflect.get(con.javaClass, con, "connection")
+            // if (realCon.remoteAddressUDP == null || realCon.remoteAddressTCP == null) {
+            //     con.close()
+            //     return@addBinaryPacketHandler
+            // }
+            // if (realCon.remoteAddressTCP.address != realCon.remoteAddressUDP.address) {
+            //     con.close()
+            //     return@addBinaryPacketHandler
+            // }
+
             try {
                 val dataStream = DataInputStream(ByteArrayInputStream(packet))
 
@@ -439,6 +450,16 @@ class Protocol {
             if (connectionStates[con] !== BeginState) return@handleServer
             connectionStates[con] = VanillaClientState
 
+            // val realCon: Connection = Reflect.get(con.javaClass, con, "connection")
+            // if (realCon.remoteAddressUDP == null || realCon.remoteAddressTCP == null) {
+            //     con.close()
+            //     return@handleServer
+            // }
+            // if (realCon.remoteAddressTCP.address != realCon.remoteAddressUDP.address) {
+            //     con.close()
+            //     return@handleServer
+            // }
+
             val player = Player.create()
             player.con = con
             con.player = player
@@ -482,7 +503,7 @@ class Protocol {
             (RabbitMQ.lock("player-uuid.${player.uuid()}") ?: run {
                 player.ckick(Tl.fmt(player).done("{generic.kick.another-location}"))
                 return@login
-            }).let { session.locks.add(it); K }
+            }).let { session.addLock(it); K }
 
             val state = connectionStates[player.con] ?: unreachable()
             if (state is PachedClientPreconnectState) {
@@ -491,7 +512,7 @@ class Protocol {
                 (RabbitMQ.lock("player-key.${sha256(state.key.encoded)}") ?: run {
                     player.ckick(Tl.fmt(player).done("{generic.kick.another-location}"))
                     return@login
-                }).let { session.locks.add(it); K }
+                }).let { session.addLock(it); K }
             }
 
             // In case a gamemode overrides that. Although idk if it should be an option. It probably should be.
@@ -541,7 +562,7 @@ class Protocol {
             (RabbitMQ.lock("player-profile.${sha256(session.profileId)}") ?: run {
                 player.ckick(Tl.fmt(player).done("{generic.kick.another-location}"))
                 return@login
-            }).let { session.locks.add(it); K }
+            }).let { session.addLock(it); K }
 
             try {
                 Reflect.get<ReusableByteOutStream>(Vars.netServer, "writeBuffer").reset()
@@ -564,6 +585,8 @@ class Protocol {
 
             emit(EventType.PlayerConnect(player))
             done = true
+
+            Log.info("IP: ${player.ip}")
         } finally {
             loggingIn.remove(playerUuid)
             if (!done) PlayerData.of(player).playerLeft(player)

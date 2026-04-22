@@ -295,6 +295,45 @@ no-mdc = [{col.err}] No public key was shared.
        =
        = Install or enable [{col.mdc}]MindurkaCompat[] and repeat the command.
 
+[commands.stats]
+
+description = See player stats.
+manpage = See player stats.
+        =
+        = This will also show all the IDs associated with a player.
+params = [player]
+
+dialog-title =  Stats
+dialog-content = [accent] [lightgray]Name: {player}
+               =
+               = [{col.ok}] [lightgray]Blocks placed: [{col.ok}]{blocks-placed}
+               = [{col.err}] [lightgray]Blocks broken: [{col.err}]{blocks-broken}
+               = [orange] [lightgray]Games played: [orange]{games-played}
+               = [cyan] [lightgray]Waves survived: [cyan]{waves}
+               =
+               = [accent]<<< WINS >>>
+               = {gamemode-stats}
+               =
+               = [accent] [lightgray]Play time:
+               = [accent]{playtime}
+
+dialog-data-title =  Stats [lightgray]>> []{emoji} [{color}]{name}
+dialog-data-wins = [accent] [lightgray]Wins: [accent]{wins}{if {ovas} != 0 then ( [red](1vas: [white]{ovas}[]))}
+dialog-data-blocks-placed = [{col.ok}] [lightgray]Blocks placed: [{col.ok}]{blocks-placed}
+dialog-data-blocks-broken = [{col.err}] [lightgray]Blocks broken: [{col.err}]{blocks-broken}
+dialog-data-games = [orange] [lightgray]Games played: [orange]{games}
+dialog-data-waves = [cyan] [lightgray]Waves survived: [cyan]{waves}
+dialog-data-playtime = [accent] [gray]Play time:
+                     = [accent]{playtime}
+
+dialog-gamemode-stats = [{color}]{emoji} [lightgray]{name}: [{color}]{wins}{if {ovas} != 0 then ( [red](1vas: [white]{ovas}[]))}
+
+dialog-profile-id = [cyan] Copy profile ID
+dialog-user-id = [cyan] Copy user ID
+dialog-more-data = [yellow] Info for nerds
+
+whoops = [gray]Whoops! Nothing here!
+
 [commands.vote]
 
 description = Vote in a team-specific poll.
@@ -394,6 +433,9 @@ manpage = Force change map.
         = Unlike [#EC5784]/rtv[], this does not start a vote and is only accessible to admins.
 params = [map]
 params.map = map
+
+dialog.title = Force change map
+dialog.contents = Are you sure you want to change map to {map}?
 
 [commands.kick]
 
