@@ -86,6 +86,7 @@ private fun stats(caller: Player, @Rest target: OfflinePlayer?) {
                     put("waves", resp.result.at("waves").asLong().toString())
                     put("gamemode-stats", buildString {
                         for (gamemode in resp.result.at("gamemodes").asJsonList()) {
+                            if (gamemode.at("wins").asLong() == 0L && gamemode.at("ovas").asLong() == 0L) continue
                             if (!isEmpty()) append("\n")
                             append(Tl.fmt(caller)
                                 .put("name", if (gamemode.at("name").isNull) "???" else gamemode.at("name").asString())
@@ -150,7 +151,7 @@ private fun stats(caller: Player, @Rest target: OfflinePlayer?) {
                     // TODO: Rank.
                 }
 
-                if (entries.size != 1) {
+                if (entries.size != 1) group {
                     option("[gray]<<<") {
                         page--
                         if (page == 0U) page = entries.size.toUInt()

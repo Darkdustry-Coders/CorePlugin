@@ -3,6 +3,7 @@ package mindurka.coreplugin
 import arc.struct.Seq
 import arc.util.Log
 import mindurka.annotations.PublicAPI
+import mindurka.api.Gamemode
 import mindurka.api.interval
 import mindurka.coreplugin.database.Database
 import mindurka.util.Async
@@ -189,35 +190,30 @@ class PlayerData private constructor(player: Player) {
         val query = StringBuilder($$"let $profile_t = update only type::record(\"mindustry_profile\", <uuid> $profile) set ")
         query.append("total_play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
         query.append(", play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
-        if (extraBlocksPlaced != 0) query.append(", blocks_placed += $extraBlocksPlaced")
-        if (extraBlocksBroken != 0) query.append(", blocks_broken += $extraBlocksBroken")
-        if (extraGamesPlayed != 0) query.append(", games_played += $extraGamesPlayed")
-        if (extraWaves != 0) query.append(", waves += $extraWaves")
-        query.append(";\n")
-        query.append($$"upsert only type::record(\"mindustry_profile_gamemode\", [$profile_t.id, type::record(\"mindustry_gamemode\", <string> $gamemode)]) set ")
-        query.append("play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
-        if (extraGamesPlayed != 0) {
-            query.append(", games += $extraGamesPlayed")
-            extraGamesPlayed = 0
-        }
-        if (extraWins != 0) {
-            query.append(", wins += $extraWins")
-            extraWins = 0
-        }
-        if (extraWaves != 0) {
-            query.append(", waves += $extraWaves")
-            extraWaves = 0
-        }
-        if (extraBlocksPlaced != 0) {
-            query.append(", blocks_placed += $extraBlocksPlaced")
-            extraBlocksPlaced = 0
-        }
-        if (extraBlocksBroken != 0) {
-            query.append(", blocks_broken += $extraBlocksBroken")
-            extraBlocksBroken = 0
+        if (Gamemode.hasStats) {
+            if (extraBlocksPlaced != 0) query.append(", blocks_placed += $extraBlocksPlaced")
+            if (extraBlocksBroken != 0) query.append(", blocks_broken += $extraBlocksBroken")
+            if (extraGamesPlayed != 0) query.append(", games_played += $extraGamesPlayed")
+            if (extraWaves != 0) query.append(", waves += $extraWaves")
         }
         query.append(";\n")
+        if (Gamemode.hasStats) {
+            query.append($$"upsert only type::record(\"mindustry_profile_gamemode\", [$profile_t.id, type::record(\"mindustry_gamemode\", <string> $gamemode)]) set ")
+            query.append("play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+            if (extraGamesPlayed != 0) query.append(", games += $extraGamesPlayed")
+            if (extraWins != 0) query.append(", wins += $extraWins")
+            if (extraWaves != 0) query.append(", waves += $extraWaves")
+            if (extraBlocksPlaced != 0) query.append(", blocks_placed += $extraBlocksPlaced")
+            if (extraBlocksBroken != 0) query.append(", blocks_broken += $extraBlocksBroken")
+            query.append(";\n")
+        }
         query.append($$"return fn::mindustry_update_profile(type::record(\"mindustry_profile\", <uuid> $profile));")
+
+        extraGamesPlayed = 0
+        extraWins = 0
+        extraWaves = 0
+        extraBlocksPlaced = 0
+        extraBlocksBroken = 0
 
         handleUpdateOutput(Database.abstractQuerySingle(Query(query.toString())
             .x("profile", profileId).x("gamemode", Config.i.gamemode)).ok().result)

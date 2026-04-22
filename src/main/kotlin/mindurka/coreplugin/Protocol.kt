@@ -585,8 +585,6 @@ class Protocol {
 
             emit(EventType.PlayerConnect(player))
             done = true
-
-            Log.info("IP: ${player.ip}")
         } finally {
             loggingIn.remove(playerUuid)
             if (!done) PlayerData.of(player).playerLeft(player)
