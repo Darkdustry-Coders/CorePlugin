@@ -35,10 +35,16 @@ abstract class Vote(val initiator: Player, val team: Team?) {
         }
 
         refresh(false)
+
+        if (had)
         send.send().put("player", player.sessionData.simpleName())
             .put("votes", votesForNumber.toString())
             .put("threshold", totalPlayers.toString())
-            .done("{generic.vote.left}\n{generic.vote.${if (team == null) "global" else "team"}}")
+            .done("{generic.vote.left}")
+        send.send().put("player", player.sessionData.simpleName())
+            .put("votes", votesForNumber.toString())
+            .put("threshold", totalPlayers.toString())
+            .done("{generic.vote.${if (team == null) "global" else "team"}}")
         if (finished) {
             if (team == null) CorePlugin.currentGlobalVote = null
             else CorePlugin.teamVotes.remove(team.id)

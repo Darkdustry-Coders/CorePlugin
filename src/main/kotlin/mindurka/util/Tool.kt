@@ -15,6 +15,7 @@ import mindustry.gen.Call
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.gen.Posc
+import mindustry.type.StatusEffect
 import mindustry.world.Block
 import mindustry.world.Tile
 import java.net.URLEncoder
@@ -62,6 +63,14 @@ fun sha256(data: ByteArray): String {
         hash.append((if (least >= 10) least + 'a'.code - 10 else least + '0'.code).toChar())
     }
     return hash.toString()
+}
+
+/**
+ * If null then ... or ...
+ */
+inline fun <T, R> nuor(value: T?, ifNotNull: (T) -> R, ifNull: () -> R): R {
+    value?.let { return ifNotNull(it) }
+    return ifNull()
 }
 
 fun minutes(time: Float) = time * 60f
@@ -262,6 +271,17 @@ fun stringToDuration(duration: String): Float {
     return value * if (neg) -1 else 1
 }
 
+fun findStatusEffect(arg: String): StatusEffect? = nuor(arg.toIntOrNull(), Vars.content.statusEffects()::get) { Vars.content.statusEffect(arg) }
+fun findUnit(arg: String): mindustry.gen.Unit? {
+    if (!arg.startsWith("#")) return null
+    val id = arg.substring(1).toIntOrNull() ?: return null
+    return Groups.unit.find { it.id == id } ?: Groups.player.find { it.id == id }?.unit()
+}
+fun splitOnceFirst(value: String, delim: String): String {
+    val i = value.indexOf(delim)
+    if (i == -1) return value
+    return value.substring(i + 1)
+}
 fun findPlayer(arg: String, checkUuid: Boolean): Player? {
     if (arg.isBlank()) return null
 
@@ -293,6 +313,19 @@ fun findPlayer(arg: String, checkUuid: Boolean): Player? {
         if (player.plainName().lowercase().contains(arg.lowercase())) return player
     }
 
+    return null
+}
+
+fun parseTeam(source: String): Team? {
+    arrayOf("derelict" to Team.derelict, "sharded" to Team.sharded, "crux" to Team.crux, "malis" to Team.malis,
+        "green" to Team.green, "blue" to Team.blue, "red" to Team.crux, "yellow" to Team.sharded, "black" to Team.derelict,
+        "neoplastic" to Team.neoplastic).find { it.first.equals(source, true) }?.let { return it.second }
+    if (source.startsWith("team#")) {
+        val team = source.substring(5).toIntOrNull() ?: return null
+        if (team !in 0..255) return null
+        return Team.all[team]
+    }
+    source.toIntOrNull()?.let { return if (it in 0..255) Team.all[it] else null }
     return null
 }
 
@@ -342,8 +375,8 @@ inline fun Block.eachBlockOffset(startX: Int, startY: Int, cb: (Int, Int) -> Uni
 
 inline fun Player.sendBinaryPacket(packet: String, data: ByteArray, reliable: Boolean = true) = if (reliable) Call.clientBinaryPacketReliable(con, packet, data)
                                                                                                 else Call.clientBinaryPacketUnreliable(con, packet, data)
-inline fun Player.sendPacket(packet: String, data: String, reliable: Boolean = true) = if (reliable) Call.clientPacketReliable(con, packet, data)
-                                                                                       else Call.clientPacketUnreliable(con, packet, data)
+inline fun Player.sendPacket(packet: String, data: String?, reliable: Boolean = true) = if (reliable) Call.clientPacketReliable(con, packet, data)
+                                                                                        else Call.clientPacketUnreliable(con, packet, data)
 inline fun Player.copyClipboard(data: String) = Call.copyToClipboard(con, data)
 
 inline val Player.ip: String get() = if (con.address.contains('/')) con.address.substring(con.address.lastIndexOf('/') + 1) else con.address

@@ -8,6 +8,7 @@ import arc.util.Strings
 import buj.tl.Tl
 import kotlinx.coroutines.future.await
 import mindurka.annotations.Command
+import mindurka.annotations.ConsoleCommand
 import mindurka.annotations.EnabledIf
 import mindurka.annotations.Hidden
 import mindurka.annotations.RequiresPermission
@@ -58,6 +59,7 @@ import java.util.Arrays
 import kotlin.collections.iterator
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlin.time.Duration
 
 @Command
 private fun stats(caller: Player, @Rest target: OfflinePlayer?) {
@@ -575,11 +577,43 @@ private fun nick(caller: Player, @Rest name: String?) = Async.run {
         }
     }
 
-    data.customname = name
+    data.customname = "[#${caller.color.toString().uppercase()}]$name"
     data.updateUsername()
     Database.abstractQuery(Query(DatabaseScripts.playerSetNick)
         .x("profile", data.profileId)
         .apply { if (name != null) x("name", name) }).ok()
 
     caller.setCooldown("/nick", 3f)
+}
+
+/** Pardon a player */
+@Command
+@RequiresPermission(PermLevels.moderator)
+private fun pardon(caller: Player, player: OfflinePlayer) = Async.run {
+    if (Database.pardon(player.userId)) Tl.send(caller).put("target", player.lastName).done("{commands.pardon.success}")
+    else Tl.send(caller).put("target", player.lastName).done("{commands.pardon.fail}")
+}
+
+/** Kick a player */
+@Command
+@RequiresPermission(PermLevels.moderator)
+private fun kick(caller: Player, player: OfflinePlayer, duration: Duration?, @Rest reason: String) = Async.run {
+    Database.kick(player, caller, duration, reason)
+    Tl.send(caller).put("target", player.lastName).done("{commands.kick.success}")
+}
+
+/** Unban a player */
+@Command
+@RequiresPermission(PermLevels.moderator)
+private fun unban(caller: Player, player: OfflinePlayer) = Async.run {
+    if (Database.unban(player.userId)) Tl.send(caller).put("target", player.lastName).done("{commands.unban.success}")
+    else Tl.send(caller).put("target", player.lastName).done("{commands.unban.fail}")
+}
+
+/** Ban a player */
+@Command
+@RequiresPermission(PermLevels.moderator)
+private fun ban(caller: Player, player: OfflinePlayer, duration: Duration?, @Rest reason: String) = Async.run {
+    Database.ban(player, caller, duration, reason)
+    Tl.send(caller).put("target", player.lastName).done("{commands.ban.success}")
 }

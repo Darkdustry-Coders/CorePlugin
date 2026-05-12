@@ -54,10 +54,14 @@ class Schematic(val width: Int, val height: Int) {
                     val block = tile.block()
                     a@while (!block.isMultiblock || tile.isCenter) {
                         val build = tile.build
-                        if (build != null && options.skipBuildings) break@a
+                        if (build != null && options.skipBuildings == Options.Replace.Skip) break@a
 
+                        if (options.skipBuildings == Options.Replace.ReplaceAir) {
+                            schematic.blocks[cursor] = Blocks.air
+                            break@a
+                        }
                         schematic.blocks[cursor] = tile.block()
-                        if (build != null) {
+                        if (build != null && options.skipBuildings == Options.Replace.Accept) {
                             schematic.build[cursor] = BuildData(build.rotation, build.config())
                         }
                         if (schematic.blocks[cursor] === Blocks.air && options.skipAir) schematic.blocks[cursor] = null
@@ -73,7 +77,7 @@ class Schematic(val width: Int, val height: Int) {
 
         @Throws(FormatException::class)
         fun of(data: String): Schematic {
-            val read: StringRead = StringRead(data)
+            val read = StringRead(data)
             try {
                 if (read.i() != 2) throw FormatException("Invalid format")
             } catch (e: FormatException) {
@@ -152,6 +156,12 @@ class Schematic(val width: Int, val height: Int) {
     )
 
     class Options {
+        enum class Replace {
+            Skip,
+            ReplaceAir,
+            Accept,
+        }
+
         /** Skip air overlays.  */
         var skipNoOverlay: Boolean = false
 
@@ -162,7 +172,7 @@ class Schematic(val width: Int, val height: Int) {
         var skipEmpty: Boolean = false
 
         /** Skip buildings.  */
-        var skipBuildings: Boolean = false
+        var skipBuildings: Replace = Replace.Accept
 
         /** Use net updates.  */
         var updateNet: Boolean = true
@@ -182,21 +192,27 @@ class Schematic(val width: Int, val height: Int) {
             return this
         }
 
-        /** Skip air overlays.  */
+        /** Skip air overlays. */
         fun skipNoOverlay(): Options {
             skipNoOverlay = true
             return this
         }
 
-        /** Skip empty floors.  */
+        /** Skip empty floors. */
         fun skipEmpty(): Options {
             skipEmpty = true
             return this
         }
 
-        /** Skip buildings.  */
+        /** Skip buildings. */
         fun skipBuildings(): Options {
-            skipBuildings = true
+            skipBuildings = Replace.Skip
+            return this
+        }
+
+        /** Replace buildings with air */
+        fun buildingsReplaceAir(): Options {
+            skipBuildings = Replace.ReplaceAir
             return this
         }
 
@@ -225,7 +241,7 @@ class Schematic(val width: Int, val height: Int) {
             skipAir = false
             skipEmpty = false
             skipNoOverlay = false
-            skipBuildings = false
+            skipBuildings = Replace.Accept
             updateNet = true
             team = Team.derelict
             // mask = null;
@@ -307,9 +323,9 @@ class Schematic(val width: Int, val height: Int) {
 
             val data = this.build[idx]
             block@while (blocks[idx] != null && !(blocks[idx] === Blocks.air && options.skipAir)) {
-                if (options.skipBuildings && tile.build != null || this.build[idx] != null) break@block
-                if (options.updateNet) tile.setNet(blocks[idx], options.team, data?.rotation ?: 0)
-                else tile.setBlock(blocks[idx], options.team, data?.rotation ?: 0)
+                if (options.skipBuildings == Options.Replace.Skip && tile.build != null || this.build[idx] != null) break@block
+                if (options.updateNet) tile.setNet(if (options.skipBuildings == Options.Replace.Accept) blocks[idx] else Blocks.air, options.team, data?.rotation ?: 0)
+                else tile.setBlock(if (options.skipBuildings == Options.Replace.Accept) blocks[idx] else Blocks.air, options.team, data?.rotation ?: 0)
                 if (notnull(blocks[idx]).saveData) updateData = true
                 break
             }

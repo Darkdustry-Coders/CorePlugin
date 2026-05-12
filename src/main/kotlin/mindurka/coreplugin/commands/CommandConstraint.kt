@@ -47,3 +47,13 @@ object SurrenderEnabled: CommandConstraint {
 
     override fun enabled(player: Player): Boolean = Gamemode.enableSurrender && SpecialSettings.currentMap().enableSurrender && Vars.state.rules.pvp
 }
+
+/**
+ * Whether admin commands like /unit are enabled.
+ */
+object AdminCommandsEnabled: CommandConstraint {
+    @JvmStatic
+    fun obtain(): CommandConstraint = AdminCommandsEnabled
+
+    override fun enabled(player: Player): Boolean = Gamemode.adminCommands
+}

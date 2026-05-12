@@ -18,7 +18,10 @@ import mindurka.annotations.NetworkEvent
 import mindurka.api.on
 import mindurka.config.Serializers
 import mindurka.coreplugin.PlayerData
+import mindurka.coreplugin.database.IspTables
 import mindurka.coreplugin.messages.AddFirewallBan
+import mindurka.coreplugin.messages.AttachedFile
+import mindurka.coreplugin.messages.FileKind
 import mindurka.coreplugin.messages.PermissionLevel
 import mindurka.coreplugin.messages.PlayerJoined
 import mindurka.coreplugin.messages.PlayerLeft
@@ -38,6 +41,8 @@ import mindustry.content.Planets
 import mindustry.content.UnitTypes
 import mindustry.content.Weathers
 import mindustry.ctype.MappableContent
+import mindustry.entities.bullet.MultiBulletType
+import mindustry.entities.bullet.PointBulletType
 import mindustry.game.EventType
 import mindustry.game.Rules
 import mindustry.game.SpawnGroup
@@ -187,9 +192,16 @@ fun nativeImageHeatUp() {
     heatClass(ServerPacketReliableCallPacket::class.java)
     heatClass(ServerPacketUnreliableCallPacket::class.java)
 
+    heatClass(IspTables::class.java)
+
     serde(AddFirewallBan(""))
     serde(PermissionLevel("", 0))
-    serde(ServerMessage("", "", "", "", ""))
+    serde(ServerMessage("", "", "", "", "", listOf(
+        AttachedFile("", 123, FileKind.Unknown),
+        AttachedFile("", 123, FileKind.Image(1, 1)),
+        AttachedFile("", 123, FileKind.Audio),
+        AttachedFile("", 123, FileKind.Video(1, 1, 1f)),
+    )))
     serde(ServerInfo("", "", "", "", 0, 0, 0, 0, ""))
     serde(ServerDown())
     serde(ServersRefresh())
@@ -204,6 +216,8 @@ fun nativeImageHeatUp() {
         it.parts.each { heatClass(it.javaClass) }
         it.engines.each { heatClass(it.javaClass) }
     }
+    heatClass(PointBulletType::class.java)
+    heatClass(MultiBulletType::class.java)
 
     Vars.mods.scripts.runConsole("")
 

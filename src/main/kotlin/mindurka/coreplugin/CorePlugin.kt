@@ -1,11 +1,13 @@
 package mindurka.coreplugin
 
 // Keeping those unwrapped for my own sanity.
+import arc.Core
 import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.ObjectMap
 import arc.util.Log
+import arc.util.Strings
 import arc.util.Time
 import buj.tl.Tl
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -20,6 +22,7 @@ import mindurka.api.PlayerTeamAssign
 import mindurka.api.Priority
 import mindurka.api.RoundEndEvent
 import mindurka.api.SpecialSettings
+import mindurka.api.Timer
 import mindurka.api.emit
 import mindurka.api.interval
 import mindurka.api.on
@@ -30,6 +33,7 @@ import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.DatabaseScripts
 import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.messages.ServerDown
+import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.messages.PlayerJoined as MsgPlayerJoined
 import mindurka.coreplugin.messages.PlayerLeft as MsgPlayerLeft
 import mindurka.coreplugin.nativeimage.nativeImageHeatUp
@@ -37,6 +41,7 @@ import mindurka.coreplugin.votes.Vote
 import mindurka.ui.handleUiEvent
 import mindurka.util.Async
 import mindurka.util.ModifyWorld
+import mindurka.util.Ref
 import mindurka.util.SendMessage
 import mindurka.util.debug
 import mindurka.util.filter
@@ -49,6 +54,7 @@ import mindustry.content.Blocks
 import mindustry.core.NetServer
 import mindustry.game.EventType
 import mindustry.game.Team
+import mindustry.gen.Building
 import mindustry.gen.Call
 import mindustry.gen.Groups
 import mindustry.gen.Player
@@ -58,6 +64,8 @@ import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
 import kotlin.math.min
 import net.buj.surreal.Query
+import kotlin.system.exitProcess
+import kotlin.time.Duration.Companion.hours
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -90,6 +98,31 @@ object CorePlugin {
     @JvmField val teamVotes = IntMap<Vote>()
     @JvmField val mainThread = Thread.currentThread()
     @JvmField val teamRestoreCache = ObjectMap<String, TeamRestoreCache>()
+    @JvmField var restarting = false
+
+    fun scheduleRestart() {
+        if (restarting) return
+
+        if (Groups.player.isEmpty) exitProcess(0)
+
+        Tl.broadcast().done("{generic.restart-scheduled}")
+
+        val r = Ref(false)
+
+        suspend fun restart() {
+            if (r.r) return
+            r.r = true
+
+            for (x in Groups.player) {
+                x.sessionData.flush()
+            }
+
+            exitProcess(0)
+        }
+
+        on<EventType.PlayerLeave> { Async.run(::restart) }
+        on<RoundEndEvent> { Async.run(::restart) }
+    }
 
     private var fakeBlockKind: Block? = null
     private class FakeBlock(
@@ -130,6 +163,8 @@ object CorePlugin {
             }
         }
 
+        val abnormalBlockList = arrayOf(Blocks.sporePine, Blocks.snowPine, Blocks.pine, Blocks.metalWall1, Blocks.metalWall2,
+            Blocks.metalWall3, Blocks.coloredWall)
         on<EventType.WorldLoadEvent>(priority = Priority.Lowest) {
             fakeBlockPos.clear()
 
@@ -142,12 +177,14 @@ object CorePlugin {
                     for (x in shift..<(Vars.world.width() - shift)) {
                         val tile = Vars.world.tile(x, shift)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
                     for (x in shift..<(Vars.world.width() - shift)) {
                         val tile = Vars.world.tile(x, Vars.world.height() - shift - 1)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
@@ -155,12 +192,14 @@ object CorePlugin {
                     for (y in shift..<(Vars.world.height() - shift)) {
                         val tile = Vars.world.tile(shift, y)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
                     for (y in shift..<(Vars.world.height() - shift)) {
                         val tile = Vars.world.tile(Vars.world.width() - shift - 1, y)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
@@ -211,7 +250,7 @@ object CorePlugin {
                 Gamemode.defaultPatch?.let { patch.append(it.get()).append('\n') }
                 fakeBlockKind?.let { real ->
                     patch.append("block.legacy-mech-pad: {\n")
-                    patch.append("    region: block-${real.name}-full\n")
+                    patch.append("    region: ${if (real in abnormalBlockList) real.name else "block-${real.name}-full"}\n")
                     patch.append("    uiIcon: block-${real.name}-ui\n")
                     patch.append("    localizedName: ${real.name.replace(Regex("-[a-z]")) {
                         " ${it.value[1].uppercase()}"
@@ -277,6 +316,8 @@ object CorePlugin {
 
         on<EventType.PlayEvent> { _ ->
             teamRestoreCache.clear()
+
+            if (SpecialSettings.currentMap().patch < 7) { Groups.build.each(Building::heal) }
         }
 
         on<EventType.PlayerConnectionConfirmed> { event ->
@@ -313,9 +354,13 @@ object CorePlugin {
                 player.sessionData.playerLeft(player)
             }
 
-            emit(MsgPlayerLeft(
-                it.player.sessionData.userId,
-                it.player.plainName()
+            emit(ServerMessage(
+                "➖ Player ${Strings.stripColors(it.player.name)} left the game",
+                "+system@mindustry/${Config.i.serverName}",
+                null,
+                null,
+                null,
+                null
             ))
         }
         on<EventType.MenuOptionChooseEvent>(listener = ::handleUiEvent)
@@ -336,10 +381,17 @@ object CorePlugin {
                 Tl.send(it.player).done("{generic.mdc-outdated}")
             }
 
-            emit(MsgPlayerJoined(
-                it.player.sessionData.userId,
-                it.player.plainName()
+            emit(ServerMessage(
+                "➕ Player ${Strings.stripColors(it.player.name)} joined the game",
+                "+system@mindustry/${Config.i.serverName}",
+                null,
+                null,
+                null,
+                null
             ))
+
+            if (restarting) Tl.send(it.player).done("{generic.restart-scheduled}")
+            timer(0.5f) { Call.setRules(it.player.con, Vars.state.rules) }
         }
 
         on<EventType.BlockBuildEndEvent> {
@@ -348,23 +400,12 @@ object CorePlugin {
             else player.sessionData.extraBlocksPlaced += 1
         }
 
-        // on<RoundEndEvent> {
-        //     val players = run {
-        //         val players = newSeq<String>(Groups.player.size())
-        //         Groups.player.each { players.add(it.sessionData.profileId) }
-        //         players.toArray()
-        //     }
-        //     Log.info("Updating ${players.size} players!")
-        //     Async.run {
-        //         Database.abstractQuery(Query(DatabaseScripts.gamePlayedScript).x("profiles", players)).ok()
-        //     }
-        // }
-
         on<EventType.BlockBuildEndEvent>(priority = Priority.After) {
             if (it.breaking) return@on
 
             emit(BuildEvent(it.unit, it.tile))
         }
+        interval(5f) { Call.setRule("schematicsAllowed", Vars.state.rules.schematicsAllowed.toString()) }
         on<BuildEvent>(priority = Priority.After) {
             val block = it.replacementBlock
             val overlay = it.replacementOverlay
@@ -434,13 +475,6 @@ object CorePlugin {
                     .done(key))
             }
             Log.info("Winner: ${event.winner}")
-            Groups.player.each {
-                it.sessionData.extraGamesPlayed++
-                if (event.winner == it.team()) it.sessionData.extraWins++
-                Async.run {
-                    it.sessionData.flush()
-                }
-            }
             Vars.state.gameOver = true
             Call.updateGameOver(event.winner)
             Log.info("Selected next map to be ${map.name()}.")
@@ -450,7 +484,20 @@ object CorePlugin {
             }
         }
 
+        on<EventType.GameOverEvent> { event ->
+            Groups.player.each {
+                it.sessionData.extraGamesPlayed++
+                if (event.winner == it.team()) it.sessionData.extraWins++
+                Async.run {
+                    it.sessionData.flush()
+                }
+            }
+        }
+
         setupTerminalInput()
+
+        Log.info("Will attempt to stop the server in 4 hours")
+        timer(4.hours.inWholeSeconds.toFloat()) { scheduleRestart() }
 
         protocol = Protocol()
 

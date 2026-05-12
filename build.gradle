@@ -58,7 +58,7 @@ publishing {
 
 dependencies {
     // compileOnly libs.bundles.mindustry, { changing = true }
-    compileOnly files("$workspacePath/.bin/server-release.jar")
+    compileOnly files("$workspacePath/.cache/tools/buildscript/server-release.jar")
 
     implementation libs.bundles.kotlin.serialization
     implementation libs.kotlin.reflect
@@ -72,7 +72,7 @@ dependencies {
     implementation libs.jansi
 
     testImplementation "org.jetbrains.kotlin:kotlin-test"
-    testImplementation libs.bundles.mindustry
+    testImplementation files("$workspacePath/.cache/tools/buildscript/server-release.jar")
 
     implementation project(':annotations')
     implementation project(':buildExtras')

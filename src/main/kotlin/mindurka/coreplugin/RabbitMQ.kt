@@ -136,7 +136,6 @@ internal class RabbitMQWorker() {
     @JvmField
     val metadata = WeakHashMap<Any, BasicProperties>()
 
-    private inline fun <reified T: Any> ensureExchange(name: String, addListener: Cons<T>? = null) = ensureExchange(T::class, name, addListener)
     @OptIn(ExperimentalSerializationApi::class)
     private fun <T: Any> ensureExchange(ty: KClass<T>, name: String, addListener: Cons<T>? = null) {
         if (shared.mutb {
@@ -177,6 +176,11 @@ internal class RabbitMQWorker() {
                 properties: AMQP.BasicProperties,
                 body: ByteArray
             ) {
+                if (properties.appId == Config.i.serverName) {
+                    mainChannel.basicNack(envelope.deliveryTag, false, false)
+                    return
+                }
+
                 debug{"[RabbitMQ] Recvd $queueName (mime=${properties.contentEncoding}, from=${properties.appId})"}
                 val ktype = ty.createType(emptyList(), false, emptyList())
 

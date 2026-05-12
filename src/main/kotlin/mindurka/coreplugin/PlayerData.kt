@@ -7,6 +7,7 @@ import mindurka.api.Gamemode
 import mindurka.api.interval
 import mindurka.coreplugin.database.Database
 import mindurka.util.Async
+import mindurka.util.K
 import mindurka.util.newSeq
 import mindustry.Vars
 import mindustry.gen.KickCallPacket
@@ -106,8 +107,6 @@ class PlayerData private constructor(player: Player) {
     suspend fun setPermissionLevel(level: Int) {
         Database.setPermissionLevel(profileId, level)
         permissionLevel = level
-        if (keySet && level >= 100) Vars.netServer.admins.adminPlayer(uuid, usid)
-        else Vars.netServer.admins.unAdminPlayer(uuid)
         player.get()?.admin = level >= 100
     }
     /**
@@ -150,6 +149,20 @@ class PlayerData private constructor(player: Player) {
         player.get()?.name = fullName()
     }
 
+    /** Metadata sent with the `schemesize.available` packet.
+     *
+     * Right now the packet just sends a 0, so it's reserved for future use.
+     * */
+    @JvmField
+    var schemeSizeMetadata: K? = null
+    /**
+     * Scheme size subtitle.
+     *
+     * `schemesize.available` may not get sent, so it's outside of [schemeSizeMetadata].
+     */
+    @JvmField
+    var schemeSizeSubtitle: String? = null
+
     private val locks = newSeq<RabbitMQLock>()
     suspend fun addLock(lock: RabbitMQLock) {
         if (exitHandledCorrectly) {
@@ -170,8 +183,8 @@ class PlayerData private constructor(player: Player) {
     internal fun handleUpdateOutput(out: Json) {
         var updateUsername = false
 
-        if (out.has("set_short_id")) {
-            shortId = out.at("set_short_id").asLong()
+        if (out.has("new_short_id") && !out.at("new_short_id").isNull) {
+            shortId = out.at("new_short_id").asLong()
             updateUsername = true
         }
 
@@ -277,6 +290,4 @@ class PlayerData private constructor(player: Player) {
  */
 @PublicAPI val Player.mindurkaCompat get() = MdcVersion.of(sessionData.mindurkaCompatVersion)
 @PublicAPI suspend fun Player.ckick(reason: String) = PlayerData.of(this).kick(this, reason)
-@PublicAPI suspend fun Player.cskick(reason: String) = PlayerData.of(this).kickSilent(this, reason)
 @PublicAPI suspend fun Player.ckick(reason: Packets.KickReason) = PlayerData.of(this).kick(this, reason)
-@PublicAPI suspend fun Player.cskick(reason: Packets.KickReason) = PlayerData.of(this).kickSilent(this, reason)

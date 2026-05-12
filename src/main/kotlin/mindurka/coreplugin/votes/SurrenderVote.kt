@@ -12,22 +12,11 @@ class SurrenderVote(initiator: Player): SimpleVote("commands.surrender.vote", in
     }
     override fun done() {
         team!!.cores().copy().each { it.kill() }
-        // team.data().buildings.each {
-        //     if (it.block.privileged) return@each
-        //     if (Mathf.random() > 0.7f) it.kill()
-        //     else it.team(Team.derelict)
-        // }
-        // team.data().units.each {
-        //     if (!it.killable()) return@each
-        //     timer(Mathf.random() * 5f) { it.kill() }
-        // }
     }
 
     override fun playerLeft(send: SendMessage, player: Player) {
         finished = true
         CorePlugin.teamVotes.remove(team!!.id)
-
-        done()
     }
 
     override val cancelsIfRoundChanged = true

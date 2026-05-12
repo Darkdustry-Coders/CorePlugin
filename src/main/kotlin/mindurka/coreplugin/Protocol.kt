@@ -494,7 +494,7 @@ class Protocol {
     }
 
     private suspend fun login(player: Player, mods: Seq<String>) {
-        val isp = IspTables.of(player.con.address)
+        val isp = IspTables.of(player.ip)
 
         val playerUuid = player.uuid()
         var done = false

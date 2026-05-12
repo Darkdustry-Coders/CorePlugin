@@ -27,10 +27,12 @@ class KickVote(initiator: Player, val player: Player, val reason: String): Simpl
     }
 
     override fun playerLeft(send: SendMessage, player: Player) {
-        finished = true
-        CorePlugin.teamVotes.remove(team!!.id)
+        if (player === this.player) {
+            finished = true
+            CorePlugin.teamVotes.remove(team!!.id)
 
-        done()
+            done()
+        }
     }
 
     override fun filter(player: Player): Boolean = player !== this.player

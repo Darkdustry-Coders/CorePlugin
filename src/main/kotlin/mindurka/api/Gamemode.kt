@@ -211,6 +211,9 @@ object Gamemode {
     @JvmStatic
     var maps: MapManager = DefaultMapManager()
 
+    /** Whether admin commands like /unit are enabled. */
+    @JvmField
+    var adminCommands: Boolean = true
     /**
      * Whether secret blocks need to be unblocked.
      *
