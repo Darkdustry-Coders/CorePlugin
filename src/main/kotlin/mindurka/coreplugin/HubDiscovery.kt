@@ -2,6 +2,7 @@ package mindurka.coreplugin
 
 import arc.Core
 import arc.struct.ObjectMap
+import arc.util.Log
 import buj.tl.Tl
 import mindurka.annotations.Command
 import mindurka.api.emit
@@ -46,8 +47,9 @@ private fun serverInfo(): ServerInfo? {
 // TODO: Increase rates on all of these.
 internal fun initHubDiscovery() {
     on<ServersRefresh> { serverInfo()?.let { info -> Async.run { RabbitMQ.reply(it, info) } } }
-    on<EventType.PlayerJoin> { Core.app.run { serverInfo()?.let { info -> Async.run { RabbitMQ.broadcast(info) } } } }
-    on<EventType.PlayerLeave> { Core.app.run { serverInfo()?.let { info -> Async.run { RabbitMQ.broadcast(info) } } } }
+    on<EventType.PlayerJoin> { Core.app.post { serverInfo()?.let { info -> Async.run { RabbitMQ.broadcast(info) } } } }
+    on<EventType.PlayerLeave> { Core.app.post { serverInfo()?.let { info -> Async.run { RabbitMQ.broadcast(info) } } } }
+    on<EventType.PlayEvent> { Core.app.post { serverInfo()?.let { info -> Async.run { RabbitMQ.broadcast(info) } } } }
     interval(30f) { serverInfo()?.let(::emit) }
 
     interval(30f) {

@@ -1,0 +1,5 @@
+for $profile in $profiles {
+    let $profile = type::record("mindustry_profile", <uuid> $profile);
+    update $profile set games_played += 1;
+};
+return none;

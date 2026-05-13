@@ -17,8 +17,6 @@ import java.io.PrintWriter
 import java.util.UUID
 import java.util.Scanner
 import java.io.File
-import kotlin.reflect.KType
-import kotlin.reflect.javaType
 
 interface Note
 
@@ -87,7 +85,8 @@ private val PARAM_TYPES: Map<String, Int> = mapOf(
     "kotlin.Float" to 2, "kotlin.Double" to 2,
 
     "mindurka.api.MapHandle" to 1, "mindustry.game.Team" to 1, "mindustry.gen.Player" to 1, "mindustry.gen.Unit" to 1,
-    "mindustry.type.UnitType" to 1, "mindurka.api.OfflinePlayer" to 1, "kotlin.time.Duration" to 1,
+    "mindustry.type.UnitType" to 1, "mindurka.api.OfflinePlayer" to 1, "kotlin.time.Duration" to 1, "mindustry.game.Team" to 1,
+    "mindustry.gen.Unit" to 1, "mindustry.type.StatusEffect" to 1, "mindustry.type.Item" to 1,
 
     "kotlin.String" to 0, "java.lang.String" to 0,
 )
@@ -281,7 +280,7 @@ private fun init() {
         write.println("} ?: return ${invalid(meta.name, "{generic.command.zero-map-id}")}")
 
         write.leave() // toUIntOrNull()?.let
-        write.print("} ?: mindurka.api.Gamemode.maps.maps().findOrNull { it.name().startsWith(source, true) } ?: ")
+        write.print("} ?: mindurka.api.Gamemode.maps.maps().findOrNull { Strings.stripColors(it.name()).startsWith(source, true) } ?: ")
         if (meta.nullable) write.println("return@parser null")
         else write.println("return ${invalid(meta.name, "{genetic.command.unknown-map}")}")
     }
@@ -289,6 +288,26 @@ private fun init() {
     ARG_PARSERS["mindustry.gen.Player"] = createParser(true) { write, _, meta ->
         write.println("findPlayer(source, ${meta.consoleCommand}) ?: " +
             if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-player}")}")
+    }
+
+    ARG_PARSERS["mindustry.gen.Unit"] = createParser(true) { write, _, meta ->
+        write.println("findUnit(source) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-unit}")}")
+    }
+
+    ARG_PARSERS["mindustry.type.StatusEffect"] = createParser(true) { write, _, meta ->
+        write.println("findStatusEffect(source) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-status-effect}")}")
+    }
+
+    ARG_PARSERS["mindustry.type.UnitType"] = createParser(true) { write, _, meta ->
+        write.println("nuor(source.toIntOrNull(), Vars.content::unit, { Vars.content.unit(source) }) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-unit-type}")}")
+    }
+
+    ARG_PARSERS["mindustry.type.Item"] = createParser(true) { write, _, meta ->
+        write.println("nuor(source.toIntOrNull(), Vars.content::item, { Vars.content.item(source) }) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.unknown-item}")}")
     }
 
     ARG_PARSERS["mindurka.api.OfflinePlayer"] = createParser(true) { write, _, meta ->
@@ -299,6 +318,11 @@ private fun init() {
     ARG_PARSERS["kotlin.time.Duration"] = createParser(true) { write, _, meta ->
         write.println("kotlin.time.Duration.parseOrNull(source) ?: " +
             if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.invalid-duration}")}")
+    }
+
+    ARG_PARSERS["mindustry.game.Team"] = createParser(true) { write, _, meta ->
+        write.println("parseTeam(source) ?: " +
+            if (meta.nullable) "return@parser null" else "return ${invalid(meta.name, "{generic.command.invalid-team}")}")
     }
 }
 
@@ -459,6 +483,8 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                 classFile.println("import kotlin.reflect.full.*")
                 classFile.println("import mindurka.util.*")
                 classFile.println("import arc.struct.*")
+                classFile.println("import arc.util.*")
+                classFile.println("import mindustry.*")
 
                 classFile.println("class $commandClassName: mindurka.build.CommandImpl() {")
                 classFile.enter()

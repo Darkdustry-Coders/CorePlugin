@@ -28,8 +28,11 @@ import mindustry.core.Version
 import mindustry.gen.Call
 import mindustry.gen.Player
 import mindustry.net.Host
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URI
+import kotlin.system.exitProcess
 
 internal class MainMindustryDispatcher: MainCoroutineDispatcher() {
     override fun dispatch(context: CoroutineContext, block: Runnable) {
@@ -95,20 +98,73 @@ object Async {
      * To be used exclusively to safely execute blocking operations.
      */
     @PublicAPI
+    @JvmOverloads
     @JvmStatic
-    suspend fun <T> thread(fn: Prov<T>): T = suspendCancellableCoroutine { continuation ->
-        val handle = Threads.thread {
+    suspend fun <T> thread(name: String = "Subtask Thread", fn: Prov<T>): T = suspendCancellableCoroutine { continuation ->
+        val handle = Threads.thread(name) {
             try {
                 val value = fn.get()
-                Core.app.post { continuation.completeResume(value as Any) }
-            } catch (_: InterruptedException) {}
-              catch (e: Exception) {
-                Core.app.post { continuation.cancel(e) }
+                Core.app.post { continuation.resumeWith(Result.success(value)) }
+            } catch (e: InterruptedException) {
+                continuation.cancel(e)
+            } catch (e: Throwable) {
+                Log.err("Error in thread: $name:", e)
+                Core.app.post { continuation.resumeWith(Result.failure(e)) }
             }
         }
 
         continuation.invokeOnCancellation {
             handle.interrupt()
+        }
+    }
+
+    /**
+     * Send a POST request to a website and return the contents.
+     */
+    @PublicAPI
+    @JvmStatic
+    suspend fun postHttp(req: String, body: InputStream): InputStream {
+        return thread {
+            try {
+                // No, IDEA, this is blocking context.
+                // It's literally in the definition of `thread`.
+                val connection = URI(req).toURL().openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.doInput = true;
+                connection.doOutput = true;
+                connection.connect()
+                val stream = connection.getOutputStream()
+                body.transferTo(stream)
+                connection.getInputStream()
+            } catch (e: Throwable) {
+                Log.err("Fetching failed!", e)
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Send a POST request to a website and return the contents.
+     */
+    @PublicAPI
+    @JvmStatic
+    suspend fun postHttpString(req: String, body: InputStream): String {
+        return thread {
+            try {
+                // No, IDEA, this is blocking context.
+                // It's literally in the definition of `thread`.
+                val connection = URI(req).toURL().openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.doInput = true;
+                connection.doOutput = true;
+                connection.connect()
+                val stream = connection.getOutputStream()
+                body.transferTo(stream)
+                Streams.copyString(connection.getInputStream())
+            } catch (e: Throwable) {
+                Log.err("Fetching failed!", e)
+                throw e
+            }
         }
     }
 
@@ -120,12 +176,38 @@ object Async {
     @JvmStatic
     suspend fun fetchHttpString(req: String): String {
         return thread {
-            // No, IDEA, this is blocking context.
-            // It's literally in the definition of `thread`.
-            val connection = URI(req).toURL().openConnection() as HttpURLConnection
-            connection.doInput = true;
-            connection.connect()
-            Streams.copyString(connection.getInputStream())
+            try {
+                // No, IDEA, this is blocking context.
+                // It's literally in the definition of `thread`.
+                val connection = URI(req).toURL().openConnection() as HttpURLConnection
+                connection.doInput = true;
+                connection.connect()
+                Streams.copyString(connection.getInputStream())
+            } catch (e: Throwable) {
+                Log.err("Fetching failed!", e)
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Send a GET request to a website and return the contents.
+     */
+    @PublicAPI
+    @JvmStatic
+    suspend fun fetchHttp(req: String): ByteArray {
+        return thread {
+            try {
+                // No, IDEA, this is blocking context.
+                // It's literally in the definition of `thread`.
+                val connection = URI(req).toURL().openConnection() as HttpURLConnection
+                connection.doInput = true;
+                connection.connect()
+                connection.getInputStream().readAllBytes()
+            } catch (e: Throwable) {
+                Log.err("Fetching failed!", e)
+                throw e
+            }
         }
     }
 }
@@ -167,11 +249,15 @@ object AsyncCall {
 
         Log.info("Sending player ${Strings.stripColors(player.name)} to $address:$port")
 
-        player.sessionData.releaseLocks()
-        player.sessionData.flush()
-        Call.connect(player.con, address, port)
-        player.con.close()
+        try {
+            player.sessionData.playerLeft(player)
+            Call.connect(player.con, address, port)
+            player.con.close()
 
-        return true
+            return true
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            exitProcess(1)
+        }
     }
 }

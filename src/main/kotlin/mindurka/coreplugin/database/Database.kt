@@ -22,13 +22,16 @@ import mindurka.util.Async
 import mindurka.util.UnreachableException
 import mindurka.util.collect
 import mindurka.util.durationToTlString
+import mindurka.util.ip
 import mindurka.util.map
+import mindurka.util.newSeq
 import mindurka.util.prefixed
 import mindurka.util.random
 import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
+import mindustry.net.Administration
 import mindustry.net.NetConnection
 import net.buj.surreal.Driver
 import net.buj.surreal.EventCallback
@@ -49,6 +52,8 @@ import kotlin.math.max
 import kotlin.system.exitProcess
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 class MergedAccountException: Exception("Unhandled merged account exception")
 class DisabledAccountException: Exception("Unhandled disconnected account exception")
@@ -124,9 +129,36 @@ internal object DatabaseScripts {
     val pardonScript: String = Streams.copyString(loader.getResourceAsStream("sql/pardon.surrealql"))
     val banScript: String = Streams.copyString(loader.getResourceAsStream("sql/ban.surrealql"))
     val unbanScript: String = Streams.copyString(loader.getResourceAsStream("sql/unban.surrealql"))
+    val statsScript: String = Streams.copyString(loader.getResourceAsStream("sql/stats.surrealql"));
+    val gamePlayedScript: String = Streams.copyString(loader.getResourceAsStream("sql/game_played.surrealql"));
+
+    fun noop() {}
+}
+
+@OptIn(ExperimentalUuidApi::class)
+class LinkedChannels private constructor(internal val id: Uuid, val linked: Seq<String>) {
+    companion object {
+        @JvmStatic
+        internal fun new(id: String, linked: Seq<String>) = LinkedChannels(Uuid.parse(id), linked)
+    }
+
+    /** ID of the entry. */
+    fun id() = id.toHexDashString()
+    /**
+     * Check whether this link includes this server's service address.
+     *
+     * If `extraService` is provided, check for it too.
+     */
+    fun canHandle(extraService: String?): Boolean {
+        val thisServer = "mindustry/${Config.i.serverName}"
+        val servicePart = extraService?.let { if (it.contains('@')) it.substring(it.indexOf('@') + 1) else it }
+        return linked.any { it.equals(thisServer, true) }
+            && (servicePart?.let { servicePart -> linked.any { it.equals(servicePart, true) } } ?: true)
+    }
 }
 
 object Database {
+    val linkedChannels = newSeq<LinkedChannels>();
     val banCache = ObjectMap<String, BannedInfo>()
     val kickCache = ObjectMap<String, KickedInfo>()
     val votekickCache = ObjectMap<String, VotekickedInfo>()
@@ -169,6 +201,7 @@ object Database {
 
     private var queue: Seq<Queued>? = Seq.with()
 
+    @OptIn(ExperimentalUuidApi::class)
     internal fun load() {
         val url = SurrealURL(SharedConfig.i.surrealDbUrl)
 
@@ -200,6 +233,31 @@ object Database {
                 driver!!.onLive(liveQueries[2].result.asString()) { update ->
                     val banId = update.data.at("id").asString()
                     banCache.removeAll { it.value.id == banId }
+                }
+
+                linkedChannels.addAll(liveQueries[3].result.asJsonList().iterator().map { link -> LinkedChannels.new(
+                    link.at("id").asString(),
+                    link.at("links").asJsonList().let { list -> list.iterator().map { x -> x.asString() }.collect(newSeq(list.size)) }
+                )}.collect(newSeq(liveQueries[3].result.asJsonList().size)))
+
+                driver!!.onLive(liveQueries[4].result.asString()) { update ->
+                    if (update.action.equals("create", true)) linkedChannels.add(LinkedChannels.new(
+                        update.data.at("id").asString(),
+                        update.data.at("links").asJsonList().let { list -> list.iterator().map { it.asString() }.collect(newSeq(list.size)) }
+                    ))
+                    else if (update.action.equals("delete", true)) {
+                        val id = Uuid.parse(update.data.at("id").asString())
+                        linkedChannels.remove { it.id == id }
+                    }
+                    else if (update.action.equals("update", true)) {
+                        val id = Uuid.parse(update.data.at("id").asString())
+                        val entry = linkedChannels.find { it.id == id } ?: run {
+                            Log.warn("Could not find entry ${id}! Lists may be desynchronized!")
+                            return@onLive
+                        }
+                        entry.linked.clear()
+                        update.data.at("links").asJsonList().forEach { entry.linked.add(it.asString()) }
+                    }
                 }
 
                 queue?.let { queue ->
@@ -350,7 +408,8 @@ object Database {
                 .apply { isp?.let { x("isp", it) } }
                 .x("server", Config.i.serverName)
                 .x("key", key?.encoded?.let(Base64.withPadding(Base64.PaddingOption.ABSENT)::encode))
-                .x("new_name", newName)).ok()) {
+                .x("new_name", newName)
+                .x("server_ip", "${SharedConfig.i.serverIp}:${Administration.Config.port.get()}")).ok()) {
                 if (x.result.isNull) continue
                 return@run x
             }
@@ -459,13 +518,13 @@ object Database {
     }
 
     internal suspend fun votekick(player: Player, initiator: Player, votes: Seq<Player>, reason: String) {
-        val isp = IspTables.of(player.con.address)
+        val isp = IspTables.of(player.ip)
         val id = abstractQuerySingle(Query(DatabaseScripts.votekickScript)
             .x("user", player.sessionData.userId)
             .x("initiator", player.sessionData.userId)
             .x("votes", votes.iterator().map { it.sessionData.userId }.collect(ArrayList()))
             .x("ip", player.con.address)
-            .apply { isp?.let { x("isp", it) } }
+            .apply { isp?.let { x("isp", it.isp) } }
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         votekickConnection(player.con, id, player.locale, reason, Clock.System.now() + 30.minutes,
@@ -484,6 +543,14 @@ object Database {
             .x("server", Config.i.serverName)).ok().result.asBoolean()
     }
 
+    internal fun kickBroadcast(player: Player, reason: String, admin: String) {
+        Tl.broadcast()
+            .put("admin", admin)
+            .put("target", player.sessionData.fullName())
+            .put("reason", reason)
+            .done("{generic.admin.kick}")
+    }
+
     internal fun kickConnection(con: NetConnection, kickId: String, locale: String, reason: String, expires: Instant?, admin: String) {
         val remaining = durationToTlString(expires?.let { max((it - Clock.System.now()).inWholeMilliseconds, 0) / 1000f } ?: Float.POSITIVE_INFINITY)
 
@@ -500,15 +567,16 @@ object Database {
      */
     @PublicAPI
     suspend fun kick(player: Player, admin: Player?, duration: Duration?, reason: String) {
-        val isp = IspTables.of(player.con.address)
+        val isp = IspTables.of(player.ip)
         val id = abstractQuerySingle(Query(DatabaseScripts.kickScript)
             .x("user", player.sessionData.userId)
             .x("admin", admin?.sessionData?.userId)
             .x("ip", player.con.address)
-            .apply { isp?.let { x("isp", it) } }
+            .apply { isp?.let { x("isp", it.isp) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
+        kickBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
         kickConnection(player.con, id, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
@@ -517,19 +585,28 @@ object Database {
      */
     @PublicAPI
     suspend fun kick(player: OfflinePlayer, admin: Player?, duration: Duration?, reason: String) {
-        val isp = player.player?.con?.address?.let { IspTables.of(it) }
+        val isp = player.player?.ip?.let { IspTables.of(it) }
         val id = abstractQuerySingle(Query(DatabaseScripts.kickScript)
             .x("user", player.userId)
             .x("admin", admin?.sessionData?.userId)
             .x("ip", player.player?.con?.address)
-            .apply { isp?.let { x("isp", it) } }
+            .apply { isp?.let { x("isp", it.isp) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
+            kickBroadcast(po, reason, admin?.sessionData?.simpleName() ?: "<Console>")
             kickConnection(po.con, id, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
+    }
+
+    internal fun banBroadcast(player: Player, reason: String, admin: String) {
+        Tl.broadcast()
+            .put("admin", admin)
+            .put("target", player.sessionData.fullName())
+            .put("reason", reason)
+            .done("{generic.admin.ban}")
     }
 
     internal fun banConnection(con: NetConnection, banId: String, locale: String, reason: String, expires: Instant?, admin: String) {
@@ -548,15 +625,16 @@ object Database {
      */
     @PublicAPI
     suspend fun ban(player: Player, admin: Player?, duration: Duration?, reason: String) {
-        val isp = IspTables.of(player.con.address)
+        // Sending an IP address doesn't work because fuck me ig.
+        val isp = IspTables.of(player.ip)
         val id = abstractQuerySingle(Query(DatabaseScripts.banScript)
             .x("user", player.sessionData.userId)
             .x("admin", admin?.sessionData?.userId)
-            .x("ip", player.con.address)
-            .apply { isp?.let { x("isp", it) } }
+            .apply { isp?.let { x("isp", it.isp) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
+        banBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
         banConnection(player.con, id, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
@@ -565,12 +643,12 @@ object Database {
      */
     @PublicAPI
     suspend fun ban(player: OfflinePlayer, admin: Player?, duration: Duration?, reason: String) {
-        val isp = player.player?.con?.address?.let { IspTables.of(it) }
+        val isp = player.player?.ip?.let { IspTables.of(it) }
         val id = abstractQuerySingle(Query(DatabaseScripts.banScript)
             .x("user", player.userId)
             .x("admin", admin?.sessionData?.userId)
             .x("ip", player.player?.con?.address)
-            .apply { isp?.let { x("isp", it) } }
+            .apply { isp?.let { x("isp", it.isp) } }
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()

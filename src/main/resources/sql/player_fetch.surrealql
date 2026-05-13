@@ -1,1 +1,1 @@
-return fn::mindustry_fetch_user($search, $check_uuid);
+return fn::mindustry_fetch_user(<string> $search, $check_uuid);

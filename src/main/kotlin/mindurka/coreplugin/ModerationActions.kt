@@ -7,15 +7,18 @@ import mindurka.coreplugin.database.Database
 import mindurka.ui.openText
 import mindurka.util.Async
 import mindurka.util.FormatException
+import mindurka.util.ip
 import mindurka.util.stringToDuration
 import mindustry.Vars
 import mindustry.game.Team
 import mindustry.gen.AdminRequestCallPacket
+import mindustry.gen.Call
 import mindustry.gen.Player
+import mindustry.net.Administration
 import mindustry.net.Packets
 import kotlin.time.Duration
 
-internal fun modActionsInit() {
+internal fun initModActions() {
     Vars.net.handleServer(AdminRequestCallPacket::class.java) { con, packet ->
         val admin = con.player
         val target = packet.other
@@ -52,10 +55,6 @@ internal fun modActionsInit() {
                     }
                     if (adminChecks(target)) return@run
 
-                    Tl.broadcast()
-                        .put("admin", admin.coloredName())
-                        .put("target", target.coloredName())
-                        .done("{generic.admin.kick}")
                     Database.kick(target, admin, info.duration, info.reason)
                 }
             }
@@ -71,10 +70,6 @@ internal fun modActionsInit() {
                     }
                     if (adminChecks(target)) return@run
 
-                    Tl.broadcast()
-                        .put("admin", admin.coloredName())
-                        .put("target", target.coloredName())
-                        .done("{generic.admin.ban}")
                     Database.ban(target, admin, info.duration, info.reason)
                 }
             }
@@ -83,18 +78,32 @@ internal fun modActionsInit() {
                 Vars.logic.skipWave()
             }
             Packets.AdminAction.switchTeam -> {
-                if (adminChecks(target)) return@handleServer
+                if (target != admin && adminChecks(target)) return@handleServer
                 if (packet.params !is Team) return@handleServer
                 target.team(packet.params as Team)
             }
-            else -> {}
+            Packets.AdminAction.trace -> {
+                if (adminChecks(target)) return@handleServer
+                // TODO: Actually fill the fields.
+                Call.traceInfo(admin.con, target, Administration.TraceInfo(
+                    target.ip,
+                    target.sessionData.profileId,
+                    target.locale,
+                    target.con.modclient,
+                    target.con.mobile,
+                    0,
+                    0,
+                    emptyArray(),
+                    arrayOf(target.sessionData.basename),
+                ))
+            }
         }
     }
 }
 
 private data class ModerationDialogOutput(
     val reason: String,
-    val duration: Duration,
+    val duration: Duration?,
 )
 
 private enum class DialogOutput {
@@ -112,7 +121,7 @@ private suspend fun moderationDialog(admin: Player, target: Player, prefix: Stri
         if (state == DialogOutput.Cancel) return null
         if (state == DialogOutput.Done) return ModerationDialogOutput(
             reason!!,
-            duration!!
+            duration
         )
 
         if (reason == null) reason = admin.openText {
@@ -138,6 +147,10 @@ private suspend fun moderationDialog(admin: Player, target: Player, prefix: Stri
             textLength = 40
 
             onComplete { value ->
+                if (value == null) {
+                    state = DialogOutput.Done
+                    return@onComplete null
+                }
                 Duration.parseOrNull(value)?.let {
                     duration = it
                     state = DialogOutput.Done

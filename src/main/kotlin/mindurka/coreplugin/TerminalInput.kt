@@ -1,6 +1,7 @@
 package mindurka.coreplugin
 
 import arc.func.Cons
+import arc.util.Log
 import mindurka.api.Consts
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -37,21 +38,25 @@ fun setupTerminalInput() {
         }
     }
 
-    val terminal = TerminalBuilder.builder().jna(true).system(true).dumb(true).build()
-    val reader = LineReaderBuilder.builder().terminal(terminal).build()
+    try {
+        val terminal = TerminalBuilder.builder().jna(true).system(true).dumb(true).build()
+        val reader = LineReaderBuilder.builder().terminal(terminal).build()
 
-    terminal.enterRawMode()
+        terminal.enterRawMode()
 
-    System.setOut(BlockingPrintStream(reader::printAbove))
+        System.setOut(BlockingPrintStream(reader::printAbove))
 
-    Consts.serverControl.serverInput = Runnable {
-        try {
-            while (true) {
-                val line = reader.readLine("> ").trim()
-                if (!line.isEmpty() && !line.trimStart().startsWith('#')) Consts.serverControl.handleCommandString(line)
+        Consts.serverControl.serverInput = Runnable {
+            try {
+                while (true) {
+                    val line = reader.readLine("> ").trim()
+                    if (!line.isEmpty() && !line.trimStart().startsWith('#')) Consts.serverControl.handleCommandString(line)
+                }
+            } catch (_: UserInterruptException) {
+                exitProcess(0);
             }
-        } catch (_: UserInterruptException) {
-            exitProcess(0);
         }
+    } catch (e: Exception) {
+        Log.err("Failed to initialize terminal input", e)
     }
 }

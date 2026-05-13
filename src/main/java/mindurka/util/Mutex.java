@@ -5,6 +5,7 @@ import arc.func.Cons;
 import arc.func.Func;
 import arc.func.Intf;
 import arc.func.Longf;
+import arc.util.Log;
 
 /**
  * An object protected with a {@code synchronized} statement.
@@ -12,6 +13,9 @@ import arc.func.Longf;
  * Exists exclusively cuz {@code synchronized} is deprecated in Kotlin.
  */
 public class Mutex<T> {
+    private static int nextId = 0;
+    private final int id = nextId++;
+
     private final T object;
 
     /**
@@ -32,9 +36,11 @@ public class Mutex<T> {
      * @param proc The mutator procedure.
      */
     public void mutv(Cons<T> proc) {
+        Log.debug("Lock "+id+" acquired");
         synchronized (object) {
             proc.get(object);
         }
+        Log.debug("Lock "+id+" released");
     }
 
     /**
@@ -47,8 +53,11 @@ public class Mutex<T> {
      * @return The value returned by the mutator.
      */
     public boolean mutb(Boolf<T> proc) {
+        Log.debug("Lock "+id+" acquired");
         synchronized (object) {
-            return proc.get(object);
+            boolean v = proc.get(object);
+            Log.debug("Lock "+id+" released");
+            return v;
         }
     }
 
@@ -62,8 +71,11 @@ public class Mutex<T> {
      * @return The value returned by the mutator.
      */
     public int muti(Intf<T> proc) {
+        Log.debug("Lock "+id+" acquired");
         synchronized (object) {
-            return proc.get(object);
+            int v = proc.get(object);
+            Log.debug("Lock "+id+" released");
+            return v;
         }
     }
 
@@ -77,8 +89,11 @@ public class Mutex<T> {
      * @return The value returned by the mutator.
      */
     public long mutl(Longf<T> proc) {
+        Log.debug("Lock "+id+" acquired");
         synchronized (object) {
-            return proc.get(object);
+            long v = proc.get(object);
+            Log.debug("Lock "+id+" released");
+            return v;
         }
     }
 
@@ -94,8 +109,11 @@ public class Mutex<T> {
      * @return The value returned by the mutator.
      */
     public <R> R mut(Func<T, R> proc) {
+        Log.debug("Lock "+id+" acquired");
         synchronized (object) {
-            return proc.get(object);
+            R v = proc.get(object);
+            Log.debug("Lock "+id+" released");
+            return v;
         }
     }
 }

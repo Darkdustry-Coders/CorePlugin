@@ -12,6 +12,7 @@ import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.sessionData
 import mindurka.coreplugin.Build
+import mindurka.coreplugin.CorePlugin
 import mindurka.util.Async
 import mindustry.gen.Player
 import net.buj.surreal.Query
@@ -66,7 +67,7 @@ private fun pardon(player: OfflinePlayer) = Async.run {
 
 /** Kick a player */
 @ConsoleCommand
-private fun kick(player: OfflinePlayer, duration: Duration?, reason: String) = Async.run {
+private fun kick(player: OfflinePlayer, duration: Duration?, @Rest reason: String) = Async.run {
     Database.kick(player, null, duration, reason)
     player.player?.let { player ->
         player.sessionData.playerLeft(player)
@@ -83,7 +84,7 @@ private fun unban(player: OfflinePlayer) = Async.run {
 
 /** Ban a player */
 @ConsoleCommand
-private fun ban(player: OfflinePlayer, duration: Duration?, reason: String) = Async.run {
+private fun ban(player: OfflinePlayer, duration: Duration?, @Rest reason: String) = Async.run {
     Database.ban(player, null, duration, reason)
     player.player?.let { player ->
         player.sessionData.playerLeft(player)
@@ -125,4 +126,22 @@ private fun setpermlevel(player: Player, level: Int) = Async.run {
 @ConsoleCommand
 private fun version() = Async.run {
     Log.info("CorePlugin: ${Build.gitCommit}")
+}
+
+/** List all linked channels */
+@ConsoleCommand
+private fun linkedchannels() = Async.run {
+    for (x in Database.linkedChannels) {
+        Log.info("UUID: ${x.id()}${if (x.canHandle(null)) " (connected)" else ""}")
+        for (y in x.linked) {
+            Log.info("- $y")
+        }
+    }
+}
+
+/** Schedule a server restart */
+@ConsoleCommand
+private fun restart() = Async.run {
+    CorePlugin.scheduleRestart()
+    Log.info("Scheduled a restart!")
 }

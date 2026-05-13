@@ -1,6 +1,7 @@
 package mindurka.coreplugin.database
 
 import arc.struct.ObjectMap
+import arc.util.Log
 import mindurka.annotations.PublicAPI
 import mindurka.util.Async
 import mindurka.util.encodeURIComponent
@@ -27,7 +28,7 @@ data class IspTables(
         private val map = ObjectMap<String, IspTables?>(128)
 
         suspend fun of(address: String): IspTables? {
-            map[address]?.let { return it }
+            if (map.containsKey(address)) return map[address]
 
             val resp = Database.abstractQuerySingle(Query(DatabaseScripts.ispsFetchScript).x("ip", address)).ok()
             if (!resp.result.isNull) {
@@ -39,27 +40,36 @@ data class IspTables(
                     resp.result.at("hosting").asBoolean(),
                     resp.result.at("mobile").asBoolean(),
                 )
-                if (map.size > 100) map.remove(map.keys().random())
+                if (map.size >= 128) map.remove(map.keys().random())
                 map.put(address, tables)
                 return tables
             }
 
             val http = try {
-                Json.read(Async.fetchHttpString("https://ip-api.com/json/${encodeURIComponent(address)}?fields=21229056"))
-            } catch (_: Throwable) {
+                Json.read(Async.fetchHttpString("http://ip-api.com/json/${encodeURIComponent(address)}?fields=21229056"))
+            } catch (e: Throwable) {
+                val r = e.stackTraceToString()
+                Log.warn("Failed to fetch metadata for IP ${address}.\n$r")
                 return null
             }
 
-            if (!http.at("status").isString) return null
-            if (http.at("status").asString() != "success") return null
+            if (!http.at("status").isString) {
+                Log.err("Failed to fetch metadata for IP ${address}.\nReceived an invalid response from ip-api")
+            }
+            if (http.at("status").asString() != "success") {
+                val message = http.at("message")
+                if (message.isNull) Log.warn("Failed to fetch metadata for IP ${address}.")
+                else Log.warn("Failed to fetch metadata for IP ${address}.\n${message.asString()}")
+                return null
+            }
 
             val tables = IspTables(
-                resp.result.at("isp").asString(),
-                resp.result.at("as").asString(),
-                resp.result.at("asname").asString(),
-                resp.result.at("proxy").asBoolean(),
-                resp.result.at("hosting").asBoolean(),
-                resp.result.at("mobile").asBoolean(),
+                http.at("isp").asString(),
+                http.at("as").asString(),
+                http.at("asname").asString(),
+                http.at("proxy").asBoolean(),
+                http.at("hosting").asBoolean(),
+                http.at("mobile").asBoolean(),
             )
 
             Database.abstractQuerySingle(Query(DatabaseScripts.ispsUpdateScript)
@@ -67,7 +77,7 @@ data class IspTables(
                 .x("as_name", tables.asname).x("proxy", tables.proxy)
                 .x("hosting", tables.hosting).x("mobile", tables.mobile)).ok()
 
-            if (map.size > 100) map.remove(map.keys().random())
+            if (map.size >= 128) map.remove(map.keys().random())
             map.put(address, tables)
             return tables
         }

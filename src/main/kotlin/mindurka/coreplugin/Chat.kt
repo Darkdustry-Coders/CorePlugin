@@ -1,9 +1,15 @@
 package mindurka.coreplugin
 
+import arc.func.Boolf
+import arc.func.Cons
+import arc.struct.ObjectMap
+import arc.struct.Seq
 import arc.util.CommandHandler
 import arc.util.Log
 import arc.util.Strings
 import arc.util.Time
+import buj.tl.L
+import buj.tl.Ls
 import buj.tl.Tl
 import mindurka.annotations.Command
 import mindurka.annotations.RequiresPermission
@@ -13,11 +19,15 @@ import mindurka.api.emit
 import mindurka.api.on
 import mindurka.build.CommandType
 import mindurka.coreplugin.commands.metadataForCommand
+import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.PermLevels
 import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.votes.VoteFail
+import mindurka.util.Async
+import mindurka.util.K
 import mindurka.util.SendMessage
 import mindurka.util.UnsafeNull
+import mindurka.util.newSeq
 import mindurka.util.notnull
 import mindurka.util.permissionLevel
 import mindustry.Vars
@@ -37,7 +47,7 @@ internal val lastCommandArgs = WeakHashMap<Player, String>()
 internal val lastFailedCommand = WeakHashMap<Player, LastFailedCommand>()
 internal val carriedLastFailedCommand = WeakHashMap<Player, LastFailedCommand>()
 
-internal fun chatInit() {
+internal fun initChat() {
     Vars.netServer.invalidHandler = { player, response ->
         if (response.type == CommandHandler.ResponseType.manyArguments) {
             Tl.fmt(player)
@@ -115,9 +125,92 @@ internal fun chatInit() {
     }
 
     on<ServerMessage> { event ->
-        val service = event.service.split('@')[1].split("/")[0].uppercase(Locale.getDefault())
-        if (service == "MINDUSTRY") return@on
-        Call.sendMessage("[$service | ${event.username}]: ${event.message}")
+        if (!Database.linkedChannels.any { it.canHandle(event.service) }) return@on
+        val service = event.service.split('@')[1].split('/')[0].lowercase()
+        event.username?.let { username ->
+            broadcastChatMessage(service, username, event.message, null, key = "{chat.service}")
+        } ?: broadcastChatMessage(service, "", event.message, null, key = "{chat.service.unnamed}")
+    }
+}
+
+// And it'll only become more complex as the time goes!
+fun broadcastChatMessage(service: String?, sender: String, message: String, playerSender: Player? = null, key: String = "{generic.chat}", extras: Cons<L<*>> = {}, filter: Boolf<Player> = { true }) {
+    val langCode = auto
+    val playerLangCode = playerSender?.let { languageCodeFor(it.locale) }
+    if (langCode == null) {
+        for (recv in Groups.player) {
+            if (!filter[recv]) continue
+            val send = Tl.fmt(recv)
+                .put("player", sender)
+                .put("message", message)
+                .apply { if (service != null) put("service", service) }
+                .apply { extras.get(this) }
+                .done(if (service == null) key else "{generic.chat.service}")
+            Call.sendMessage(recv.con, send, message, playerSender)
+        }
+        return
+    }
+
+    val langs = ObjectMap<LanguageCode, Seq<Player>>()
+    for (recv in Groups.player) {
+        if (!filter[recv]) continue
+        val otherCode = languageCodeFor(recv.locale)
+        if (otherCode == null || otherCode === playerLangCode) {
+            val send = Tl.fmt(recv)
+                .put("player", sender)
+                .put("message", message)
+                .apply { if (service != null) put("service", service) }
+                .apply { extras.get(this) }
+                .done(if (service == null) key else "{generic.chat.service}")
+            Call.sendMessage(recv.con, send, message, playerSender)
+            continue
+        }
+        langs.get(otherCode, ::newSeq)?.add(recv)
+    }
+    for (entry in langs) {
+        val lang = entry.key
+        val players = entry.value
+        Async.run {
+            @OptIn(UnsafeNull::class)
+            val message = notnull(message)
+            val translation = translateFor(message, langCode, lang)
+            if (translation == null) {
+                for (player in players) {
+                    val send = Tl.fmt(player)
+                        .put("player", sender)
+                        .put("message", message)
+                        .apply { if (service != null) put("service", service) }
+                        .apply { extras.get(this) }
+                        .done(if (service == null) key else "{generic.chat.service}")
+                    Call.sendMessage(player.con, send, message, playerSender)
+                }
+                return@run
+            }
+            if (translation.text.equals(message, true)) {
+                for (player in players) {
+                    val send = Tl.fmt(player)
+                        .put("player", sender)
+                        .put("message", message)
+                        .apply { if (service != null) put("service", service) }
+                        .apply { extras.get(this) }
+                        .done(if (service == null) key else "{generic.chat.service}")
+                    Call.sendMessage(player.con, send, message, playerSender)
+                }
+                return@run
+            }
+            for (player in players) {
+                val send = Tl.fmt(player)
+                    .put("player", sender)
+                    .put("message", translation.text)
+                    .apply { if (service != null) put("service", service) }
+                    .apply { extras.get(this) }
+                    .done(if (service == null) key else "{generic.chat.service}")
+                Call.sendMessage(player.con, send, message, playerSender)
+                Tl.send(player)
+                    .put("lang", translation.language)
+                    .put("message", message).done("{generic.chat.original}")
+            }
+        }
     }
 }
 
@@ -156,17 +249,15 @@ internal fun chatHandleMessage(player: Player?, message: String?) {
 
         Log.info("&fi@: @", "&lc" + player.plainName(), "&lw$message");
 
-        for (recv in Groups.player) {
-            Call.sendMessage(recv.con, Tl.fmt(recv)
-                .put("player", player.sessionData.fullName()).put("message", message).done("{generic.chat}"), message, player)
-        }
+        broadcastChatMessage(null, player.sessionData.fullName(), notnull(message), player)
 
         val msg = ServerMessage(
             Strings.stripColors(message),
-            "${player.sessionData.profileId}@mindustry",
+            "${player.sessionData.profileId}@mindustry/${Config.i.serverName}",
             player.sessionData.userId,
             Strings.stripColors(player.sessionData.basename),
-            null
+            null,
+            null,
         )
 
         emit(msg)
@@ -180,25 +271,23 @@ internal fun chatHandleMessage(player: Player?, message: String?) {
 @Command
 @RequiresPermission(PermLevels.moderator)
 private fun a(caller: Player, @Rest message: String) {
-    for (player in Groups.player) {
-        if (player.permissionLevel < 100) continue
-        Tl.send(player).put("player", caller.sessionData.fullName()).put("message", message).done("{generic.chat.admin} {generic.chat}")
-    }
+    broadcastChatMessage(null, caller.sessionData.fullName(), message, caller,
+        key = "{generic.chat.admin} {generic.chat}") { it.permissionLevel >= 100 }
 }
 
 @Command
 private fun t(caller: Player, @Rest message: String) {
-    for (player in Groups.player) {
-        if (player.team() !== caller.team()) continue
-        Tl.send(player).put("player", caller.sessionData.fullName()).put("message", message).done("[#${caller.team().color}]{generic.chat.team}[] {generic.chat}")
-    }
+    val team = caller.team()
+    broadcastChatMessage(null, caller.sessionData.fullName(), message, caller,
+        key = "[#${caller.team().color}]{generic.chat.team}[] {generic.chat}") { it.team() == team }
 
     val msg = ServerMessage(
         Strings.stripColors(message),
-        "${caller.sessionData.profileId}@mindustry/team#${caller.team().id}",
+        "${caller.sessionData.profileId}@mindustry/${Config.i.serverName}/team#${caller.team().id}",
         caller.sessionData.userId,
         Strings.stripColors(caller.sessionData.basename),
-        null
+        null,
+        null,
     )
 
     emit(msg)

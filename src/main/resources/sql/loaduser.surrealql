@@ -6,5 +6,6 @@ return fn::mindustry_login(
     $isp,
     $server,
     if $key = none || $key = null { none } else { encoding::base64::decode($key) },
-    $new_name);
+    $new_name,
+    $server_ip);
 commit;

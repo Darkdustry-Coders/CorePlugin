@@ -3,9 +3,11 @@ package mindurka.coreplugin
 import arc.struct.Seq
 import arc.util.Log
 import mindurka.annotations.PublicAPI
+import mindurka.api.Gamemode
 import mindurka.api.interval
 import mindurka.coreplugin.database.Database
 import mindurka.util.Async
+import mindurka.util.K
 import mindurka.util.newSeq
 import mindustry.Vars
 import mindustry.gen.KickCallPacket
@@ -105,8 +107,6 @@ class PlayerData private constructor(player: Player) {
     suspend fun setPermissionLevel(level: Int) {
         Database.setPermissionLevel(profileId, level)
         permissionLevel = level
-        if (keySet && level >= 100) Vars.netServer.admins.adminPlayer(uuid, usid)
-        else Vars.netServer.admins.unAdminPlayer(uuid)
         player.get()?.admin = level >= 100
     }
     /**
@@ -116,6 +116,11 @@ class PlayerData private constructor(player: Player) {
         permissionLevel = level
     }
 
+    @JvmField var extraBlocksPlaced = 0
+    @JvmField var extraBlocksBroken = 0
+    @JvmField var extraGamesPlayed = 0
+    @JvmField var extraWaves = 0
+    @JvmField var extraWins = 0
     var shortId: Long? = null
         set(value) {
             field = value
@@ -144,18 +149,42 @@ class PlayerData private constructor(player: Player) {
         player.get()?.name = fullName()
     }
 
-    val locks = Seq<RabbitMQLock>(RabbitMQLock::class.java)
+    /** Metadata sent with the `schemesize.available` packet.
+     *
+     * Right now the packet just sends a 0, so it's reserved for future use.
+     * */
+    @JvmField
+    var schemeSizeMetadata: K? = null
+    /**
+     * Scheme size subtitle.
+     *
+     * `schemesize.available` may not get sent, so it's outside of [schemeSizeMetadata].
+     */
+    @JvmField
+    var schemeSizeSubtitle: String? = null
+
+    private val locks = newSeq<RabbitMQLock>()
+    suspend fun addLock(lock: RabbitMQLock) {
+        if (exitHandledCorrectly) {
+            lock.release()
+            return
+        }
+
+        locks.add(lock)
+    }
     suspend fun releaseLocks() {
         val locks = locks.copy()
         this.locks.clear()
-        for (lock in locks) lock.release()
+        for (lock in locks) {
+            lock.release()
+        }
     }
 
     internal fun handleUpdateOutput(out: Json) {
         var updateUsername = false
 
-        if (out.has("set_short_id")) {
-            shortId = out.at("set_short_id").asLong()
+        if (out.has("new_short_id") && !out.at("new_short_id").isNull) {
+            shortId = out.at("new_short_id").asLong()
             updateUsername = true
         }
 
@@ -164,18 +193,43 @@ class PlayerData private constructor(player: Player) {
 
     private var lastPushed = TimeSource.Monotonic.markNow()
     suspend fun flush() {
+        if (profileId.isEmpty()) return
+        if (userId.isEmpty()) return
+
         val now = TimeSource.Monotonic.markNow()
         val elapsed = now - lastPushed
         lastPushed = now
 
-        val query = StringBuilder($$"update only type::record(\"mindustry_profile\", <uuid> $profile) set ")
+        val query = StringBuilder($$"let $profile_t = update only type::record(\"mindustry_profile\", <uuid> $profile) set ")
         query.append("total_play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
         query.append(", play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+        if (Gamemode.hasStats) {
+            if (extraBlocksPlaced != 0) query.append(", blocks_placed += $extraBlocksPlaced")
+            if (extraBlocksBroken != 0) query.append(", blocks_broken += $extraBlocksBroken")
+            if (extraGamesPlayed != 0) query.append(", games_played += $extraGamesPlayed")
+            if (extraWaves != 0) query.append(", waves += $extraWaves")
+        }
         query.append(";\n")
+        if (Gamemode.hasStats) {
+            query.append($$"upsert only type::record(\"mindustry_profile_gamemode\", [$profile_t.id, type::record(\"mindustry_gamemode\", <string> $gamemode)]) set ")
+            query.append("play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+            if (extraGamesPlayed != 0) query.append(", games += $extraGamesPlayed")
+            if (extraWins != 0) query.append(", wins += $extraWins")
+            if (extraWaves != 0) query.append(", waves += $extraWaves")
+            if (extraBlocksPlaced != 0) query.append(", blocks_placed += $extraBlocksPlaced")
+            if (extraBlocksBroken != 0) query.append(", blocks_broken += $extraBlocksBroken")
+            query.append(";\n")
+        }
         query.append($$"return fn::mindustry_update_profile(type::record(\"mindustry_profile\", <uuid> $profile));")
 
+        extraGamesPlayed = 0
+        extraWins = 0
+        extraWaves = 0
+        extraBlocksPlaced = 0
+        extraBlocksBroken = 0
+
         handleUpdateOutput(Database.abstractQuerySingle(Query(query.toString())
-            .x("profile", profileId)).ok().result)
+            .x("profile", profileId).x("gamemode", Config.i.gamemode)).ok().result)
     }
 
     /**
@@ -186,6 +240,7 @@ class PlayerData private constructor(player: Player) {
     suspend fun playerLeft(player: Player) {
         if (exitHandledCorrectly) return
         exitHandledCorrectly = true
+        flush()
         releaseLocks()
     }
 
@@ -235,6 +290,4 @@ class PlayerData private constructor(player: Player) {
  */
 @PublicAPI val Player.mindurkaCompat get() = MdcVersion.of(sessionData.mindurkaCompatVersion)
 @PublicAPI suspend fun Player.ckick(reason: String) = PlayerData.of(this).kick(this, reason)
-@PublicAPI suspend fun Player.cskick(reason: String) = PlayerData.of(this).kickSilent(this, reason)
 @PublicAPI suspend fun Player.ckick(reason: Packets.KickReason) = PlayerData.of(this).kick(this, reason)
-@PublicAPI suspend fun Player.cskick(reason: Packets.KickReason) = PlayerData.of(this).kickSilent(this, reason)

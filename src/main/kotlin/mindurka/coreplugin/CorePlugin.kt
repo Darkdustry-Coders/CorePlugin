@@ -1,12 +1,13 @@
 package mindurka.coreplugin
 
 // Keeping those unwrapped for my own sanity.
+import arc.Core
 import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.ObjectMap
-import arc.struct.Seq
 import arc.util.Log
+import arc.util.Strings
 import arc.util.Time
 import buj.tl.Tl
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -21,31 +22,39 @@ import mindurka.api.PlayerTeamAssign
 import mindurka.api.Priority
 import mindurka.api.RoundEndEvent
 import mindurka.api.SpecialSettings
+import mindurka.api.Timer
 import mindurka.api.emit
 import mindurka.api.interval
 import mindurka.api.on
 import mindurka.api.timer
 import mindurka.build.CommandImpl
-import mindurka.config.SharedConfig
 import mindurka.coreplugin.commands.registerCommand
 import mindurka.coreplugin.database.Database
+import mindurka.coreplugin.database.DatabaseScripts
+import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.messages.ServerDown
-import mindurka.coreplugin.messages.ServerInfo
-import mindurka.coreplugin.messages.ServersRefresh
+import mindurka.coreplugin.messages.ServerMessage
+import mindurka.coreplugin.messages.PlayerJoined as MsgPlayerJoined
+import mindurka.coreplugin.messages.PlayerLeft as MsgPlayerLeft
+import mindurka.coreplugin.nativeimage.nativeImageHeatUp
 import mindurka.coreplugin.votes.Vote
 import mindurka.ui.handleUiEvent
 import mindurka.util.Async
 import mindurka.util.ModifyWorld
+import mindurka.util.Ref
 import mindurka.util.SendMessage
 import mindurka.util.debug
 import mindurka.util.filter
 import mindurka.util.map
+import mindurka.util.newSeq
 import mindurka.util.random
+import mindustry.NiMetadata
 import mindustry.Vars
 import mindustry.content.Blocks
 import mindustry.core.NetServer
 import mindustry.game.EventType
 import mindustry.game.Team
+import mindustry.gen.Building
 import mindustry.gen.Call
 import mindustry.gen.Groups
 import mindustry.gen.Player
@@ -54,6 +63,9 @@ import mindustry.net.Administration
 import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
 import kotlin.math.min
+import net.buj.surreal.Query
+import kotlin.system.exitProcess
+import kotlin.time.Duration.Companion.hours
 
 object CorePlugin {
     @OptIn(ExperimentalSerializationApi::class)
@@ -74,9 +86,10 @@ object CorePlugin {
                 registerCommand(cmd)
             }
     }
-    @JvmStatic
-    fun init(klass: Class<mindustry.mod.Plugin>) {
-        init(klass.classLoader)
+
+    class TeamRestoreCache(player: Player) {
+        @JvmField var spectator: Boolean = false
+        @JvmField var team: Team = player.team()
     }
 
     @JvmField val epoch = Time.millis()
@@ -84,6 +97,32 @@ object CorePlugin {
     @JvmField var currentGlobalVote: Vote? = null
     @JvmField val teamVotes = IntMap<Vote>()
     @JvmField val mainThread = Thread.currentThread()
+    @JvmField val teamRestoreCache = ObjectMap<String, TeamRestoreCache>()
+    @JvmField var restarting = false
+
+    fun scheduleRestart() {
+        if (restarting) return
+
+        if (Groups.player.isEmpty) exitProcess(0)
+
+        Tl.broadcast().done("{generic.restart-scheduled}")
+
+        val r = Ref(false)
+
+        suspend fun restart() {
+            if (r.r) return
+            r.r = true
+
+            for (x in Groups.player) {
+                x.sessionData.flush()
+            }
+
+            exitProcess(0)
+        }
+
+        on<EventType.PlayerLeave> { Async.run(::restart) }
+        on<RoundEndEvent> { Async.run(::restart) }
+    }
 
     private var fakeBlockKind: Block? = null
     private class FakeBlock(
@@ -96,9 +135,14 @@ object CorePlugin {
         Log.info("Starting CorePlugin")
         Time.mark()
 
-        Database.load()
+        if (!NiMetadata.shortcircuit()) Database.load()
+        else DatabaseScripts.noop()
         Overrides.load()
-        RabbitMQ.init()
+        if (!NiMetadata.shortcircuit()) RabbitMQ.init()
+
+        if (NiMetadata.shortcircuit()) { // Ensure that the agent generates bindings for everything.
+            nativeImageHeatUp()
+        }
 
         val vanillaTeamAssigner = Vars.netServer.assigner
         Vars.netServer.assigner = NetServer.TeamAssigner { player, players ->
@@ -119,6 +163,8 @@ object CorePlugin {
             }
         }
 
+        val abnormalBlockList = arrayOf(Blocks.sporePine, Blocks.snowPine, Blocks.pine, Blocks.metalWall1, Blocks.metalWall2,
+            Blocks.metalWall3, Blocks.coloredWall)
         on<EventType.WorldLoadEvent>(priority = Priority.Lowest) {
             fakeBlockPos.clear()
 
@@ -131,12 +177,14 @@ object CorePlugin {
                     for (x in shift..<(Vars.world.width() - shift)) {
                         val tile = Vars.world.tile(x, shift)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
                     for (x in shift..<(Vars.world.width() - shift)) {
                         val tile = Vars.world.tile(x, Vars.world.height() - shift - 1)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
@@ -144,12 +192,14 @@ object CorePlugin {
                     for (y in shift..<(Vars.world.height() - shift)) {
                         val tile = Vars.world.tile(shift, y)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
                     for (y in shift..<(Vars.world.height() - shift)) {
                         val tile = Vars.world.tile(Vars.world.width() - shift - 1, y)
                         if (tile.block() !is StaticWall) continue
+                        if (tile.block() == Blocks.coloredWall) continue
                         if (tile.block().size != 1) continue
                         return@run tile.block()
                     }
@@ -200,7 +250,7 @@ object CorePlugin {
                 Gamemode.defaultPatch?.let { patch.append(it.get()).append('\n') }
                 fakeBlockKind?.let { real ->
                     patch.append("block.legacy-mech-pad: {\n")
-                    patch.append("    region: block-${real.name}-full\n")
+                    patch.append("    region: ${if (real in abnormalBlockList) real.name else "block-${real.name}-full"}\n")
                     patch.append("    uiIcon: block-${real.name}-ui\n")
                     patch.append("    localizedName: ${real.name.replace(Regex("-[a-z]")) {
                         " ${it.value[1].uppercase()}"
@@ -264,6 +314,12 @@ object CorePlugin {
             false
         }
 
+        on<EventType.PlayEvent> { _ ->
+            teamRestoreCache.clear()
+
+            if (SpecialSettings.currentMap().patch < 7) { Groups.build.each(Building::heal) }
+        }
+
         on<EventType.PlayerConnectionConfirmed> { event ->
             fakeBlockKind?.let { real ->
                 val tile = Vars.world.tiles.iterator()
@@ -297,6 +353,15 @@ object CorePlugin {
                     teamVotes[player.team().id]!!.playerLeft(SendMessage.Multi(player.team()), player)
                 player.sessionData.playerLeft(player)
             }
+
+            emit(ServerMessage(
+                "➖ Player ${Strings.stripColors(it.player.name)} left the game",
+                "+system@mindustry/${Config.i.serverName}",
+                null,
+                null,
+                null,
+                null
+            ))
         }
         on<EventType.MenuOptionChooseEvent>(listener = ::handleUiEvent)
         on<EventType.TextInputEvent>(listener = ::handleUiEvent)
@@ -315,6 +380,24 @@ object CorePlugin {
             if (it.player.mindurkaCompat.updateRequired) {
                 Tl.send(it.player).done("{generic.mdc-outdated}")
             }
+
+            emit(ServerMessage(
+                "➕ Player ${Strings.stripColors(it.player.name)} joined the game",
+                "+system@mindustry/${Config.i.serverName}",
+                null,
+                null,
+                null,
+                null
+            ))
+
+            if (restarting) Tl.send(it.player).done("{generic.restart-scheduled}")
+            timer(0.5f) { Call.setRules(it.player.con, Vars.state.rules) }
+        }
+
+        on<EventType.BlockBuildEndEvent> {
+            val player = it.unit.player ?: return@on
+            if (it.breaking) player.sessionData.extraBlocksBroken += 1
+            else player.sessionData.extraBlocksPlaced += 1
         }
 
         on<EventType.BlockBuildEndEvent>(priority = Priority.After) {
@@ -322,6 +405,7 @@ object CorePlugin {
 
             emit(BuildEvent(it.unit, it.tile))
         }
+        interval(5f) { Call.setRule("schematicsAllowed", Vars.state.rules.schematicsAllowed.toString()) }
         on<BuildEvent>(priority = Priority.After) {
             val block = it.replacementBlock
             val overlay = it.replacementOverlay
@@ -355,9 +439,10 @@ object CorePlugin {
             emit(BuildEventPost)
         }
 
-        modActionsInit()
-        chatInit()
+        initModActions()
+        initChat()
         initHubDiscovery()
+        initSchemeSize()
 
         interval(30f) { Async.run {
             for (player in Groups.player) {
@@ -367,9 +452,10 @@ object CorePlugin {
 
         Consts.serverControl.gameOverListener = Cons { event ->
             val map = Gamemode.maps.next()
-            val key = "{generic.gameover.${if (Vars.state.rules.pvp)
-                                               if (event.winner == Team.derelict) "tie"
-                                               else "pvp"
+            val key = "{generic.gameover.${if (Vars.state.rules.pvp) {
+                                                if (event.winner == Team.derelict) "tie"
+                                                else "pvp"
+                                            }
                                            else if (Vars.state.rules.infiniteResources) "unexpected"
                                            else if (Vars.state.rules.waves) "waves"
                                            else if (event.winner == Vars.state.rules.defaultTeam) "attackWin"
@@ -388,6 +474,7 @@ object CorePlugin {
                     .put("map", map.name())
                     .done(key))
             }
+            Log.info("Winner: ${event.winner}")
             Vars.state.gameOver = true
             Call.updateGameOver(event.winner)
             Log.info("Selected next map to be ${map.name()}.")
@@ -397,7 +484,20 @@ object CorePlugin {
             }
         }
 
+        on<EventType.GameOverEvent> { event ->
+            Groups.player.each {
+                it.sessionData.extraGamesPlayed++
+                if (event.winner == it.team()) it.sessionData.extraWins++
+                Async.run {
+                    it.sessionData.flush()
+                }
+            }
+        }
+
         setupTerminalInput()
+
+        Log.info("Will attempt to stop the server in 4 hours")
+        timer(4.hours.inWholeSeconds.toFloat()) { scheduleRestart() }
 
         protocol = Protocol()
 
@@ -408,10 +508,10 @@ object CorePlugin {
             }
             Vars.net.closeServer()
 
-            RabbitMQ.close()
+            if (!NiMetadata.shortcircuit()) RabbitMQ.close()
         })
 
-        Log.info("CorePlugin loaded in ${Time.elapsed()} ms.");
+        Log.info("CorePlugin loaded in ${Time.elapsed()} ms.")
     }
 
     /**
@@ -424,7 +524,7 @@ object CorePlugin {
         if (vote.team == null) {
             if (currentGlobalVote != null) return false
             currentGlobalVote = vote
-            timer(30f, lifetime = if (vote.cancelsIfRoundChanged) Lifetime.Round else Lifetime.Forever) {
+            timer(60f, lifetime = if (vote.cancelsIfRoundChanged) Lifetime.Round else Lifetime.Forever) {
                 if (vote.finished) return@timer
                 currentGlobalVote = null
                 vote.cancelled(SendMessage.All)
@@ -434,7 +534,7 @@ object CorePlugin {
         } else {
             if (teamVotes[vote.team.id] != null) return false
             teamVotes.put(vote.team.id, vote)
-            timer(30f, lifetime = if (vote.cancelsIfRoundChanged) Lifetime.Round else Lifetime.Forever) {
+            timer(60f, lifetime = if (vote.cancelsIfRoundChanged) Lifetime.Round else Lifetime.Forever) {
                 if (vote.finished) return@timer
                 teamVotes.remove(vote.team.id)
                 vote.cancelled(SendMessage.Multi(vote.team))

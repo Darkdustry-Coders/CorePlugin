@@ -42,10 +42,15 @@ can-use-public-key = [accent][{col.mdc}]MindurkaCompat[] supports public key aut
 mdc-outdated = [accent]Your version of [{col.mdc}]MindurkaCompat[] is out of date.[]
              =
              = [accent]Update the mod to the latest version from mod explorer.
+restart-scheduled = [{col.warn}]Server will be restarted after the end of the round.
 
 chat = [scarlet][[{player}]: [white]{message}
+chat.original = [gray]Original ({lang}): []{message}
+chat.service = {generic.chat.service.{service}} [scarlet][[{player}]: [white]{message}
+chat.service.unnamed = {generic.chat.service.{service}} [scarlet]<System>: [white]{message}
 chat.team = [[ Team]
 chat.admin = [scarlet][[ Admins]
+chat.service.discord = [#4c59e0][ Discord]
 
 vote.global = [{col.sysmsg}]Type [{col.ok}]y[] or [{col.err}]n[] to vote. {if {votes} < 0 then [{col.err}] else [{col.ok}]}{votes}/{threshold}
 vote.team = [{col.sysmsg}]Type [{col.ok}]/vote y[] or [{col.err}]/vote n[] to vote. {if {votes} < 0 then [{col.err}] else [{col.ok}]}{votes}/{threshold}
@@ -54,8 +59,11 @@ vote.left = [{col.sysmsg}]{player} has left the game and their vote was removed.
 vote.global.cancelled = [{col.err}]⚠ Vote was cancelled by admin {admin}.
 vote.team.cancelled = [{col.err}]⚠ Team vote was cancelled by admin {admin}.
 
-admin.ban = [{col.err}]⚠ {target} was banned by {admin}.
-admin.kick = [{col.err}]⚠ {target} was kicked by {admin}.
+vote.try-global = [{col.err}]There's a global vote running. Use [{col.ok}]y[]/[{col.err}]n[] to vote.
+vote.try-team = [{col.err}]There's a team vote running. Use [{col.ok}]/vote y[]/[{col.err}]/vote n[] to vote.
+
+admin.ban = [{col.err}]⚠ {target} was banned by {admin} for [orange]{reason].
+admin.kick = [{col.err}]⚠ {target} was kicked by {admin} for [orange]{reason].
 admin.wave = [{col.ok}]A wave was skipped by admin {admin}.
 
 [generic.checks]
@@ -97,6 +105,16 @@ unknown-map = Could not find the map
 unknown-map-console = Could not find the map
 unknown-player = Could not find the player
 unknown-player-console = Could not find the player
+unknown-unit = Unknown unit
+unknown-unit-console = Unknown unit
+unknown-unit-type = Unknown unit type
+unknown-unit-type-console = Unknown unit type
+unknown-status-effect = Unknown unit type
+unknown-status-effect-console = Unknown status effect
+invalid-item = Invalid item
+invalid-item-console = Invalid item
+invalid-team = Invalid team
+invalid-team-console = Invalid team
 invalid-duration = Not a valid duration for parameter [yellow]'{commands.{command}.params.{param}}'[]
 invalid-duration-console = Not a valid duration for parameter {param}
 
@@ -295,6 +313,45 @@ no-mdc = [{col.err}] No public key was shared.
        =
        = Install or enable [{col.mdc}]MindurkaCompat[] and repeat the command.
 
+[commands.stats]
+
+description = See player stats.
+manpage = See player stats.
+        =
+        = This will also show all the IDs associated with a player.
+params = [player]
+
+dialog-title =  Stats
+dialog-content = [accent] [lightgray]Name: {player}
+               =
+               = [{col.ok}] [lightgray]Blocks placed: [{col.ok}]{blocks-placed}
+               = [{col.err}] [lightgray]Blocks broken: [{col.err}]{blocks-broken}
+               = [orange] [lightgray]Games played: [orange]{games-played}
+               = [cyan] [lightgray]Waves survived: [cyan]{waves}
+               =
+               = [accent]<<< WINS >>>
+               = {gamemode-stats}
+               =
+               = [accent] [lightgray]Play time:
+               = [accent]{playtime}
+
+dialog-data-title =  Stats [lightgray]>> []{emoji} [{color}]{name}
+dialog-data-wins = [accent] [lightgray]Wins: [accent]{wins}{if {ovas} != 0 then ( [red](1vas: [white]{ovas}[]))}
+dialog-data-blocks-placed = [{col.ok}] [lightgray]Blocks placed: [{col.ok}]{blocks-placed}
+dialog-data-blocks-broken = [{col.err}] [lightgray]Blocks broken: [{col.err}]{blocks-broken}
+dialog-data-games = [orange] [lightgray]Games played: [orange]{games}
+dialog-data-waves = [cyan] [lightgray]Waves survived: [cyan]{waves}
+dialog-data-playtime = [accent] [gray]Play time:
+                     = [accent]{playtime}
+
+dialog-gamemode-stats = [{color}]{emoji} [lightgray]{name}: [{color}]{wins}{if {ovas} != 0 then ( [red](1vas: [white]{ovas}[]))}
+
+dialog-profile-id = [cyan] Copy profile ID
+dialog-user-id = [cyan] Copy user ID
+dialog-more-data = [yellow] Info for nerds
+
+whoops = [gray]Whoops! Nothing here!
+
 [commands.vote]
 
 description = Vote in a team-specific poll.
@@ -304,6 +361,8 @@ manpage = Vote in a team-specific poll.
         : both votes to proceed at the same time.
 params = [y/n/c]
 params.vote = y/n/c
+
+no-vote = [{col.err}]There is no active vote.
 
 [commands.rtv]
 
@@ -395,13 +454,16 @@ manpage = Force change map.
 params = [map]
 params.map = map
 
+dialog.title = Force change map
+dialog.contents = Are you sure you want to change map to {map}?
+
 [commands.kick]
 
 description = Kick a player out of the server.
 manpage = Kick a player out of the server.
         =
         = This acts as a ban, but specific to this particular server.
-params = <player> <duration> <reason...>
+params = <player> [duration] <reason...>
 params.player = player
 params.duration = duration
 params.reason = reason
@@ -415,8 +477,8 @@ dialog.duration = Kick duration
 description = Ban a player on all servers.
 manpage = Ban a player on all servers.
         =
-        = Ban player on all servers.
-params = <player> <duration> <reason...>
+        = This acts as a ban, but specific to this particular server.
+params = <player> [duration] <reason...>
 params.player = player
 params.duration = duration
 params.reason = reason
@@ -455,6 +517,7 @@ whoops = [{col.warn}]⚠ Whoops! There is no command.
 
 description = Set your display name.
 params = [name]
+params.nick = nick
 manpage = Set your display name.
         =
         = Running the command on its own will reset your name.
@@ -491,3 +554,118 @@ vote.for = [{col.sysmsg}]{voter} voted [{col.ok}]for[] surrendering.
 vote.against = [{col.sysmsg}]{voter} voted [{col.err}]against[] surrendering.
 vote.commit = [{col.ok}]Team has surrendered.
 vote.cancel = [{col.err}]Not enough votes to surrender.
+
+[commands.pardon]
+description = Pardon a player.
+params = <player>
+params.player = player
+manpage = Pardon a player on this server.
+        =
+        = Marks all kicks and votekicks on this specific server as pardoned.
+
+fail = [{col.err}]Player {target} has no active kicks.
+success = [{col.ok}]Pardoned player {target}.
+
+[commands.unban]
+description = Unban a player.
+params = <player>
+params.player = player
+manpage = Unbans a player.
+        =
+        = Marks all bans of the specified player as pardoned.
+
+fail = [{col.err}]Player {target} has no active bans.
+success = [{col.ok}]Unbanned player {target}.
+
+[commands.team]
+description = Change team.
+params = <team> [player]
+params.team = team
+params.player = player
+manpage = Change team of a player.
+        =
+        = By default changes the team of the caller.
+
+[commands.unit]
+description = Change unit.
+params = <unit> [player]
+params.unit = unit
+params.player = player
+manpage = Change unit of a player.
+        =
+        = By default changes the unit of the caller.
+
+[commands.despawn]
+description = Despawn a unit.
+params = <unit>
+params.unit = unit
+manpage = Despawn a unit.
+
+[commands.tp]
+description = Teleport a player.
+params = <x> <y> [target]
+params.x = x
+params.y = y
+params.target = target
+manpage = Teleport a player.
+        =
+        = By default teleports the caller.
+
+[commands.setrule]
+description = Set a rule.
+params = <rule> <value>
+params.rule = rule
+params.value = value
+manpage = Assign value to a rule.
+
+failed = [{col.err}] Failed to set the rule.
+
+[commands.core]
+description = Place a core.
+params =
+manpage = Place a core at unit position.
+        =
+        = If a core is already present, remove it.
+
+no-unit = [{col.err}] Player has no unit.
+no-tile = [{col.err}] Unit does not have a tile under it.
+
+[commands.spawn]
+description = Spawn units.
+params = <kind> <count> [team]
+param.kind = kind
+param.count = count
+param.team = team
+manpage = Spawn units as unit position.
+        =
+        = Spawn conditions will obey unit count.
+
+too-many-units = [{col.err}] Refusing to spawn more than 500 units.
+no-tile = [{col.err}] Unit does not have a tile under it.
+spawn-failed = [{col.err}] Could not spawn {remaining} unit{if {remaining} != 1 then s}.
+
+[commands.effect]
+description = Add status effect.
+params = <effect> <duration> [unit]
+param.effect = effect
+param.duration = duration
+param.unit = unit
+manpage = Add a status effect to a unit.
+        =
+        = If duration is 0, clear all status effects. The duration of the effect is the maximum of
+        : the new and existing durations.
+
+no-unit = [{col.err}] No unit to target.
+
+[commands.give]
+description = Give items to a team.
+params = <item> <count> [team]
+param.item = item
+param.count = count
+param.team = team
+manpage = Give an item to a team.
+        =
+        = If team is not specified, default to the team of the caller.
+
+no-team = [{col.err}] Count not determine which team to give items to.
+no-core = [{col.err}] Team has no cores.
