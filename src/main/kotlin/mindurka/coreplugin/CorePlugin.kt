@@ -15,14 +15,11 @@ import mindurka.annotations.PublicAPI
 import mindurka.api.BuildEvent
 import mindurka.api.BuildEventPost
 import mindurka.api.Consts
-import mindurka.api.Events
 import mindurka.api.Gamemode
 import mindurka.api.Lifetime
-import mindurka.api.PlayerTeamAssign
 import mindurka.api.Priority
 import mindurka.api.RoundEndEvent
 import mindurka.api.SpecialSettings
-import mindurka.api.Timer
 import mindurka.api.emit
 import mindurka.api.interval
 import mindurka.api.on
@@ -31,11 +28,9 @@ import mindurka.build.CommandImpl
 import mindurka.coreplugin.commands.registerCommand
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.DatabaseScripts
-import mindurka.coreplugin.database.ok
+import mindurka.coreplugin.messages.BringPlayerBack
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerMessage
-import mindurka.coreplugin.messages.PlayerJoined as MsgPlayerJoined
-import mindurka.coreplugin.messages.PlayerLeft as MsgPlayerLeft
 import mindurka.coreplugin.nativeimage.nativeImageHeatUp
 import mindurka.coreplugin.votes.Vote
 import mindurka.ui.handleUiEvent
@@ -43,19 +38,20 @@ import mindurka.util.Async
 import mindurka.util.ModifyWorld
 import mindurka.util.Ref
 import mindurka.util.SendMessage
+import mindurka.util.collect
 import mindurka.util.debug
 import mindurka.util.filter
 import mindurka.util.map
-import mindurka.util.newSeq
 import mindurka.util.random
+import mindurka.util.splitOnceLast
 import mindustry.NiMetadata
 import mindustry.Vars
 import mindustry.content.Blocks
-import mindustry.core.NetServer
 import mindustry.game.EventType
 import mindustry.game.Team
 import mindustry.gen.Building
 import mindustry.gen.Call
+import mindustry.gen.ConnectCallPacket
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.gen.SetTileCallPacket
@@ -63,7 +59,6 @@ import mindustry.net.Administration
 import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
 import kotlin.math.min
-import net.buj.surreal.Query
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.hours
 
@@ -99,11 +94,32 @@ object CorePlugin {
     @JvmField val mainThread = Thread.currentThread()
     @JvmField val teamRestoreCache = ObjectMap<String, TeamRestoreCache>()
     @JvmField var restarting = false
+    @JvmField internal var shuttingDown = false
+
+    private fun actuallyDoARestart() {
+        if (Gamemode.sendHub) hubServer()?.let { hub ->
+            if (Gamemode.sendBringBackPacket) {
+                val ids = Groups.player.iterator().map { it.sessionData.profileId }.collect(ArrayList())
+                if (!NiMetadata.shortcircuit()) RabbitMQ.sendBypass(BringPlayerBack(ids), "#")
+            }
+
+            hub.splitOnceLast(":") { ip, port -> port?.toUShortOrNull()?.let { port ->
+                val packet = ConnectCallPacket()
+                packet.ip = ip
+                packet.port = port.toInt()
+                for (player in Groups.player) player.con.send(packet, true)
+            } }
+
+            null
+        }
+        exitProcess(0)
+    }
 
     fun scheduleRestart() {
         if (restarting) return
+        restarting = true
 
-        if (Groups.player.isEmpty) exitProcess(0)
+        if (Groups.player.isEmpty) actuallyDoARestart()
 
         Tl.broadcast().done("{generic.restart-scheduled}")
 
@@ -117,10 +133,10 @@ object CorePlugin {
                 x.sessionData.flush()
             }
 
-            exitProcess(0)
+            actuallyDoARestart()
         }
 
-        on<EventType.PlayerLeave> { Async.run(::restart) }
+        on<EventType.PlayerLeave> { Async.run { if (Groups.player.isEmpty) restart() } }
         on<RoundEndEvent> { Async.run(::restart) }
     }
 
@@ -144,17 +160,6 @@ object CorePlugin {
             nativeImageHeatUp()
         }
 
-        val vanillaTeamAssigner = Vars.netServer.assigner
-        Vars.netServer.assigner = NetServer.TeamAssigner { player, players ->
-            val event = PlayerTeamAssign(
-                player,
-                players,
-                vanillaTeamAssigner.assign(player, players)
-            )
-            Events.fire(event)
-            event.team
-        }
-
         on<EventType.WorldLoadEndEvent>(priority = Priority.Before) {
             SpecialSettings.`coreplugin$loadSettings`()
             if (Gamemode.unlockSpecialBlocks) {
@@ -165,7 +170,7 @@ object CorePlugin {
 
         val abnormalBlockList = arrayOf(Blocks.sporePine, Blocks.snowPine, Blocks.pine, Blocks.metalWall1, Blocks.metalWall2,
             Blocks.metalWall3, Blocks.coloredWall)
-        on<EventType.WorldLoadEvent>(priority = Priority.Lowest) {
+        on<EventType.WorldLoadEvent>(priority = Priority.Low) {
             fakeBlockPos.clear()
 
             if (Vars.state.patcher.patches.size > 0 && Vars.state.patcher.patches[0].name == "Mindurka Default Patch") {
@@ -443,6 +448,7 @@ object CorePlugin {
         initChat()
         initHubDiscovery()
         initSchemeSize()
+        initTeams()
 
         interval(30f) { Async.run {
             for (player in Groups.player) {
@@ -486,8 +492,10 @@ object CorePlugin {
 
         on<EventType.GameOverEvent> { event ->
             Groups.player.each {
-                it.sessionData.extraGamesPlayed++
-                if (event.winner == it.team()) it.sessionData.extraWins++
+                if (!Gamemode.spectate[it]) {
+                    it.sessionData.extraGamesPlayed++
+                    if (event.winner == it.team()) it.sessionData.extraWins++
+                }
                 Async.run {
                     it.sessionData.flush()
                 }
@@ -496,19 +504,40 @@ object CorePlugin {
 
         setupTerminalInput()
 
-        Log.info("Will attempt to stop the server in 4 hours")
-        timer(4.hours.inWholeSeconds.toFloat()) { scheduleRestart() }
+        Log.info("Will attempt to stop the server in 48 hours")
+        timer(48.hours.inWholeSeconds.toFloat()) {
+            Log.info("Automatically restarting the server as scheduled!")
+            scheduleRestart()
+        }
 
         protocol = Protocol()
 
         Runtime.getRuntime().addShutdownHook(Thread {
-            emit(ServerDown)
-            for (player in Groups.player) {
-                player.kick("Server closed", 0L)
+            shuttingDown = true
+
+            if (Gamemode.sendHub) hubServer()?.let { hub ->
+                if (Gamemode.sendBringBackPacket) {
+                    val ids = Groups.player.iterator().map { it.sessionData.profileId }.collect(ArrayList())
+                    if (!NiMetadata.shortcircuit()) RabbitMQ.sendBypass(BringPlayerBack(ids), "#")
+                }
+
+                hub.splitOnceLast(":") { ip, port -> port?.toUShortOrNull()?.let { port ->
+                    val packet = ConnectCallPacket()
+                    packet.ip = ip
+                    packet.port = port.toInt()
+                    for (player in Groups.player) player.con.send(packet, true)
+                } }
+
+                null
             }
-            Vars.net.closeServer()
+            if (!NiMetadata.shortcircuit()) RabbitMQ.sendBypass(ServerDown(), "#")
 
             if (!NiMetadata.shortcircuit()) RabbitMQ.close()
+
+            for (player in Groups.player) {
+                player.con.kick("Server closed", 0L)
+            }
+            Vars.net.closeServer()
         })
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.")
@@ -532,7 +561,14 @@ object CorePlugin {
             vote.refresh()
             if (!vote.finished) vote.sendUpdateMessage(SendMessage.All)
         } else {
-            if (teamVotes[vote.team.id] != null) return false
+            if (!teamAssigned(player)) {
+                Tl.send(player).done("{generic.checks.vote-spectator}")
+                return false
+            }
+            if (teamVotes[vote.team.id] != null) {
+                Tl.send(player).done("{generic.checks.vote}")
+                return false
+            }
             teamVotes.put(vote.team.id, vote)
             timer(60f, lifetime = if (vote.cancelsIfRoundChanged) Lifetime.Round else Lifetime.Forever) {
                 if (vote.finished) return@timer

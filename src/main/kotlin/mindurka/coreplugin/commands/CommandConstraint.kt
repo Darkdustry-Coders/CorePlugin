@@ -49,6 +49,16 @@ object SurrenderEnabled: CommandConstraint {
 }
 
 /**
+ * Whether /spectate is enabled.
+ */
+object SpectateEnabled: CommandConstraint {
+    @JvmStatic
+    fun obtain(): CommandConstraint = SpectateEnabled
+
+    override fun enabled(player: Player): Boolean = Gamemode.enableSpectate
+}
+
+/**
  * Whether admin commands like /unit are enabled.
  */
 object AdminCommandsEnabled: CommandConstraint {

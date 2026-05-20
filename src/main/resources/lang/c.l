@@ -62,15 +62,19 @@ vote.team.cancelled = [{col.err}]⚠ Team vote was cancelled by admin {admin}.
 vote.try-global = [{col.err}]There's a global vote running. Use [{col.ok}]y[]/[{col.err}]n[] to vote.
 vote.try-team = [{col.err}]There's a team vote running. Use [{col.ok}]/vote y[]/[{col.err}]/vote n[] to vote.
 
-admin.ban = [{col.err}]⚠ {target} was banned by {admin} for [orange]{reason].
-admin.kick = [{col.err}]⚠ {target} was kicked by {admin} for [orange]{reason].
+admin.ban = [{col.err}]⚠ {target} was banned by {admin} for [orange]{reason}.
+admin.kick = [{col.err}]⚠ {target} was kicked by {admin} for [orange]{reason}.
 admin.wave = [{col.ok}]A wave was skipped by admin {admin}.
+
+spectating = [{col.ok}]You are now spectating.
+no-longer-spectating = [{col.ok}]You are no longer spectating.
 
 [generic.checks]
 same-vote = [{col.err}] Your vote has not changed.
 vote-filter = [{col.err}] You cannot vote in this poll.
 cooldown = [{col.err}] Slow down! This command is on cooldown.
 vote = [{col.err}] There's already a vote ongoing.
+vote-spectator = [{col.err}] Spectators cannot start team votes.
 unknown-command = [{col.err}] Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check [yellow]/help[].) else (Did you mean [yellow]/{suggestion}[]?)}
 unknown-command-console =  Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check /help) else (Did you mean /{suggestion}?)}
 invalid-arguments = [{col.err}] {cause}. Try [yellow]/help {command}[]!
@@ -669,3 +673,10 @@ manpage = Give an item to a team.
 
 no-team = [{col.err}] Count not determine which team to give items to.
 no-core = [{col.err}] Team has no cores.
+
+[commands.spectate]
+description = Toggle spectator mode.
+params =
+manpage = Toggle spectator mode.
+        =
+        = Spectator team is considered to a be a service team, thus disallowing voting.

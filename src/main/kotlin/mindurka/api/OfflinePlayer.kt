@@ -1,6 +1,7 @@
 package mindurka.api
 
 import arc.util.Log
+import arc.util.Strings
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.database.Database
 import mindurka.coreplugin.database.DatabaseScripts
@@ -9,6 +10,8 @@ import mindurka.coreplugin.sessionData
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import net.buj.surreal.Query
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * An object representing a potentially offline player.
@@ -27,6 +30,7 @@ class OfflinePlayer internal constructor(var lastName: String, val uuid: String,
          *
          * This will make a database request if player is not online.
          */
+        @OptIn(ExperimentalUuidApi::class)
         @PublicAPI
         @JvmStatic
         @JvmOverloads
@@ -43,17 +47,44 @@ class OfflinePlayer internal constructor(var lastName: String, val uuid: String,
                 )
             } catch (_: Exception) {}
 
-            Groups.player.forEach {
-                if (it.name.contains(search, true)
-                    || checkUuid && it.uuid() == search
-                    || checkUuid && it.usid() == search)
-                    return OfflinePlayer(
-                        it.coloredName(),
-                        it.uuid(),
-                        it.usid(),
-                        it.sessionData.userId,
-                        it.sessionData.profileId,
-                    )
+            search.toLongOrNull()?.let { id ->
+                Groups.player.find { it.sessionData.shortId == id }
+            }
+
+            if (search.length == 6) {
+                Groups.player.forEach {
+                    if (it.sessionData.profileId.endsWith(search))
+                        return OfflinePlayer(
+                            it.coloredName(),
+                            it.uuid(),
+                            it.usid(),
+                            it.sessionData.userId,
+                            it.sessionData.profileId,
+                        )
+                }
+            }
+
+            Uuid.parseOrNull(search)?.let { _ ->
+                Groups.player.forEach {
+                    if (it.sessionData.profileId == search)
+                        return OfflinePlayer(
+                            it.coloredName(),
+                            it.uuid(),
+                            it.usid(),
+                            it.sessionData.userId,
+                            it.sessionData.profileId,
+                        )
+                }
+                Groups.player.forEach {
+                    if (it.sessionData.userId == search)
+                        return OfflinePlayer(
+                            it.coloredName(),
+                            it.uuid(),
+                            it.usid(),
+                            it.sessionData.userId,
+                            it.sessionData.profileId,
+                        )
+                }
             }
 
             if (checkUuid) {
@@ -67,6 +98,17 @@ class OfflinePlayer internal constructor(var lastName: String, val uuid: String,
                             it.sessionData.profileId,
                         )
                 }
+            }
+
+            Groups.player.forEach {
+                if (Strings.stripColors(it.name).startsWith(search, true))
+                    return OfflinePlayer(
+                        it.coloredName(),
+                        it.uuid(),
+                        it.usid(),
+                        it.sessionData.userId,
+                        it.sessionData.profileId,
+                    )
             }
 
             val result = Database.abstractQuery(Query(DatabaseScripts.playerFetchScript)

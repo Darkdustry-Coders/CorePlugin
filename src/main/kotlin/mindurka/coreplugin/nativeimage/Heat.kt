@@ -21,6 +21,7 @@ import mindurka.coreplugin.PlayerData
 import mindurka.coreplugin.database.IspTables
 import mindurka.coreplugin.messages.AddFirewallBan
 import mindurka.coreplugin.messages.AttachedFile
+import mindurka.coreplugin.messages.BringPlayerBack
 import mindurka.coreplugin.messages.FileKind
 import mindurka.coreplugin.messages.PermissionLevel
 import mindurka.coreplugin.messages.PlayerJoined
@@ -207,6 +208,7 @@ fun nativeImageHeatUp() {
     serde(ServersRefresh())
     serde(PlayerLeft("", ""))
     serde(PlayerJoined("", ""))
+    serde(BringPlayerBack(ArrayList()))
 
     Vars.content.each { heatClass(it.javaClass) }
     Vars.content.blocks().each { heatClass(it.buildType.get().javaClass) }

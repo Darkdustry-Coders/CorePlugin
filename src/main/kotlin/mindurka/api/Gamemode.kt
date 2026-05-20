@@ -3,14 +3,17 @@ package mindurka.api
 import arc.files.Fi
 import arc.func.Prov
 import arc.struct.Seq
+import buj.tl.Tl
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.CorePlugin
+import mindurka.coreplugin.teamAssigned
 import mindurka.util.SafeFilename
 import mindurka.util.child
 import mindurka.util.map
 import mindustry.Vars
 import mindustry.game.MapObjectives.FlagObjective
 import mindustry.game.Team
+import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.io.SaveIO
 import mindustry.io.SaveMeta
@@ -182,22 +185,65 @@ open class DefaultMapManager : MapManager {
     }
 }
 
-/**
- * Called when player is assigned a team.
- *
- * This event is synchronous. If a value is set after the event is completed, it will have no
- * effect.
- */
-@PublicAPI
-data class PlayerAssignTeamEvent(
-    val player: Player,
-    val players: Iterable<Player>,
-    var team: Team,
-) {
-    @PublicAPI fun team(): Team = team
-    @PublicAPI
-    fun team(team: Team) {
-        this.team = team
+/** Manager for spectator mode. */
+interface SpectateManager {
+    /** Check if a player is spectating. */
+    operator fun get(player: Player): Boolean
+    /** Set spectator mode for a player. */
+    operator fun set(player: Player, spectating: Boolean)
+    /** Update spectator status for a player. */
+    fun playerTeamChanged(player: Player, previous: Team)
+    /**
+     * Check if a team is a spectator team.
+     *
+     * Spectator teams are considered to be service teams, thus players can't normally join them.
+     */
+    fun isSpectatorTeam(team: Team): Boolean
+
+    /**
+     * Restore spectator status for a player.
+     */
+    fun spectateRestore(player: Player, ogTeam: Team?): Team
+    /** Reset all round data. */
+    fun reset()
+}
+
+class DefaultSpectateManager: SpectateManager {
+    val spectatorTeam: Team = Team.all[69]
+    val ogTeams = WeakHashMap<Player, Team>()
+
+    override fun get(player: Player): Boolean = player.team() == spectatorTeam
+    override fun set(player: Player, spectating: Boolean) {
+        val rn = get(player)
+        if (rn == spectating) return
+
+        if (spectating) {
+            if (teamAssigned(player)) ogTeams[player] = player.team()
+            player.clearUnit()
+            player.team(spectatorTeam)
+            Tl.send(player).done("{generic.spectating}")
+        } else {
+            player.team(ogTeams[player]?.let { team ->
+                if (team.data().isAlive) team else null
+            } ?: Vars.netServer.assignTeam(player))
+            Tl.send(player).done("{generic.no-longer-spectating}")
+        }
+    }
+
+    override fun isSpectatorTeam(team: Team): Boolean = team == spectatorTeam
+    override fun spectateRestore(player: Player, ogTeam: Team?): Team {
+        ogTeam?.let { ogTeams[player] = it }
+        return spectatorTeam
+    }
+    override fun reset() {
+        ogTeams.clear()
+    }
+
+    override fun playerTeamChanged(player: Player, previous: Team) {
+        if ((player.team() == spectatorTeam) == (previous == spectatorTeam)) return
+
+        if (previous == spectatorTeam) Tl.send(player).done("{generic.no-longer-spectating}")
+        else Tl.send(player).done("{generic.spectating}")
     }
 }
 
@@ -210,6 +256,9 @@ object Gamemode {
     /** Map manager. */
     @JvmStatic
     var maps: MapManager = DefaultMapManager()
+    /** Manager for spectating. */
+    @JvmStatic
+    var spectate: SpectateManager = DefaultSpectateManager()
 
     /** Whether admin commands like /unit are enabled. */
     @JvmField
@@ -229,6 +278,13 @@ object Gamemode {
      */
     @JvmField
     var restoreTeams = true
+    /**
+     * Whether teams should be properly randomized when a round starts.
+     *
+     * Will only actually do this is there are more than one team a player could be in.
+     */
+    @JvmField
+    var randomizeTeams = true
     /** Enable /rtv and /vnm. */
     @JvmField
     var enableRtv = true
@@ -245,6 +301,12 @@ object Gamemode {
     /** Enable /spectate. */
     @JvmField
     var enableSpectate = true
+    /** Send players to hub on shutdown. */
+    @JvmField
+    var sendHub = true
+    /** Emit a packet to make players rejoin the server once it has restarted. */
+    @JvmField
+    var sendBringBackPacket = true
 
     @JvmField
     var defaultPatch: Prov<String>? = null

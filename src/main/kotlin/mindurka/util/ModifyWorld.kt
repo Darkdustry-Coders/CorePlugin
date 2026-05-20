@@ -23,15 +23,19 @@ object ModifyWorld {
      */
     @JvmStatic
     fun syncBuild(con: NetConnection, build: Building) {
+        val prevSyncTarget = NetServer.mdSyncTarget
         NetServer.mdSyncTarget = con.player
-        Consts.syncStream.reset()
-        Consts.dataStream.writeInt(build.pos())
-        Consts.dataStream.writeShort(build.block.id.toInt())
-        build.writeAll(Writes(Consts.dataStream))
-        Consts.dataStream.close()
-        val bytes = Consts.syncStream.bytes
-        Call.blockSnapshot(con, 1, bytes)
-        NetServer.mdSyncTarget = null
+        try {
+            Consts.syncStream.reset()
+            Consts.dataStream.writeInt(build.pos())
+            Consts.dataStream.writeShort(build.block.id.toInt())
+            build.writeAll(Writes(Consts.dataStream))
+            Consts.dataStream.close()
+            val bytes = Consts.syncStream.bytes
+            Call.blockSnapshot(con, 1, bytes)
+        } catch (_: Exception) {} finally {
+            NetServer.mdSyncTarget = prevSyncTarget
+        }
     }
     /**
      * Synchronize a building over the network.

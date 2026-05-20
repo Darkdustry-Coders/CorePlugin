@@ -60,14 +60,6 @@ annotation class Rest
 annotation class ListOf(val value: KClass<*>)
 
 /**
- * Only allow admins to run the command.
- *
- * Cannot be used with `@ConsoleCommand`.
- */
-@Target(AnnotationTarget.FUNCTION)
-@Retention(AnnotationRetention.RUNTIME)
-annotation class AdminOnly
-/**
  * Rate limit the command.
  *
  * Cannot be used with `@ConsoleCommand`.
