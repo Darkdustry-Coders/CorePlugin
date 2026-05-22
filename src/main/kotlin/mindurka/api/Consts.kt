@@ -26,7 +26,6 @@ object Consts {
     @PublicAPI
     @JvmField
     val dataStream = DataOutputStream(syncStream)
-    /** Wrapper over SyncStream for protocol stuff. */
     @PublicAPI
     @JvmField
     val legacyMechPad = Vars.content.block("legacy-mech-pad")

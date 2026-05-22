@@ -1,18 +1,22 @@
 package mindurka.util
 
+import arc.struct.IntSeq
 import arc.struct.ObjectIntMap
 import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.Strings
 import arc.util.Time
+import arc.util.io.Streams
 import buj.tl.Script
 import buj.tl.Tl
 import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.sessionData
+import mindustry.MdFontRanges
 import mindustry.Vars
 import mindustry.game.Team
 import mindustry.gen.Call
 import mindustry.gen.Groups
+import mindustry.gen.Icon
 import mindustry.gen.Player
 import mindustry.gen.Posc
 import mindustry.type.StatusEffect
@@ -20,12 +24,51 @@ import mindustry.world.Block
 import mindustry.world.Tile
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.util.Optional
 import java.util.WeakHashMap
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.time.Duration
+
+private val icons = run {
+    val seq = IntSeq()
+    Streams.copyString(UnreachableException::class.java.classLoader.getResourceAsStream("icons/icons.properties"))
+        .lines()
+        .forEach {
+            val i = it.indexOf('=')
+            if (i == -1) return@forEach
+            seq.add(it.substring(0, i).toInt())
+        }
+    seq.toArray()
+}
+
+/**
+ * Strip all invisible characters.
+ *
+ * This operation is relatively expensive as fonts have thousands of ranges and
+ * the generator script repeats ranges.
+ *
+ * A character will be kept if it appears in any of the font ranges.
+ */
+fun String.stripInvisible(): String {
+    val builder = StringBuilder()
+
+    a@for (x in this) {
+        val code = x.code
+        if (code < 32) continue@a
+        for (range in MdFontRanges.ranges) {
+            if (code !in range.start..range.end) continue
+            builder.append(x)
+            continue@a
+        }
+        if (code in icons) {
+            builder.append(x)
+            continue@a
+        }
+    }
+
+    return builder.toString()
+}
 
 @JvmOverloads
 fun unreachable(message: String = "Unreachable reached!"): Nothing = throw UnreachableException(message)

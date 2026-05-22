@@ -1,5 +1,6 @@
 package mindurka.coreplugin.extern
 
+import mindurka.coreplugin.hasMindurkaCompat
 import mindurka.coreplugin.sessionData
 import mindurka.util.Async
 import mindustry.gen.Player
@@ -17,4 +18,6 @@ object HeaderI: Header() {
             player.sessionData.playerLeft(player)
         }
     }
+
+    override fun hasMindurkaCompat(player: Player?): Boolean = player?.hasMindurkaCompat ?: false
 }

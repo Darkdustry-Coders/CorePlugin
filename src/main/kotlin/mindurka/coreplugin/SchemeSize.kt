@@ -212,7 +212,7 @@ private fun core(caller: Player) {
         return
     }
     if (tile.block() is CoreBlock) tile.setNet(Blocks.air)
-    else tile.setBlock(Blocks.coreShard, caller.team(), 0)
+    else tile.setNet(Blocks.coreShard, caller.team(), 0)
 }
 
 @Command

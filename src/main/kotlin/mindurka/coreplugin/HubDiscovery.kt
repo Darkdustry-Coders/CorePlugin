@@ -29,6 +29,7 @@ private class HubServer(
 private val hubServers = ObjectMap<String, HubServer>(2)
 
 private fun serverInfo(): ServerInfo? {
+    if (CorePlugin.shuttingDown) return null
     if (!Vars.net.active()) return null
 
     return ServerInfo(
@@ -77,6 +78,11 @@ internal fun initHubDiscovery() {
     on<ServerDown> { msg ->
         hubServers.remove(RabbitMQ.sentBy(msg))
     }
+}
+
+fun hubServer(): String? {
+    if (hubServers.isEmpty) return null
+    return hubServers.first().value.ip
 }
 
 @Command

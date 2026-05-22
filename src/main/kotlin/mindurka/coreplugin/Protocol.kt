@@ -33,6 +33,7 @@ import mindurka.util.Async
 import mindurka.util.K
 import mindurka.util.ip
 import mindurka.util.sha256
+import mindurka.util.stripInvisible
 import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.core.NetServer
@@ -341,6 +342,7 @@ class Protocol {
                 cipher.init(Cipher.DECRYPT_MODE, state.key)
                 val data = cipher.doFinal(encryptedData)
 
+                // TODO: Remove 'expectedData' entirely.
                 if (!expectedData.contentEquals(data)) {
                     try {
                         Log.debug("Data (${data.size}): [${data.joinToString(", ") { it.toString() }}]")
@@ -383,7 +385,7 @@ class Protocol {
                 val player = Player.create()
                 player.con = con
                 con.player = player
-                player.name = dataStream.readUTF().trim()
+                player.name = dataStream.readUTF().stripInvisible().trim()
                 if (player.name.length > 128) {
                     connectionStates[con] = PanicState
                     con.kick("Player name is too long")
@@ -466,7 +468,7 @@ class Protocol {
             con.uuid = packet.uuid
             con.usid = packet.usid
             con.mobile = packet.mobile
-            player.name = packet.name.trim()
+            player.name = packet.name.stripInvisible().trim()
             if (player.name.length > 128) {
                 connectionStates[con] = PanicState
                 con.kick("Player name is too long")

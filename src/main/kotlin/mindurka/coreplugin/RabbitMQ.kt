@@ -250,21 +250,25 @@ internal class RabbitMQWorker() {
     @OptIn(ExperimentalSerializationApi::class)
     fun <T: Any> send(o: T, routingKey: String) {
         resumeTasks {
-            val annotation = o.javaClass.annotations.find { it is NetworkEvent } as NetworkEvent? ?: throw IllegalArgumentException("All network messages must be annotated with '@NetworkEvent'")
-
-            ensureExchange(o::class, annotation.value)
-
-            val props = AMQP.BasicProperties.Builder()
-            props.contentEncoding("application/cbor")
-            props.appId(Config.i.serverName)
-
-            debug{"[RabbitMQ] Sending ${annotation.value} (routingKey=$routingKey)"}
-
-            val ktype = o.javaClass.kotlin.createType(emptyList(), false, emptyList())
-            val arr = Serializers.cbor.encodeToByteArray(Serializers.cbor.serializersModule.serializer(ktype), o)
-
-            mainChannel.basicPublish(annotation.value, routingKey, true, false, props.build(), arr)
+            sendBypass(o, routingKey)
         }
+    }
+    @OptIn(ExperimentalSerializationApi::class)
+    fun <T: Any> sendBypass(o: T, routingKey: String) {
+        val annotation = o.javaClass.annotations.find { it is NetworkEvent } as NetworkEvent? ?: throw IllegalArgumentException("All network messages must be annotated with '@NetworkEvent'")
+
+        ensureExchange(o::class, annotation.value)
+
+        val props = AMQP.BasicProperties.Builder()
+        props.contentEncoding("application/cbor")
+        props.appId(Config.i.serverName)
+
+        debug{"[RabbitMQ] Sending ${annotation.value} (routingKey=$routingKey)"}
+
+        val ktype = o.javaClass.kotlin.createType(emptyList(), false, emptyList())
+        val arr = Serializers.cbor.encodeToByteArray(Serializers.cbor.serializersModule.serializer(ktype), o)
+
+        mainChannel.basicPublish(annotation.value, routingKey, true, false, props.build(), arr)
     }
     suspend fun lock(name: ByteArray): RabbitMQLock? {
         val name = "lock.${sha256(name)}"
@@ -291,7 +295,8 @@ internal class RabbitMQWorker() {
     }
 
     fun close() {
-        resumeTasks { connection.close() }.join()
+        // Idk how else to do this properly lol.
+        Thread.sleep(200)
     }
 }
 
@@ -375,4 +380,10 @@ object RabbitMQ {
     internal fun close() {
         worker.close()
     }
+
+    /**
+     * Bypass threads and send a message anyway.
+     */
+    @JvmStatic
+    internal fun <T: Any> sendBypass(message: T, routingKey: String) = worker.sendBypass(message, routingKey)
 }

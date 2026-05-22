@@ -1,6 +1,5 @@
 package mindurka.coreplugin
 
-import arc.struct.Seq
 import arc.util.Log
 import mindurka.annotations.PublicAPI
 import mindurka.api.Gamemode
@@ -9,7 +8,6 @@ import mindurka.coreplugin.database.Database
 import mindurka.util.Async
 import mindurka.util.K
 import mindurka.util.newSeq
-import mindustry.Vars
 import mindustry.gen.KickCallPacket
 import mindustry.gen.KickCallPacket2
 import mindurka.coreplugin.mindurkacompat.Version as MdcVersion
@@ -20,9 +18,6 @@ import net.buj.surreal.Query
 import java.lang.ref.WeakReference
 import java.security.PublicKey
 import java.util.WeakHashMap
-import kotlin.time.Clock
-import kotlin.time.Duration
-import kotlin.time.Instant
 import kotlin.time.TimeSource
 
 /** Player session data. */
@@ -201,7 +196,7 @@ class PlayerData private constructor(player: Player) {
         lastPushed = now
 
         val query = StringBuilder($$"let $profile_t = update only type::record(\"mindustry_profile\", <uuid> $profile) set ")
-        query.append("total_play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
+        query.append("total_play_time += duration::from_millis(${if (player.get()?.let { Gamemode.spectate[it] } == true) 0 else elapsed.inWholeMilliseconds})")
         query.append(", play_time += duration::from_millis(${elapsed.inWholeMilliseconds})")
         if (Gamemode.hasStats) {
             if (extraBlocksPlaced != 0) query.append(", blocks_placed += $extraBlocksPlaced")

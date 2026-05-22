@@ -462,10 +462,7 @@ private fun vote(caller: Player, vote: String) {
 private fun surrender(caller: Player) {
     if (caller.checkOnCooldown("/surrender")) return
 
-    if (!CorePlugin.startVote(caller, SurrenderVote(caller))) {
-        Tl.send(caller).done("{generic.checks.vote}")
-        return
-    }
+    if (!CorePlugin.startVote(caller, SurrenderVote(caller))) return
     caller.setCooldown("/surrender", minutes(5f))
 }
 
@@ -476,10 +473,7 @@ private fun rtv(caller: Player, @Rest map: MapHandle?) {
 
     val map = map ?: Gamemode.maps.next()
 
-    if (!CorePlugin.startVote(caller, RtvVote(map, caller))) {
-        Tl.send(caller).done("{generic.checks.vote}")
-        return
-    }
+    if (!CorePlugin.startVote(caller, RtvVote(map, caller))) return
     caller.setCooldown("/rtv", minutes(5f))
 }
 
@@ -490,10 +484,7 @@ private fun vnm(caller: Player, @Rest map: MapHandle?) {
 
     val map = map ?: Gamemode.maps.next()
 
-    if (!CorePlugin.startVote(caller, NextMapVote(map, caller))) {
-        Tl.send(caller).done("{generic.checks.vote}")
-        return
-    }
+    if (!CorePlugin.startVote(caller, NextMapVote(map, caller))) return
     caller.setCooldown("/vnm", minutes(5f))
 }
 
@@ -544,10 +535,7 @@ private fun votekick(caller: Player, player: Player, @Rest reason: String) {
         return
     }
 
-    if (!CorePlugin.startVote(caller, KickVote(caller, player, reason))) {
-        Tl.send(caller).done("{generic.checks.vote}")
-        return
-    }
+    if (!CorePlugin.startVote(caller, KickVote(caller, player, reason))) return
     caller.setCooldown("/votekick", 60f)
 }
 

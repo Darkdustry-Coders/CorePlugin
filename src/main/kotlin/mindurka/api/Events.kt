@@ -28,7 +28,11 @@ import java.util.concurrent.CompletableFuture
 /**
  * A player is having their team assigned.
  *
- * This event is usually fired by team assigner.
+ * This event is usually fired by CorePlugin's team assigner.
+ *
+ * This event is synchronous. Calling [Async.run] or [arc.Application.post] inside a handler
+ * for this event is pointless as [team] will only be used once after all handlers have finished
+ * executing.
  */
 @PublicAPI
 data class PlayerTeamAssign (

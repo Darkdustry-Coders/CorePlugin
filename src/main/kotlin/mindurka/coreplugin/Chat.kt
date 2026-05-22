@@ -9,7 +9,6 @@ import arc.util.Log
 import arc.util.Strings
 import arc.util.Time
 import buj.tl.L
-import buj.tl.Ls
 import buj.tl.Tl
 import mindurka.annotations.Command
 import mindurka.annotations.RequiresPermission
@@ -24,12 +23,12 @@ import mindurka.coreplugin.database.PermLevels
 import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.votes.VoteFail
 import mindurka.util.Async
-import mindurka.util.K
 import mindurka.util.SendMessage
 import mindurka.util.UnsafeNull
 import mindurka.util.newSeq
 import mindurka.util.notnull
 import mindurka.util.permissionLevel
+import mindurka.util.stripInvisible
 import mindustry.Vars
 import mindustry.game.EventType
 import mindustry.gen.Call
@@ -38,7 +37,6 @@ import mindustry.gen.Player
 import mindustry.net.Administration
 import mindustry.net.Packets
 import mindustry.net.ValidateException
-import java.util.Locale
 import java.util.WeakHashMap
 
 class LastFailedCommand(var name: String, var args: String)
@@ -228,13 +226,14 @@ internal fun chatHandleMessage(player: Player?, message: String?) {
         Vars.netServer.admins.blacklistDos(player.con.address)
     }
 
-    var message: String? = message ?: return
+    var message = notnull(message ?: return).stripInvisible()
+    if (message.isEmpty()) return
 
-    if (notnull(message).length > 150) {
+    if (message.length > 150) {
         throw ValidateException(player, "Player sent a message above the text limit.")
     }
 
-    message = notnull(message).replace("\n", "")
+    message = message.replace("\n", "")
 
     Events.fire(EventType.PlayerChatEvent(player, message))
 
@@ -244,8 +243,7 @@ internal fun chatHandleMessage(player: Player?, message: String?) {
 
     val response = Vars.netServer.clientCommands.handleMessage(message, player)
     if (response.type == CommandHandler.ResponseType.noCommand) {
-        message = Vars.netServer.admins.filterMessage(player, message)
-        if (message == null) return
+        message = Vars.netServer.admins.filterMessage(player, message) ?: return
 
         Log.info("&fi@: @", "&lc" + player.plainName(), "&lw$message");
 
@@ -271,12 +269,17 @@ internal fun chatHandleMessage(player: Player?, message: String?) {
 @Command
 @RequiresPermission(PermLevels.moderator)
 private fun a(caller: Player, @Rest message: String) {
+    val message = message.stripInvisible()
+    if (message.isEmpty()) return
     broadcastChatMessage(null, caller.sessionData.fullName(), message, caller,
         key = "{generic.chat.admin} {generic.chat}") { it.permissionLevel >= 100 }
 }
 
 @Command
 private fun t(caller: Player, @Rest message: String) {
+    val message = message.stripInvisible()
+    if (message.isEmpty()) return
+
     val team = caller.team()
     broadcastChatMessage(null, caller.sessionData.fullName(), message, caller,
         key = "[#${caller.team().color}]{generic.chat.team}[] {generic.chat}") { it.team() == team }
