@@ -311,11 +311,6 @@ object Gamemode {
     @JvmField
     var defaultPatch: Prov<String>? = null
 
-    /** Tools available to regular players (whitelist). Default: all. */
-    @JvmField
-    var unbannedTools: java.util.EnumSet<mindurka.coreplugin.SSTool> = java.util.EnumSet.allOf(mindurka.coreplugin.SSTool::class.java)
-
-    /** Tools banned for everyone regardless of permissions (blacklist). */
     @JvmField
     var bannedTools: java.util.EnumSet<mindurka.coreplugin.SSTool> = java.util.EnumSet.noneOf(mindurka.coreplugin.SSTool::class.java)
 

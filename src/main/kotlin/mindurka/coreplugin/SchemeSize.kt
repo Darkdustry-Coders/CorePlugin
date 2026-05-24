@@ -37,17 +37,17 @@ import mindustry.world.blocks.storage.CoreBlock
 import kotlin.math.min
 
 enum class SSTool(val flag: Int, val minPermLevel: Int) {
-    FLUSH(1, 200),
-    FILL(1 shl 1, 200),
-    BRUSH(1 shl 2, 200),
-    RULESETTER(1 shl 3, 200),
-    DESPAWN(1 shl 4, 100),
-    TELEPORT(1 shl 5, 100),
-    SPAWN(1 shl 6, 100),
-    EFFECT(1 shl 7, 100),
-    ITEM(1 shl 8, 100),
-    TEAM(1 shl 9, 100),
-    CORE(1 shl 10, 100);
+    FLUSH(1, PermLevels.admin),
+    FILL(1 shl 1, PermLevels.admin),
+    BRUSH(1 shl 2, PermLevels.admin),
+    RULESETTER(1 shl 3, PermLevels.admin),
+    DESPAWN(1 shl 4, PermLevels.moderator),
+    TELEPORT(1 shl 5, PermLevels.moderator),
+    SPAWN(1 shl 6, PermLevels.moderator),
+    EFFECT(1 shl 7, PermLevels.admin),
+    ITEM(1 shl 8, PermLevels.admin),
+    TEAM(1 shl 9, PermLevels.admin),
+    CORE(1 shl 10, PermLevels.admin);
 
     companion object {
         fun mask(tools: Collection<SSTool>): Int = tools.fold(0) { acc, t -> acc or t.flag }
@@ -64,7 +64,6 @@ fun disabledToolsFor(player: Player): Int {
         if (perm < tool.minPermLevel) disabled = disabled or tool.flag
     }
 
-    disabled = disabled or (SSTool.all() and SSTool.mask(Gamemode.unbannedTools).inv())
     disabled = disabled or SSTool.mask(Gamemode.bannedTools)
     disabled = disabled or SSTool.mask(player.sessionData.ssBannedTools)
 
@@ -99,11 +98,9 @@ internal fun initSchemeSize() {
     fun subtitleJson(id: Int, subtitle: String) = "{$id:\"${escapeJson(subtitle)}\"}"
 
     Vars.netServer.addPacketHandler("MySubtitle") { player, text ->
-        if (player.sessionData.schemeSizeSubtitle != null) return@addPacketHandler
         player.sessionData.schemeSizeSubtitle = text
         Call.clientPacketReliable("Subtitles", subtitleJson(player.id, text))
 
-        // Send all existing subtitle users to the new player
         val obj = StringBuilder("{")
         for (x in Groups.player) {
             val sub = x.sessionData.schemeSizeSubtitle ?: continue
