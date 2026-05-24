@@ -13,6 +13,7 @@ import mindurka.coreplugin.database.ok
 import mindurka.coreplugin.sessionData
 import mindurka.coreplugin.Build
 import mindurka.coreplugin.CorePlugin
+import mindurka.coreplugin.sendDisabledTools
 import mindurka.util.Async
 import mindustry.gen.Player
 import net.buj.surreal.Query
@@ -119,6 +120,7 @@ private fun tl(locale: String, @Rest query: String) {
 private fun setpermlevel(player: Player, level: Int) = Async.run {
     val data = player.sessionData
     data.setPermissionLevel(level)
+    if (data.schemeSizeMetadata != null) sendDisabledTools(player)
     Log.info("Set permission level of ${player.plainName()} to ${data.permissionLevel}")
 }
 

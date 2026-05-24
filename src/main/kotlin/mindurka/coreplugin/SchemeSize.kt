@@ -36,42 +36,91 @@ import mindustry.world.blocks.environment.Floor
 import mindustry.world.blocks.storage.CoreBlock
 import kotlin.math.min
 
-// While we do diverge from Scheme Size's internal implementation, it honestly doesn't really matter.
+enum class SSTool(val flag: Int, val minPermLevel: Int) {
+    FLUSH(1, PermLevels.admin),
+    FILL(1 shl 1, PermLevels.admin),
+    BRUSH(1 shl 2, PermLevels.admin),
+    RULESETTER(1 shl 3, PermLevels.admin),
+    DESPAWN(1 shl 4, PermLevels.admin),
+    TELEPORT(1 shl 5, PermLevels.admin),
+    SPAWN(1 shl 6, PermLevels.admin),
+    EFFECT(1 shl 7, PermLevels.admin),
+    ITEM(1 shl 8, PermLevels.admin),
+    TEAM(1 shl 9, PermLevels.admin),
+    CORE(1 shl 10, PermLevels.admin);
+
+    companion object {
+        fun mask(tools: Collection<SSTool>): Int = tools.fold(0) { acc, t -> acc or t.flag }
+        fun mask(vararg tools: SSTool): Int = tools.fold(0) { acc, t -> acc or t.flag }
+        fun all(): Int = entries.fold(0) { acc, t -> acc or t.flag }
+    }
+}
+
+fun disabledToolsFor(player: Player): Int {
+    val perm = player.permissionLevel
+    var disabled = 0
+
+    for (tool in SSTool.entries) {
+        if (perm < tool.minPermLevel) disabled = disabled or tool.flag
+    }
+
+    disabled = disabled or SSTool.mask(Gamemode.bannedTools)
+    disabled = disabled or SSTool.mask(player.sessionData.ssBannedTools)
+
+    return disabled
+}
+
+fun sendDisabledTools(player: Player) {
+    val flags = disabledToolsFor(player)
+    player.sendBinaryPacket("schemesize.available", byteArrayOf(
+        (flags shr 8).toByte(),
+        (flags and 0xFF).toByte()
+    ))
+}
+
 internal fun initSchemeSize() {
     Vars.netServer.addBinaryPacketHandler("schemesize.available") { player, _ ->
-        if (player.sessionData.schemeSizeMetadata != null) return@addBinaryPacketHandler
         player.sessionData.schemeSizeMetadata = K
-        player.sendBinaryPacket("schemesize.available", byteArrayOf(0))
+        sendDisabledTools(player)
     }
 
     val jsonRegex = Regex("[\"\\\\\n\t\r]", RegexOption.MULTILINE)
+
+    fun escapeJson(s: String) = s.replace(jsonRegex) { when (it.value) {
+        "\"" -> "\\\""
+        "\\" -> "\\\\"
+        "\n" -> "\\n"
+        "\t" -> "\\t"
+        "\r" -> "\\r"
+        else -> ""
+    } as CharSequence }
+
+    fun subtitleJson(id: Int, subtitle: String) = "{$id:\"${escapeJson(subtitle)}\"}"
+
     Vars.netServer.addPacketHandler("MySubtitle") { player, text ->
-        // Scheme size never sends this information again.
-        if (player.sessionData.schemeSizeSubtitle != null) return@addPacketHandler
         player.sessionData.schemeSizeSubtitle = text
+        Call.clientPacketReliable("Subtitles", subtitleJson(player.id, text))
+
         val obj = StringBuilder("{")
         for (x in Groups.player) {
-            if (x.sessionData.schemeSizeSubtitle != null) {
-                obj.append(player.id)
-                obj.append(":\"")
-                // Surely this is safe, right?
-                obj.append(text.replace(jsonRegex) { when (it.value) {
-                    "\"" -> "\\\""
-                    "\\" -> "\\\\"
-                    "\n" -> "\\\n"
-                    "\t" -> "\\\t"
-                    "\r" -> "\\\r"
-                    else -> ""
-                } as CharSequence })
-                obj.append("\",")
-            }
+            val sub = x.sessionData.schemeSizeSubtitle ?: continue
+            if (x == player) continue
+            obj.append("${x.id}:\"${escapeJson(sub)}\",")
         }
-        Call.serverPacketReliable("Subtitles", "$obj}")
+        obj.append("}")
+        if (obj.length > 2) player.sendPacket("Subtitles", obj.toString())
     }
+
     on<EventType.PlayerJoin> { event ->
         // This packet is supposed to send the player ID of the host.
         // If I'm ever adding lobbies, this could be very, very interesting.
         event.player.sendPacket("SendMeSubtitle", null)
+    }
+
+    on<EventType.PlayerLeave> { event ->
+        if (event.player.sessionData.schemeSizeSubtitle != null) {
+            Call.clientPacketReliable("Subtitles", subtitleJson(event.player.id, ""))
+        }
     }
 
     // Different packet name since in the packet sheet `fill` packet didn't have `overlay`.
