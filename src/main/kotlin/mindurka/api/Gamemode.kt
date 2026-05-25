@@ -311,6 +311,9 @@ object Gamemode {
     @JvmField
     var defaultPatch: Prov<String>? = null
 
+    @JvmField
+    var bannedTools: java.util.EnumSet<mindurka.coreplugin.SSTool> = java.util.EnumSet.noneOf(mindurka.coreplugin.SSTool::class.java)
+
     /** Initialize CorePlugin. */
     @JvmStatic
     fun init(loader: ClassLoader) {

@@ -190,6 +190,10 @@ class PlayerData private constructor(player: Player) {
     @JvmField
     var translatorStyle = TranslatorStyle.Multiline
 
+    /** Per-player banned SS tools. Combined with gamemode flags at send time. */
+    @JvmField
+    var ssBannedTools: java.util.EnumSet<SSTool> = java.util.EnumSet.noneOf(SSTool::class.java)
+
     private val locks = newSeq<RabbitMQLock>()
     suspend fun addLock(lock: RabbitMQLock) {
         if (exitHandledCorrectly) {
