@@ -61,9 +61,9 @@ data class OpenDialogs (
 object Dialogs {
     @JvmStatic
     @JvmName("menu")
-    fun <T> menu(player: Player, dialog: Cons<MenuBuilder<T>>): CompletableFuture<T?> = player.openMenu<T> { dialog.get(this) }
+    suspend fun <T> menu(player: Player, dialog: Cons<MenuBuilder<T>>): T? = player.openMenu<T> { dialog.get(this) }
     @JvmStatic
-    fun text(player: Player, dialog: Cons<TextDialogBuilder>): CompletableFuture<String?> = player.openText { dialog.get(this) }
+    suspend fun text(player: Player, dialog: Cons<TextDialogBuilder>): String? = player.openText { dialog.get(this) }
 }
 
 @OptIn(UiInternals::class)

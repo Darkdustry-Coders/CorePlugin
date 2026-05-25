@@ -1,5 +1,23 @@
-# Colors
 
+# Emojis
+[emo]
+
+x = 
+warn = ⚠
+play = 
+gplay = 
+ok = 
+admin = 
+discord = 
+team = 
+plane = 
+telegram = 
+settings = 
+book-open = 
+filter = 
+zoom = 
+
+# Colors
 [col]
 
 ok = #26d657
@@ -10,15 +28,13 @@ cmdarg = yellow
 mdc = #4c59e0
 sysmsg = #adadad
 
-# Generic
-
 [generic]
 
-close = [{col.ok}] Close
-cancel = [{col.err}] Cancel
-ok = [{col.ok}] Ok
+close = [{col.ok}]{emo.gplay} Close
+cancel = [{col.err}]{emo.x} Cancel
+ok = [{col.ok}]{emo.ok} Ok
 server = Mindurka
-discord = https://mindurka.online/discord
+discord = https://mindurka.cc/discord
 special-settings-error = [{col.err}]Flags on this map are not set correctly:
                        =
                        = {errors}
@@ -44,13 +60,28 @@ mdc-outdated = [accent]Your version of [{col.mdc}]MindurkaCompat[] is out of dat
              = [accent]Update the mod to the latest version from mod explorer.
 restart-scheduled = [{col.warn}]Server will be restarted after the end of the round.
 
-chat = [scarlet][[{player}]: [white]{message}
-chat.original = [gray]Original ({lang}): []{message}
-chat.service = {generic.chat.service.{service}} [scarlet][[{player}]: [white]{message}
-chat.service.unnamed = {generic.chat.service.{service}} [scarlet]<System>: [white]{message}
-chat.team = [[ Team]
-chat.admin = [scarlet][[ Admins]
-chat.service.discord = [#4c59e0][ Discord]
+# Vars:
+# - service (service name, empty if none)
+# - isteam (whether the message is sent in team chat)
+# - isadmin (whether the message is sent in admin chat)
+# - tlstyle (translator style. none if message was not translated)
+# - lang (original language message was in)
+# - origmessage (original message)
+# - teamcolor (color of the player team)
+# - player (display name of the sender)
+chat = {if {service} != () then ({generic.chat.service.{service}} )}
+     - {if {isteam} = true then ({generic.chat.team} )}
+     - {if {isadmin} = true then ({generic.chat.admin} )}
+     - [scarlet][[{player}]
+     - {if {tlstyle} = short then ( [gray]({lang})[])}
+     - : [white]{message}
+     - {if {tlstyle} = multiline then (\n{generic.chat.original})}
+
+chat.original = [gray]Original ({lang}): []{origmessage}
+chat.team = [{teamcolor}][[{emo.team} Team]
+chat.admin = [scarlet][{emo.admin} Admins]
+chat.service.discord = [#4c59e0][{emo.discord} Discord]
+chat.service.telegram = [#76d0f8][{emo.telegram} Telegram]
 
 vote.global = [{col.sysmsg}]Type [{col.ok}]y[] or [{col.err}]n[] to vote. {if {votes} < 0 then [{col.err}] else [{col.ok}]}{votes}/{threshold}
 vote.team = [{col.sysmsg}]Type [{col.ok}]/vote y[] or [{col.err}]/vote n[] to vote. {if {votes} < 0 then [{col.err}] else [{col.ok}]}{votes}/{threshold}
@@ -62,8 +93,8 @@ vote.team.cancelled = [{col.err}]⚠ Team vote was cancelled by admin {admin}.
 vote.try-global = [{col.err}]There's a global vote running. Use [{col.ok}]y[]/[{col.err}]n[] to vote.
 vote.try-team = [{col.err}]There's a team vote running. Use [{col.ok}]/vote y[]/[{col.err}]/vote n[] to vote.
 
-admin.ban = [{col.err}]⚠ {target} was banned by {admin} for [orange]{reason}.
-admin.kick = [{col.err}]⚠ {target} was kicked by {admin} for [orange]{reason}.
+admin.ban = [{col.err}]{emo.warn} {target} was banned by {admin} for [orange]{reason}.
+admin.kick = [{col.err}]{emo.warn} {target} was kicked by {admin} for [orange]{reason}.
 admin.wave = [{col.ok}]A wave was skipped by admin {admin}.
 
 spectating = [{col.ok}]You are now spectating.
@@ -476,6 +507,8 @@ dialog.title = Kick {player}
 dialog.reason = Kick reason
 dialog.duration = Kick duration
 
+success = [{col.ok}]{emo.ok}Kicked player {target}.
+
 [commands.ban]
 
 description = Ban a player on all servers.
@@ -491,6 +524,8 @@ dialog.title = Ban {player}
 dialog.reason = Ban reason
 dialog.duration = Ban duration
 
+success = [{col.ok}]{emo.ok}Banned player {target}.
+
 [commands.mute]
 
 description = Mute a player on all servers.
@@ -503,6 +538,8 @@ params.reason = reason
 dialog.title = Mute {player}
 dialog.reason = Mute reason
 dialog.duration = Mute duration
+
+success = [{col.ok}]{emo.ok}Muted player {target}.
 
 [commands.fuck]
 
@@ -568,7 +605,7 @@ manpage = Pardon a player on this server.
         = Marks all kicks and votekicks on this specific server as pardoned.
 
 fail = [{col.err}]Player {target} has no active kicks.
-success = [{col.ok}]Pardoned player {target}.
+success = [{col.ok}]{emo.ok}Pardoned player {target}.
 
 [commands.unban]
 description = Unban a player.
@@ -579,7 +616,7 @@ manpage = Unbans a player.
         = Marks all bans of the specified player as pardoned.
 
 fail = [{col.err}]Player {target} has no active bans.
-success = [{col.ok}]Unbanned player {target}.
+success = [{col.ok}]{emo.ok}Unbanned player {target}.
 
 [commands.team]
 description = Change team.
@@ -680,3 +717,42 @@ params =
 manpage = Toggle spectator mode.
         =
         = Spectator team is considered to a be a service team, thus disallowing voting.
+
+[commands.settings]
+description = Modify settings.
+params = [path..]
+manpage = Modify settings.
+        =
+        = If path is not specified, will open the GUI.
+
+[commands.settings.maindialog]
+title = {emo.settings} Settings
+translator = {emo.book-open} Translator Settings
+
+[commands.settings.translatordialog]
+title = {emo.settings} Settings [lightgray]>>[] Translator
+message = [lightgray]Current style: {commands.settings.translator.{style}.name}
+        = [orange]{commands.settings.translator.{style}.description}
+        - {if {style} != none then (
+        =
+        = [accent]<<< EXAMPLE >>>
+        = {commands.settings.translator.{style}.example})}
+filter = [white]{emo.filter} Skip Languages
+
+[commands.settings.skiplangsdialog]
+title = {emo.settings} Settings [lightgray]>>[] Translator [lightgray]>>[] Filter
+search = [cyan]{emo.zoom} Search
+
+[commands.settings.translator]
+none.name = [{col.err}]Disabled
+none.example = [scarlet]Whoops! You shouldn't be able to see this!
+none.description = The translator is disabled.
+
+multiline.name = [{col.ok}]Multiline
+multiline.example = [scarlet][[{player}]: [white]Hello!
+                  = [gray]Original (de): []Hallo!
+multiline.description = Displaying both original and translated messages.
+
+short.name = [{col.ok}]Short
+short.example = [scarlet][[{player}] [gray](de)[]: [white]Hello!
+short.description = A shorter variant for if you can't read the original language anyway.

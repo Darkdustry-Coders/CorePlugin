@@ -1,0 +1,9 @@
+# Args:
+# - profile (uuid)
+# - translator_style (int)
+# - skip_translation_of (string[])
+
+update only type::record("mindustry_profile", <uuid> $profile)
+    set
+        translator_style = <int> $translator_style,
+        skip_translation_of = <array<string>> $skip_translation_of;

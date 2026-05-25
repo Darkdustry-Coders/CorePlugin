@@ -1,14 +1,10 @@
 package mindurka.coreplugin
 
-import arc.util.Log
 import buj.tl.Tl
-import kotlinx.coroutines.future.await
 import mindurka.coreplugin.database.Database
 import mindurka.ui.openText
 import mindurka.util.Async
-import mindurka.util.FormatException
 import mindurka.util.ip
-import mindurka.util.stringToDuration
 import mindustry.Vars
 import mindustry.game.Team
 import mindustry.gen.AdminRequestCallPacket
@@ -140,7 +136,7 @@ private suspend fun moderationDialog(admin: Player, target: Player, prefix: Stri
                 state = DialogOutput.Cancel
                 null
             }
-        }.await()
+        }
         else admin.openText {
             title("{$prefix.title}").put("player", target.coloredName())
             message("{$prefix.duration}")
@@ -166,6 +162,6 @@ private suspend fun moderationDialog(admin: Player, target: Player, prefix: Stri
                 reason = null
                 null
             }
-        }.await()
+        }
     }
 }

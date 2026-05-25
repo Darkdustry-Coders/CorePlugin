@@ -2,6 +2,9 @@ package buj.tl
 
 import arc.struct.ObjectMap
 import arc.struct.Seq
+import arc.util.Log
+import mindurka.util.newSeq
+import mindurka.util.seqOf
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import java.io.IOException
@@ -42,7 +45,7 @@ private fun isValidColor(color: String): Boolean {
 private val loaders = Seq<ClassLoader>()
 private val localeCache = ObjectMap<ClassLoader, ObjectMap<String, LocaleFile?>>()
 
-private class LocaleFile {
+internal class LocaleFile {
     companion object {
         operator fun get(localeBase: String, key: String): Script {
             var i = loaders.size
@@ -76,43 +79,128 @@ private class LocaleFile {
                 return null
             }
 
+            val file = parse(str)
+
+            cache.put(locale, file)
+            return file
+        }
+
+        internal fun parse(str: String): LocaleFile {
+            val span = StringSpan(str)
+
             val file = LocaleFile()
             var prefix = ""
             var name = ""
-            var value = ""
-            for (line in str.lines()) {
-                val trimmed = line.trim()
-                if (trimmed.matches(Regex("^\\[[\\w0-9._-]+]$"))) {
-                    prefix = trimmed.substring(1, trimmed.length - 1)
-                    continue
-                }
-                val eqIdx = minIdx(line.indexOf('='), line.indexOf(':'))
-                if (eqIdx != -1) {
-                    val maybeName = line.take(eqIdx).trim()
+            var collection = TemplateSpanCollection()
 
-                    if (maybeName.isEmpty()) {
-                        if (line[eqIdx] == '=') {
-                            value += "\n" + line.substring(eqIdx + 1).trim()
-                        } else if (!line.substring(eqIdx + 1).trim().isEmpty()) {
-                            value += " " + line.substring(eqIdx + 1).trim()
-                        }
-                        continue
+            while (!span.isEmpty) {
+                span.trimStart()
+
+                if (span.stripPrefix("#")) {
+                    if (name.isNotEmpty()) {
+                        if (file.tls.put(name, Tl.parse(collection.intoSpanCollection())) != null) throw RuntimeException("duplicate key $name")
+                        collection = TemplateSpanCollection()
                     }
 
-                    if (!name.isEmpty()) file.tls.put(name, Tl.parse(value))
-                    name = maybeName
-                    if (!prefix.isEmpty()) name = "${prefix}.$name"
-                    value = line.substring(eqIdx + 1).trim()
+                    name = ""
+                    while (!span.isEmpty && span[0] != '\n') span.inc()
+                    continue
+                }
+
+                if (span.stripPrefix("[")) {
+                    if (name.isNotEmpty()) {
+                        if (file.tls.put(name, Tl.parse(collection.intoSpanCollection())) != null) throw RuntimeException("duplicate key $name")
+                        collection = TemplateSpanCollection()
+                    }
+
+                    name = ""
+                    span.trimStart()
+                    prefix = buildString {
+                        while (!span.isEmpty && (span[0].isLetterOrDigit() || span[0] in "-_.")) append(span.next())
+                    }
+                    span.trimStart()
+                    if (!span.stripPrefix("]")) throw RuntimeException("unenclosed prefix statement at ${span.at}")
+                    continue
+                }
+
+                if (span.stripPrefix("=")) {
+                    if (name.isEmpty()) throw RuntimeException("attempt to append a value despite not having an entry open")
+
+                    // It's fine since it's just one character
+                    collection.growFrom(StringSpan("\n"))
+                    span.stripPrefix(" ")
+                    while (!span.isEmpty && span[0] != '\n') {
+                        if (span[0] == '\r') {
+                            span.inc()
+                            continue
+                        }
+                        collection.growFrom(span)
+                        span.inc()
+                    }
+                    continue
+                }
+
+                // Both do the same thing.
+                if (span.stripPrefix("-") || span.stripPrefix(":")) {
+                    if (name.isEmpty()) throw RuntimeException("attempt to append a value despite not having an entry open")
+
+                    span.stripPrefix(" ")
+                    while (!span.isEmpty && span[0] != '\n') {
+                        if (span[0] == '\r') {
+                            span.inc()
+                            continue
+                        }
+                        collection.growFrom(span)
+                        span.inc()
+                    }
+                    continue
+                }
+
+                if (name.isNotEmpty()) {
+                    if (file.tls.put(name, Tl.parse(collection.intoSpanCollection())) != null) throw RuntimeException("duplicate key $name")
+                    collection = TemplateSpanCollection()
+                }
+
+                val at = span.at
+
+                name = buildString {
+                    while (!span.isEmpty && (span[0].isLetterOrDigit() || span[0] in "-_.")) append(span.next())
+                }
+
+                if (name.isEmpty()) continue
+
+                name = (if (prefix.isEmpty()) { "" } else { "$prefix." }) + name
+                if (name.startsWith(".")) throw RuntimeException("entry name cannot start with a dot ($name) at $at")
+                if (name.endsWith(".")) throw RuntimeException("entry name cannot end with a dot ($name) at $at")
+                if (name.contains("..")) throw RuntimeException("entry name cannot contain 2 consecutive dots ($name) at $at")
+
+                span.trimStart()
+                if (!span.stripPrefix("=")) throw RuntimeException("'=' must be used to assing a value to the entry at ${span.at}")
+
+                val t = StringBuilder()
+
+                span.stripPrefix(" ")
+                while (!span.isEmpty && span[0] != '\n') {
+                    if (span[0] == '\r') {
+                        span.inc()
+                        continue
+                    }
+                    collection.growFrom(span)
+                    span.inc()
                 }
             }
-            if (!name.isEmpty()) file.tls.put(name, Tl.parse(value))
 
-            cache.put(locale, file)
+            if (name.isNotEmpty()) {
+                if (file.tls.put(name, Tl.parse(collection.intoSpanCollection())) != null) throw RuntimeException("duplicate key $name")
+            }
+
             return file
         }
     }
 
     private val tls = ObjectMap<String, Script>()
+
+    operator fun get(key: String): Script? = if (tls.containsKey(key)) tls[key] else null
 }
 
 private fun encloseColors(s: String): String {
@@ -348,7 +436,7 @@ private class ScrIf(
                 "=" -> Equals
                 "==" -> EqualsIgnoreCase
                 "!=" -> NotEquals
-                "!==" -> NotEquals
+                "!==" -> NotEqualsIgnoreCase
                 "~" -> Contains
                 "~=" -> ContainsIgnoreCase
                 "&=" -> StartsWith
@@ -430,354 +518,545 @@ private object ScrNone : Script {
 // 1. idx must point to the first character of the expression
 // 2. returned idx must be at the character after the expression
 
-private fun parseUnicode(script: String, idx: Array<Int>): Char {
+/**
+ * ```
+ * &=
+ * ^^*
+ * ```
+ */
+private fun parseOp(script: SpanCollection): ScrIf.Op? {
+    script.trimStart()
+    if (script.stripPrefix("==")) return ScrIf.Op.EqualsIgnoreCase
+    if (script.stripPrefix("=")) return ScrIf.Op.Equals
+    if (script.stripPrefix("!==")) return ScrIf.Op.NotEqualsIgnoreCase
+    if (script.stripPrefix("!=")) return ScrIf.Op.NotEquals
+    if (script.stripPrefix("~=")) return ScrIf.Op.ContainsIgnoreCase
+    if (script.stripPrefix("~")) return ScrIf.Op.Contains
+    if (script.stripPrefix("&=")) return ScrIf.Op.StartsWith
+    if (script.stripPrefix("=&")) return ScrIf.Op.EndsWith
+    if (script.stripPrefix(">=")) return ScrIf.Op.GreaterOrEqual
+    if (script.stripPrefix(">")) return ScrIf.Op.Greater
+    if (script.stripPrefix("<=")) return ScrIf.Op.SmallerOrEqual
+    if (script.stripPrefix("<")) return ScrIf.Op.Smaller
+    if (script.stripPrefix("&~")) return ScrIf.Op.Spans
+    return null
+}
+
+/**
+ * ```
+ * \u{ACB}
+ *   ^^^^^*
+ * ```
+ */
+private fun parseUnicode(script: SpanCollection): Char {
     var num = 0
-    if (idx[0] >= script.length || script[idx[0]] != '{')
-        throw RuntimeException("invalid unicode escape (Tl unicode escapes must follow the format of \\u{..})")
-    while (++idx[0] < script.length && script[idx[0]] != '}') {
-        val ch = script[idx[0]]
+    if (script.isEmpty || script[0] != '{')
+        throw RuntimeException("invalid unicode escape (Tl unicode escapes must follow the format of \\u{..}) at ${script.at}")
+    while (!script.incIsEmpty() && script[0] != '}') {
+        val ch = script[0]
         num *= 16
         num += when (ch) {
             in '0'..'9' -> ch.code - '0'.code
             in 'a'..'f' -> ch.code - 'a'.code + 10
             in 'A'..'F' -> ch.code - 'A'.code + 10
-            else        -> throw RuntimeException("invalid unicode escape (unicode codepoint must be in hex)")
+            else        -> throw RuntimeException("invalid unicode escape (unicode codepoint must be in hex) at ${script.at}")
         }
     }
-    if (idx[0] >= script.length || script[idx[0]] != '}')
-        throw RuntimeException("invalid unicode escape (Tl unicode escapes must follow the format of \\u{..})")
+    if (script.isEmpty || script[0] != '}')
+        throw RuntimeException("invalid unicode escape (Tl unicode escapes must follow the format of \\u{..}) at ${script.at}")
     if (num !in (Char.MIN_VALUE.code..Char.MAX_VALUE.code))
-        throw RuntimeException("invalid unicode escape (invalid codepoint $num)")
-    idx[0]++
+        throw RuntimeException("invalid unicode escape (invalid codepoint $num) at ${script.at}")
+    script.inc()
     return num.toChar()
 }
 
-private fun parseExpr(script: String, idx: Array<Int>): Script {
-    var tempStr = StringBuilder()
-    val depth = Seq<Char>()
+/**
+ * ```
+ * Hello, world
+ * ^^^^^^*
+ *
+ * (Hiii (e) )
+ * ^^^^^^^^^^^*
+ *
+ * {some.key}
+ * ^^^^^^^^^^*
+ * ```
+ */
+private fun parseExpr(script: SpanCollection): Script {
+    script.trimStart()
+    if (script.isEmpty) throw RuntimeException("input ended before an expression could have been parsed at ${script.at}")
+
+    var keepOn0 = true
+
+    when (script[0]) {
+        '}' -> throw RuntimeException("unexpected char '}' when parsing an expression at ${script.at}")
+        ')' -> throw RuntimeException("unexpected char ')' when parsing an expression at ${script.at}")
+        '\\' -> script.inc()
+        '(' -> {
+            keepOn0 = false
+            script.inc()
+        }
+        '{' -> return parseKey(script)
+    }
+
+    val list = newSeq<Script>()
+
+    var depth = if (keepOn0) 0 else 1
     var backspace = false
-    var terminateOnCr = true
-    idx[0]--
-    while (++idx[0] < script.length) {
+    val text = StringBuilder()
+
+    while (depth > 0 || keepOn0) {
+        if (script.isEmpty) throw RuntimeException("input ended before an expression could have been parsed at ${script.at}")
+        val chr = script[0]
         if (backspace) {
+            when (chr) {
+                'u' -> text.append(parseUnicode(script))
+                'n' -> text.append('\n')
+                else -> text.append(chr)
+            }
+            script.inc()
             backspace = false
-            if (script[idx[0]] !in "(){}\\") tempStr.append('\\')
-            tempStr.append(script[idx[0]])
             continue
         }
-        when (script[idx[0]]) {
-            '\\' -> {
-                backspace = true
-                continue
-            }
-            '(' -> {
-                depth.add(')')
-                if (depth.size == 1) continue
-            }
-            ')' -> {
-                if (depth.isEmpty) break
-                if (depth.pop() != ')') throw RuntimeException("mismatched bracket. expected ')'")
-                if (depth.isEmpty && terminateOnCr) {
-                    idx[0]++
-                    break
-                }
-            }
-            '{' -> {
-                if (depth.isEmpty) terminateOnCr = false
-                depth.add('}')
-            }
-            '}' -> {
-                if (depth.isEmpty) break
-                if (depth.pop() != '}') throw RuntimeException("mismatched bracket. expected '}'")
-            }
+        if (chr == '}') {
+            if (depth == 0) break
+            throw RuntimeException("unexpected char '}' when parsing an expression at ${script.at}")
         }
-        if (depth.isEmpty) terminateOnCr = false
-        if (!depth.isEmpty || !script[idx[0]].isWhitespace() && script[idx[0]] !in "<>=&~!")
-                tempStr.append(script[idx[0]])
-        else break
+        if (chr == ')') {
+            if (depth == 0) throw RuntimeException("closing a string without an opened string at ${script.at}")
+            depth--
+            script.inc()
+            continue
+        }
+        if (chr == '\\') {
+            backspace = true
+            script.inc()
+            continue
+        }
+        if (chr == '(') {
+            depth++
+            script.inc()
+            continue
+        }
+        if (chr == '{') {
+            if (!text.isEmpty()) {
+                list.add(ScrText(text.toString()))
+                text.setLength(0)
+            }
+
+            list.add(parseKey(script))
+
+            continue
+        }
+        if (depth == 0 && chr.isWhitespace()) break
+
+        text.append(chr)
+        script.inc()
+        continue
     }
-    if (!depth.isEmpty) throw RuntimeException("unenclosed expression")
-    return Tl.parse(tempStr.toString())
+
+    if (!text.isEmpty()) list.add(ScrText(text.toString()))
+
+    if (list.size == 0) return ScrNone
+    if (list.size == 1) return list[0]
+    return ScrCombo(list)
 }
 
-private fun parseEach(script: String, idx: Array<Int>): Script {
+/**
+ * ```
+ * {each {name} in {key} split {sep} join {sep}}
+ *      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*
+ * ```
+ */
+private fun parseEach(script: SpanCollection): Script {
     // TODO: {each {name} in {key} <template> split <sep> join <sep> [..if <cond>]}
-    // TODO: move to parseExpr
 
-    if (!script.startsWith("{each", idx[0])) throw RuntimeException("not an each expression")
-    idx[0] += "{each".length - 1
+    script.trimStart()
+    if (script.isEmpty) throw RuntimeException("missing variable at ${script.at}")
+    if (!script.stripPrefix("{")) throw RuntimeException("expected char '{', found '${script[0]}' at ${script.at}")
+    script.trimStart()
 
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    if (script[idx[0]] != '{') throw RuntimeException("unexpected char '${script[idx[0]]}'")
+    val name = buildString { while (true) {
+        if (script.isEmpty) throw RuntimeException("missing variable at ${script.at}")
+        val chr = script[0]
+        if (!chr.isLetterOrDigit() && chr !in "-_.") break
+        script.inc()
+        append(chr)
+    } }
+    script.trimStart()
 
-    var key = ""
-    while (++idx[0] < script.length &&
-        (script[idx[0]].isLetter() ||
-            script[idx[0]].isDigit() ||
-            script[idx[0]] in "-_.")) key += script[idx[0]]
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    if (script[idx[0]] != '}') throw RuntimeException("unexpected char '${script[idx[0]]}'")
+    if (!script.stripPrefix("}")) throw RuntimeException("expected char '}', found '${script[0]}' at ${script.at}")
+    script.trimStart()
 
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (!script.startsWith("in", idx[0])) throw RuntimeException("couldn't find \"in\" expression")
-    idx[0]++
+    if (script.isEmpty) throw RuntimeException("missing \"in\" at ${script.at}")
+    if (!script.stripPrefix("in")) throw RuntimeException("expected \"in\", found char '${script[0]}' at ${script.at}")
 
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    if (script[idx[0]] != '{') throw RuntimeException("unexpected char '${script[idx[0]]}'")
+    val key = parseExpr(script)
+    val template = parseExpr(script)
+    script.trimStart()
 
-    var sourceStr = "{"
-    var depth = 1
-    var backspace = false
-    while (++idx[0] < script.length && depth > 0) {
-        if (backspace) {
-            backspace = false
-            if (script[idx[0]] !in "{}\\") sourceStr += '\\'
-            sourceStr += script[idx[0]]
-            continue
-        }
-        when (script[idx[0]]) {
-            '\\' -> {
-                backspace = true
-                continue
-            }
-            '{' -> depth++
-            '}' -> depth--
-        }
-        sourceStr += script[idx[0]]
-    }
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    val source = Tl.parse(sourceStr)
+    if (script.isEmpty) throw RuntimeException("missing \"split\" at ${script.at}")
+    if (!script.stripPrefix("split")) throw RuntimeException("expected \"split\", found char '${script[0]}' at ${script.at}")
 
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    if (script[idx[0]] != '(') throw RuntimeException("unexpected char '${script[idx[0]]}'")
+    val split = parseExpr(script)
+    script.trimStart()
 
-    var templateStr = ""
-    depth = 1
-    backspace = false
-    while (++idx[0] < script.length) {
-        if (backspace) {
-            backspace = false
-            if (script[idx[0]] !in "()\\") templateStr += '\\'
-            templateStr += script[idx[0]]
-            continue
-        }
-        when (script[idx[0]]) {
-            '\\' -> {
-                backspace = true
-                continue
-            }
-            '(' -> depth++
-            ')' -> depth--
-        }
-        if (depth > 0) templateStr += script[idx[0]] else break
-    }
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    val template = Tl.parse(templateStr)
+    if (script.isEmpty) throw RuntimeException("missing \"join\" at ${script.at}")
+    if (!script.stripPrefix("join")) throw RuntimeException("expected \"join\", found char '${script[0]}' at ${script.at}")
 
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (!script.startsWith("split", idx[0]))
-        throw RuntimeException("couldn't find \"split\" expression")
-    idx[0] += 4
+    val join = parseExpr(script)
+    script.trimStart()
 
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    if (script[idx[0]] != '(') throw RuntimeException("unexpected char '${script[idx[0]]}'")
+    if (!script.stripPrefix("}")) throw RuntimeException("could not close a 'for' statement at ${script.at}")
 
-    var splitStr = ""
-    depth = 1
-    backspace = false
-    while (++idx[0] < script.length) {
-        if (backspace) {
-            backspace = false
-            if (script[idx[0]] !in "()\\") splitStr += '\\'
-            splitStr += script[idx[0]]
-            continue
-        }
-        when (script[idx[0]]) {
-            '\\' -> {
-                backspace = true
-                continue
-            }
-            '(' -> depth++
-            ')' -> depth--
-        }
-        if (depth > 0) splitStr += script[idx[0]] else break
-    }
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    val split = Tl.parse(splitStr)
-
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (!script.startsWith("join", idx[0]))
-            throw RuntimeException("couldn't find \"join\" expression")
-    idx[0] += 3
-
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    if (script[idx[0]] != '(') throw RuntimeException("unexpected char '${script[idx[0]]}'")
-
-    var joinStr = ""
-    depth = 1
-    backspace = false
-    while (++idx[0] < script.length) {
-        if (backspace) {
-            backspace = false
-            if (script[idx[0]] !in "()\\") joinStr += '\\'
-            joinStr += script[idx[0]]
-            continue
-        }
-        when (script[idx[0]]) {
-            '\\' -> {
-                backspace = true
-                continue
-            }
-            '(' -> depth++
-            ')' -> depth--
-        }
-        if (depth > 0) joinStr += script[idx[0]] else break
-    }
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    val join = Tl.parse(joinStr)
-
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed each expression")
-    if (script[idx[0]++] != '}') throw RuntimeException("unexpected char '${script[idx[0]]}'")
-
-    return ScrEach(key, source, template, split, join)
+    return ScrEach(name, key, template, split, join)
 }
 
-private fun parseIf(script: String, idx: Array<Int>, afterOpening: Boolean = false): Script {
-    if (Regex("^\\{if[ ({]") !in script.substring(idx[0])
-        && !(afterOpening && Regex("^if[ ({]") in script.substring(idx[0]))
-    ) throw RuntimeException("not an if statement")
-    idx[0] += if (afterOpening) "if".length else "{if".length
+/**
+ * ```
+ * {if a = b then hi else if a = a then hoi else eh}
+ *     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*
+ * ```
+ */
+private fun parseIf(script: SpanCollection): Script {
+    val lhs = parseExpr(script)
+    val op = parseOp(script) ?: throw RuntimeException("expected an operator, found char '${script[0]}' at ${script.at}")
+    val rhs = parseExpr(script)
 
-    do idx[0]++ while (idx[0] < script.length && script[idx[0]].isWhitespace())
-    val rhs = parseExpr(script, idx)
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed if expression")
+    script.trimStart()
+    if (script.isEmpty) throw RuntimeException("missing \"then\" at ${script.at}")
+    if (!script.stripPrefix("then")) throw RuntimeException("expected \"then\", found char '${script[0]}' at ${script.at}")
 
-    while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-    if (idx[0]-- >= script.length) throw RuntimeException("unenclosed if expression")
-    var tempStr = ""
-    while (++idx[0] < script.length) {
-        if (script[idx[0]] in "<>=&~!") tempStr += script[idx[0]] else break
-    }
-    val op = ScrIf.Op.fromString(tempStr)
+    val then = parseExpr(script)
 
-    while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-    val lhs = parseExpr(script, idx)
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed if expression")
+    script.trimStart()
+    if (script.stripPrefix("}")) return ScrIf(rhs, op, lhs, then, ScrNone)
 
-    while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-    if (Regex("^then[ ({]") !in script.substring(idx[0]))
-        throw RuntimeException("missing 'then' expression")
-    idx[0] += "then".length
-    while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-    val then = parseExpr(script, idx)
-    if (idx[0] >= script.length) throw RuntimeException("unenclosed if expression")
+    if (!script.stripPrefix("else")) throw RuntimeException("missing \"else\" at ${script.at}")
+    script.trimStart()
+    if (script.stripPrefix("if")) return ScrIf(rhs, op, lhs, then, parseIf(script))
 
-    var other: Script = ScrNone
-    while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-    if (Regex("^else[ ({]") in script.substring(idx[0])) {
-        idx[0] += "else".length
-        while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-        other =
-            if (Regex("^if[ ({]") in script.substring(idx[0])) parseIf(script, idx, true)
-            else parseExpr(script, idx)
-    }
-
-    if (!afterOpening) {
-        while (idx[0] < script.length && script[idx[0]].isWhitespace()) idx[0]++
-        if (idx[0] >= script.length || script[idx[0]] != '}') {
-            if (idx[0] >= script.length) throw RuntimeException("unenclosed if expression")
-            else throw RuntimeException("unexpected character '${script[idx[0]]}'")
-        }
-        idx[0]++
-    }
+    val other = parseExpr(script)
+    script.trimStart()
+    if (script.isEmpty) throw RuntimeException("missing '}' at ${script.at}")
+    if (!script.stripPrefix("}")) throw RuntimeException("expected char '}', found '${script[0]}' at ${script.at}")
 
     return ScrIf(rhs, op, lhs, then, other)
 }
 
-private fun parseKey(script: String, idx: Array<Int>): Script {
+/**
+ * ```
+ * {hello}
+ * ^^^^^^^*
+ * ```
+ */
+private fun parseKey(script: SpanCollection): Script {
     // TODO: {<key> [..with {<key>} = (<value>)]}
 
-    if (script.startsWith("{each{", idx[0]) || script.startsWith("{each ", idx[0]))
-        return parseEach(script, idx)
-    if (Regex("^\\{if[ ({]") in script.substring(idx[0])) return parseIf(script, idx)
+    assert(script.stripPrefix("{"))
+    script.trimStart()
 
-    if (idx[0] >= script.length || script[idx[0]++] != '{')
-        throw RuntimeException("invalid key sequence")
-    var text = ""
-    var depth = 1
-    var backslash = false
-    do {
-        if (backslash) {
-            text += script[idx[0]]
-            backslash = true
-            continue
-        }
-        when (script[idx[0]]) {
-            '{' -> depth++
-            '}' -> depth--
-            '\\' -> {
-                backslash = true
-                continue
-            }
-        }
-        if (depth > 0) text += script[idx[0]]
-        else {
-            idx[0]++
-            break
-        }
-    } while (++idx[0] < script.length)
-    return ScrKey(Tl.parse(text))
+    if (script.startsWith("each ") || script.startsWith("each{")) {
+        script.stripPrefix("each")
+        return parseEach(script)
+    }
+    if (script.startsWith("if ") || script.startsWith("if{")) {
+        script.stripPrefix("if")
+        return parseIf(script)
+    }
+
+    return ScrKey(parseRoot(script, true))
 }
 
-private fun parseRoot(script: String, idx: Array<Int>): Script {
+private fun parseRoot(script: SpanCollection, insideBlock: Boolean = false): Script {
     val combo = Seq<Script>()
 
-    var text = ""
+    val text = StringBuilder()
     var backslash = false
-    idx[0]--
-    while (++idx[0] < script.length) {
-        val ch = script[idx[0]]
+    while (!script.isEmpty) {
+        val ch = script[0]
 
         if (backslash) {
             backslash = false
+            script.inc()
 
-            text += when (ch) {
-                'u' -> {
-                    idx[0]++
-                    val o = parseUnicode(script, idx)
-                    idx[0]--
-                    o
-                }
+            text.append(when (ch) {
+                'u' -> parseUnicode(script)
                 'n' -> '\n'
                 else -> ch
-            }
+            })
 
             continue
         }
 
         when (ch) {
-            '\\' -> backslash = true
-            '{' -> {
-                if (!text.isEmpty()) combo.add(ScrText(text))
-                text = ""
-                combo.add(parseKey(script, idx))
-                idx[0]--
+            '\\' -> {
+                backslash = true
+                script.inc()
             }
-            '}' -> throw RuntimeException("unexpected '}'")
-            else -> text += ch
+            '{' -> {
+                if (!text.isEmpty()) combo.add(ScrText(text.toString()))
+                text.setLength(0)
+                combo.add(parseKey(script))
+            }
+            '}' -> {
+                if (insideBlock) {
+                    script.inc()
+
+                    if (!text.isEmpty()) combo.add(ScrText(text.toString()))
+
+                    if (combo.isEmpty) return ScrNone
+                    if (combo.size == 1) return combo[0]
+                    return ScrCombo(combo)
+                }
+                throw RuntimeException("unexpected '}' at ${script.at}")
+            }
+            else -> {
+                text.append(ch)
+                script.inc()
+            }
         }
     }
-    if (!text.isEmpty()) combo.add(ScrText(text))
+    if (insideBlock) throw RuntimeException("unenclosed key at ${script.at}")
+    if (!text.isEmpty()) combo.add(ScrText(text.toString()))
 
     if (combo.isEmpty) return ScrNone
     if (combo.size == 1) return combo[0]
     return ScrCombo(combo)
+}
+
+internal class SpanCollection(val spans: Seq<StringSpan>) {
+    constructor(span: StringSpan) : this(seqOf(span))
+
+    init { assert(!spans.isEmpty) }
+
+    val nonEmptySpan: StringSpan? get() {
+        for (span in spans) {
+            if (span.isEmpty) continue
+            return span
+        }
+        return null
+    }
+    val length get() = spans.sum { it.length }
+    val line get() = span.line
+    val column get() = span.column
+    val start get() = span.start
+    val source get() = span.source
+    val span: StringSpan get() = nonEmptySpan ?: spans.last()
+    val at get() = "$line:$column"
+    val isEmpty get() = spans.all { it.isEmpty }
+
+    operator fun get(pos: Int): Char {
+        if (pos < 0) throw IndexOutOfBoundsException("Index is negative")
+        var p = pos
+        for (span in spans) {
+            if (span.length <= p) {
+                p -= span.length
+                continue
+            }
+            return span[p]
+        }
+        throw IndexOutOfBoundsException("Index is too large ($pos >= $length)")
+    }
+
+    fun inc(): Int {
+        for (span in spans) {
+            if (span.isEmpty) continue
+            span.inc()
+            break
+        }
+
+        return length
+    }
+
+    fun incIsEmpty(): Boolean {
+        for (span in spans) {
+            if (span.isEmpty) continue
+            span.inc()
+            break
+        }
+
+        return isEmpty
+    }
+
+    fun incAfter(): Int {
+        val length = length
+
+        for (span in spans) {
+            if (span.isEmpty) continue
+            span.inc()
+            break
+        }
+
+        return length
+    }
+
+    fun dec(): Int {
+        for (i in 0..<spans.size) {
+            val span = spans[spans.size - i - 1]
+            if (span.length == span.initalLength) continue
+            span.dec()
+            return length
+        }
+        throw IndexOutOfBoundsException("Cannot subtract any more")
+    }
+
+    fun stripPrefix(prefix: String): Boolean {
+        for (span in spans) {
+            if (span.isEmpty) continue
+            return span.stripPrefix(prefix)
+        }
+        return false
+    }
+
+    fun startsWith(prefix: String): Boolean {
+        for (span in spans) {
+            if (span.isEmpty) continue
+            return span.startsWith(prefix)
+        }
+        return false
+    }
+
+    fun trimStart() {
+        for (span in spans) {
+            if (span.isEmpty) continue
+            span.trimStart()
+            return
+        }
+    }
+
+    fun copy() = SpanCollection(Seq.with(spans))
+}
+
+internal class TemplateSpan(val source: String, var start: Int, var length: Int, val line: Int, val column: Int) {
+    constructor(source: SpanCollection) : this(source.nonEmptySpan!!)
+    constructor(source: StringSpan) : this(source.source, source.start, 1, source.line, source.column)
+}
+
+internal class TemplateSpanCollection {
+    val spans = newSeq<TemplateSpan>()
+    var predictPos = -1
+    var lastString: String? = null
+
+    fun growFrom(source: StringSpan) {
+        if (source.start == predictPos && source.source === lastString) {
+            spans.last().length++
+            predictPos++
+            return
+        }
+        spans.add(TemplateSpan(source))
+        predictPos = source.start + 1
+        lastString = source.source
+    }
+
+    fun growFrom(source: SpanCollection) {
+        if (source.start == predictPos && source.source === lastString) {
+            spans.last().length++
+            predictPos++
+            return
+        }
+        spans.add(TemplateSpan(source))
+        predictPos = source.start + 1
+        lastString = source.source
+    }
+
+    fun intoSpanCollection(): SpanCollection {
+        val s = newSeq<StringSpan>(spans.size)
+        for (span in spans) {
+            s.add(StringSpan(span.source, span.start, span.length, span.line, span.column))
+        }
+        return SpanCollection(s)
+    }
+}
+
+internal class StringSpan(
+    var source: String,
+    var start: Int,
+    var length: Int,
+    var line: Int,
+    var column: Int,
+    val initalLength: Int,
+    // var columnCollection: IntSeq?,
+) {
+    constructor(
+        source: String,
+        start: Int,
+        length: Int,
+        line: Int,
+        column: Int,
+    ) : this(
+        source,
+        start,
+        length,
+        line,
+        column,
+        length,
+        // null,
+    )
+    constructor(source: String) : this(source, 0, source.length, 1, 1)
+
+    val at get() = "$line:$column"
+    val isEmpty get() = length == 0
+
+    operator fun get(pos: Int): Char {
+        if (pos < 0) throw IndexOutOfBoundsException("Index is negative")
+        if (pos >= length) throw IndexOutOfBoundsException("Index is too large ($pos >= $length)")
+        return source[start + pos]
+    }
+
+    fun next(): Char {
+        val c = get(0)
+        inc()
+        return c
+    }
+
+    fun inc(): Int {
+        if (get(0) == '\n') {
+            // if (columnCollection?.let { it.add(column); K } == null) columnCollection = IntSeq.with(column)
+            line++
+            column = 1
+        } else column++
+        length--
+        start++
+        return length
+    }
+
+    fun dec(): Int {
+        if (length == initalLength) throw IndexOutOfBoundsException("Cannot subtract any more")
+
+        length++
+        start--
+
+        if (get(0) == '\n') {
+            line--
+            // Those must always be available.
+            // column = columnCollection!!.pop()
+            column = Int.MAX_VALUE // This is OK since dec() is only used to counter inc() in a loop, thus this value
+                                   // is immediately discarded.
+        } else column--
+
+        return length
+    }
+
+    fun stripPrefix(prefix: String): Boolean {
+        if (length < prefix.length) return false
+        if (!source.startsWith(prefix, start)) return false
+        prefix.indices.forEach { _ -> inc() }
+        return true
+    }
+
+    fun startsWith(prefix: String): Boolean {
+        if (length < prefix.length) return false
+        return source.startsWith(prefix, start)
+    }
+
+    fun trimStart() {
+        while (!isEmpty && get(0).isWhitespace()) inc()
+        return
+    }
+
+    // fun copy(): StringSpan = StringSpan(source, start, length, line, column, initalLength, columnCollection?.let { IntSeq(it.size).apply { addAll(it) } })
+    fun copy(): StringSpan = StringSpan(source, start, length, line, column, initalLength)
 }
 
 /**
@@ -800,11 +1079,11 @@ object Tl {
     }
 
     @JvmStatic
-    fun parse(script: String): Script {
-        val idx = arrayOf(0)
-        val script = parseRoot(script, idx)
-        return script
-    }
+    fun parse(script: String): Script = parse(StringSpan(script))
+    @JvmStatic
+    internal inline fun parse(script: StringSpan): Script = parse(SpanCollection(script))
+    @JvmStatic
+    internal inline fun parse(script: SpanCollection): Script = parseRoot(script)
 }
 
 object Tlu {

@@ -142,7 +142,9 @@ val supportedLanguageCodes = arrayOf(
 val auto = LanguageCode("Detect Language", "auto")
 fun languageCodeFor(locale: String): LanguageCode? =
     supportedLanguageCodes.find { it.code.equals(locale, true) } ?:
-    supportedLanguageCodes.find { splitOnceFirst(it.code, "-").equals(splitOnceFirst(locale, "-"), true) }
+    supportedLanguageCodes.find { it.code.equals(locale.replace('-', '_'), true) } ?:
+    supportedLanguageCodes.find { splitOnceFirst(it.code, "-").equals(splitOnceFirst(locale, "-"), true) } ?:
+    supportedLanguageCodes.find { splitOnceFirst(it.code, "_").equals(splitOnceFirst(locale, "_"), true) }
 
 private val translationApiUrl = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&dt=t"
 

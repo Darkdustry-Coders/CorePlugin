@@ -66,7 +66,7 @@ internal fun initSchemeSize() {
                 obj.append("\",")
             }
         }
-        Call.serverPacketReliable("Subtitles", "$obj}")
+        Call.clientPacketReliable("Subtitles", "$obj}")
     }
     on<EventType.PlayerJoin> { event ->
         // This packet is supposed to send the player ID of the host.

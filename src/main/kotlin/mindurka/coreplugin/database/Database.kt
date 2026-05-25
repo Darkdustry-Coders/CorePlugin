@@ -17,6 +17,7 @@ import mindurka.api.sleep
 import mindurka.config.SharedConfig
 import mindurka.coreplugin.Config
 import mindurka.coreplugin.PlayerData
+import mindurka.coreplugin.TranslatorStyle
 import mindurka.coreplugin.sessionData
 import mindurka.util.Async
 import mindurka.util.UnreachableException
@@ -117,6 +118,7 @@ internal object DatabaseScripts {
     val loaduserScript: String = Streams.copyString(loader.getResourceAsStream("sql/loaduser.surrealql"))
     val setkeyScript: String = Streams.copyString(loader.getResourceAsStream("sql/setkey.surrealql"))
     val setpermissionlevelScript: String = Streams.copyString(loader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
+    val settranslatorsettingsScript: String = Streams.copyString(loader.getResourceAsStream("sql/settranslatorsettings.surrealql"))
 
     val ispsFetchScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_fetch.surrealql"))
     val ispsUpdateScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_update.surrealql"))
@@ -470,6 +472,7 @@ object Database {
         session.keySet = query.result.at("key_set").asBoolean()
         session.shortId = if (query.result.at("short_id").isNull) null else query.result.at("short_id").asLong()
         session.customname = if (query.result.at("set_name").isNull) null else query.result.at("set_name").asString()
+        session.translatorStyle = TranslatorStyle.entries[query.result.at("translator_style").asInteger()]
         session.`unsafe$rawSetPermissionLevel`(query.result.at("permission_level").asInteger())
     }
 
@@ -543,10 +546,10 @@ object Database {
             .x("server", Config.i.serverName)).ok().result.asBoolean()
     }
 
-    internal fun kickBroadcast(player: Player, reason: String, admin: String) {
+    internal fun kickBroadcast(player: String, reason: String, admin: String) {
         Tl.broadcast()
             .put("admin", admin)
-            .put("target", player.sessionData.fullName())
+            .put("target", player)
             .put("reason", reason)
             .done("{generic.admin.kick}")
     }
@@ -576,7 +579,7 @@ object Database {
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        kickBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
+        kickBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
         kickConnection(player.con, id, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
@@ -595,16 +598,16 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
-            kickBroadcast(po, reason, admin?.sessionData?.simpleName() ?: "<Console>")
+            kickBroadcast(po.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
             kickConnection(po.con, id, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
     }
 
-    internal fun banBroadcast(player: Player, reason: String, admin: String) {
+    internal fun banBroadcast(player: String, reason: String, admin: String) {
         Tl.broadcast()
             .put("admin", admin)
-            .put("target", player.sessionData.fullName())
+            .put("target", player)
             .put("reason", reason)
             .done("{generic.admin.ban}")
     }
@@ -634,7 +637,7 @@ object Database {
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        banBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
+        banBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
         banConnection(player.con, id, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
@@ -653,6 +656,7 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
+            banBroadcast(player.lastName, reason, admin?.sessionData?.simpleName() ?: "<Console>")
             banConnection(po.con, id, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
@@ -666,6 +670,15 @@ object Database {
         banCache.removeAll { it.value.user == userId }
         return abstractQuerySingle(Query(DatabaseScripts.unbanScript)
             .x("user", userId)).ok().result.asBoolean()
+    }
+
+    /** Set player's translation preferences. */
+    @PublicAPI
+    suspend fun setTranslationPreference(profileId: String, style: TranslatorStyle, skipTranslation: Seq<String>) {
+        abstractQuery(Query(DatabaseScripts.settranslatorsettingsScript)
+            .x("profile", profileId)
+            .x("translator_style", style.ordinal)
+            .x("skip_translation_of", skipTranslation.iterator().collect(ArrayList(skipTranslation.size)))).ok()
     }
 }
 
