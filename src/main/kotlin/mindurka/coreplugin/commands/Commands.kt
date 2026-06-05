@@ -103,7 +103,7 @@ private class CommandRegistrationContext(private val handle: CommandHandler) {
                             args.toString()
                         })
                     }
-                    formatter.done("{generic.checks.invalid-arguments$suffix")
+                    formatter.done("{generic.checks.invalid-arguments$suffix}")
                 }
 
                 if (caller is Player) caller.sendMessage(message)

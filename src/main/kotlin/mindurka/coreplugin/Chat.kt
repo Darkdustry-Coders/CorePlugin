@@ -131,6 +131,9 @@ internal fun initChat() {
 
 // And it'll only become more complex as the time goes!
 fun broadcastChatMessage(sender: String, message: String, playerSender: Player? = null, service: String? = null, isTeam: Boolean = false, isAdmin: Boolean = false, filter: Boolf<Player> = { true }) {
+    val isTeam = isTeam.toString()
+    val isAdmin = isAdmin.toString()
+
     val langs = ObjectMap<LanguageCode, Seq<Player>>()
     for (target in Groups.player) {
         if (!filter[target]) continue
@@ -138,8 +141,8 @@ fun broadcastChatMessage(sender: String, message: String, playerSender: Player? 
         if (otherCode === null || target === playerSender || playerSender?.sessionData?.translatorStyle === TranslatorStyle.Disabled) {
             Call.sendMessage(target.con, Tl.fmt(target)
                 .put("service", service ?: "")
-                .put("isteam", isTeam.toString())
-                .put("isadmin", isAdmin.toString())
+                .put("isteam", isTeam)
+                .put("isadmin", isAdmin)
                 .put("tlstyle", "none")
                 .put("lang", "[scarlet]LANG???")
                 .put("origmessage", "[scarlet]OMSG???")
@@ -160,7 +163,10 @@ fun broadcastChatMessage(sender: String, message: String, playerSender: Player? 
         Async.run async@{
             val origmessage = message
             val message = try { run t@{
-                translateFor(message, auto, lang) ?: return@t null
+                val m = translateFor(message, auto, lang) ?: return@t null
+                if (m.text.equals(origmessage, true)) return@t null
+                if (sameLang(m.language, lang.name)) return@t null
+                m
             } } catch (e: Exception) {
                 Log.err("Translation failed for lang $lang: ", e)
                 null
@@ -168,8 +174,8 @@ fun broadcastChatMessage(sender: String, message: String, playerSender: Player? 
                 for (target in players) {
                     Call.sendMessage(target.con, Tl.fmt(target)
                         .put("service", service ?: "")
-                        .put("isteam", isTeam.toString())
-                        .put("isadmin", isAdmin.toString())
+                        .put("isteam", isTeam)
+                        .put("isadmin", isAdmin)
                         .put("tlstyle", "none")
                         .put("lang", "[scarlet]LANG???")
                         .put("origmessage", "[scarlet]OMSG???")
@@ -185,8 +191,8 @@ fun broadcastChatMessage(sender: String, message: String, playerSender: Player? 
             for (target in players) {
                 Call.sendMessage(target.con, Tl.fmt(target)
                     .put("service", service ?: "")
-                    .put("isteam", isTeam.toString())
-                    .put("isadmin", isAdmin.toString())
+                    .put("isteam", isTeam)
+                    .put("isadmin", isAdmin)
                     .put("tlstyle", target.sessionData.translatorStyle.shortName)
                     .put("lang", message.language)
                     .put("origmessage", origmessage)

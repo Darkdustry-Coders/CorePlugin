@@ -52,6 +52,7 @@ import kotlin.jvm.javaClass
 import kotlin.math.max
 import kotlin.system.exitProcess
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -225,16 +226,57 @@ object Database {
                     .x("server_name", Config.i.serverName)).await().ok()
 
                 driver!!.onLive(liveQueries[0].result.asString()) { update ->
-                    val votekickId = update.data.at("id").asString()
-                    votekickCache.removeAll { it.value.id == votekickId }
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    votekickCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                    return@onLive
                 }
                 driver!!.onLive(liveQueries[1].result.asString()) { update ->
-                    val kickId = update.data.at("id").asString()
-                    kickCache.removeAll { it.value.id == kickId }
+                    val pardoned = update.data.at("pardoned").asBoolean()
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    if (pardoned) {
+                        kickCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                        return@onLive
+                    }
+
+                    val reason = update.data.at("reason").asString()
+                    val admin = update.data.at("admin").asString()
+                    val expires = update.data.at("duration").let { duration ->
+                        if (duration.isNull) return@let null
+                        Clock.System.now() + duration.asLong().milliseconds
+                    }
+
+                    Groups.player.each { player ->
+                        if (player.sessionData.userId != userId) return@each
+                        kickBroadcast(player.sessionData.simpleName(), reason, admin)
+                        kickConnection(player.con, entryId, player.locale, reason, expires, admin)
+                    }
                 }
                 driver!!.onLive(liveQueries[2].result.asString()) { update ->
-                    val banId = update.data.at("id").asString()
-                    banCache.removeAll { it.value.id == banId }
+                    val pardoned = update.data.at("pardoned").asBoolean()
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    if (pardoned) {
+                        banCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                        return@onLive
+                    }
+
+                    val reason = update.data.at("reason").asString()
+                    val admin = update.data.at("admin").asString()
+                    val expires = update.data.at("duration").let { duration ->
+                        if (duration.isNull) return@let null
+                        Clock.System.now() + duration.asLong().milliseconds
+                    }
+
+                    Groups.player.each { player ->
+                        if (player.sessionData.userId != userId) return@each
+                        banBroadcast(player.sessionData.simpleName(), reason, admin)
+                        banConnection(player.con, entryId, player.locale, reason, expires, admin)
+                    }
                 }
 
                 linkedChannels.addAll(liveQueries[3].result.asJsonList().iterator().map { link -> LinkedChannels.new(
@@ -472,7 +514,10 @@ object Database {
         session.keySet = query.result.at("key_set").asBoolean()
         session.shortId = if (query.result.at("short_id").isNull) null else query.result.at("short_id").asLong()
         session.customname = if (query.result.at("set_name").isNull) null else query.result.at("set_name").asString()
-        session.translatorStyle = TranslatorStyle.entries[query.result.at("translator_style").asInteger()]
+        session.translatorStyle = query.result.at("translator_style").asInteger().let { id ->
+            if (id < 0 || id >= TranslatorStyle.entries.size) return@let TranslatorStyle.Disabled
+            TranslatorStyle.entries[id]
+        }
         session.`unsafe$rawSetPermissionLevel`(query.result.at("permission_level").asInteger())
     }
 

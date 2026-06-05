@@ -623,6 +623,7 @@ private fun parseExpr(script: SpanCollection): Script {
             throw RuntimeException("unexpected char '}' when parsing an expression at ${script.at}")
         }
         if (chr == ')') {
+            if (depth > 1 || keepOn0) text.append(')')
             if (depth == 0) throw RuntimeException("closing a string without an opened string at ${script.at}")
             depth--
             script.inc()
@@ -634,6 +635,7 @@ private fun parseExpr(script: SpanCollection): Script {
             continue
         }
         if (chr == '(') {
+            text.append('(')
             depth++
             script.inc()
             continue

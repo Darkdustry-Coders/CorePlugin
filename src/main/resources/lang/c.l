@@ -75,6 +75,7 @@ chat = {if {service} != () then ({generic.chat.service.{service}} )}
      - [scarlet][[{player}]
      - {if {tlstyle} = short then ( [gray]({lang})[])}
      - : [white]{message}
+     - {if {tlstyle} = classic then [lightgray]({origmessage})}
      - {if {tlstyle} = multiline then (\n{generic.chat.original})}
 
 chat.original = [gray]Original ({lang}): []{origmessage}
@@ -756,3 +757,7 @@ multiline.description = Displaying both original and translated messages.
 short.name = [{col.ok}]Short
 short.example = [scarlet][[{player}] [gray](de)[]: [white]Hello!
 short.description = A shorter variant for if you can't read the original language anyway.
+
+classic.name = [{col.ok}]Classic
+classic.example = [scarlet][[{player}]: [white]Hallo! [lightgray](Hello!)
+classic.description = Ye olde look, no more, no less.

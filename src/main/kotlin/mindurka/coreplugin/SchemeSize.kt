@@ -107,12 +107,8 @@ internal fun initSchemeSize() {
             if (x == player) continue
             obj.append("${x.id}:\"${escapeJson(sub)}\",")
         }
-<<<<<<< HEAD
-        Call.clientPacketReliable("Subtitles", "$obj}")
-=======
         obj.append("}")
         if (obj.length > 2) player.sendPacket("Subtitles", obj.toString())
->>>>>>> refs/remotes/origin/master
     }
 
     on<EventType.PlayerJoin> { event ->

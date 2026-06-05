@@ -10,6 +10,8 @@ private val header = byteArrayOf('M'.code.toByte(), 'D'.code.toByte(), 'R'.code.
  * Target file is automatically erased.
  **/
 class ActiveRecording(val dest: RandomAccessFile) {
+    private val buffer = ByteArray(1024 * 1024 * 8)
+
     init {
         dest.setLength(0)
         dest.seek(0)

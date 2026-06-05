@@ -45,6 +45,14 @@ enum class TranslatorStyle(@JvmField val shortName: String) {
      * ```
      */
     Short("short"),
+    /**
+     * Classic chat style.
+     *
+     * ```
+     * [player]: Hallo (Hello)
+     * ```
+     */
+    Classic("classic"),
 }
 
 /** Player session data. */
@@ -373,9 +381,17 @@ private fun settings(caller: Player, @Rest path: Seq<String>?) = Async.run async
                             Async.run { Database.setTranslationPreference(sessionData.profileId, sessionData.translatorStyle, newSeq()) }
                             rerenderDialog()
                         }
+                    }
+                    group {
                         option("{commands.settings.translator.short.name}") {
                             val sessionData = caller.sessionData
                             sessionData.translatorStyle = TranslatorStyle.Short
+                            Async.run { Database.setTranslationPreference(sessionData.profileId, sessionData.translatorStyle, newSeq()) }
+                            rerenderDialog()
+                        }
+                        option("{commands.settings.translator.classic.name}") {
+                            val sessionData = caller.sessionData
+                            sessionData.translatorStyle = TranslatorStyle.Classic
                             Async.run { Database.setTranslationPreference(sessionData.profileId, sessionData.translatorStyle, newSeq()) }
                             rerenderDialog()
                         }

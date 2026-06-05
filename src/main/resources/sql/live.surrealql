@@ -1,5 +1,23 @@
 live select <string> record::id(id) as id from mindustry_votekick where server_name = $server_name and pardoned = true;
-live select <string> record::id(id) as id from mindustry_kick where server_name = $server_name and pardoned = true;
-live select <string> record::id(id) as id from mindustry_ban where server_name = $server_name and pardoned = true;
+
+live select
+    <string> record::id(id) as id,
+    <string> record::id(user) as user_id,
+    pardoned,
+    reason,
+    if admin = none { "<Console>" } else { admin } as admin,
+    if expires = none { null } else { (expires - time::now()).millis() } as expires,
+from mindustry_kick
+where server_name = $server_name;
+
+live select
+    <string> record::id(id) as id,
+    <string> record::id(user) as user_id,
+    pardoned,
+    reason,
+    if admin = none { "<Console>" } else { admin } as admin,
+    if expires = none { null } else { (expires - time::now()).millis() } as expires,
+from mindustry_ban;
+
 select <string> record::id(id) as id, links from linked_channel;
 live select <string> record::id(id) as id, links from linked_channel;

@@ -5,6 +5,7 @@ import arc.util.Strings
 import arc.util.serialization.JsonReader
 import mindurka.util.Async
 import mindurka.util.splitOnceFirst
+import mindurka.util.splitOnceLast
 import mindustry.Vars
 import java.io.ByteArrayInputStream
 
@@ -159,4 +160,14 @@ suspend fun translateFor(source: String, from: LanguageCode, to: LanguageCode): 
         Log.err("Translation failed", e)
         return null
     }
+}
+
+fun sameLang(that: String, other: String): Boolean {
+    val that = that.replace('_', '-').lowercase()
+    val other = other.replace('_', '-').lowercase()
+
+    if (that == other) return true
+    that.splitOnceLast("-") { a, _ -> other.splitOnceLast("-") { b, _ -> if (a == b) return true } }
+
+    return false
 }
