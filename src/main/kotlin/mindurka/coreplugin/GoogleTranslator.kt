@@ -140,9 +140,11 @@ val supportedLanguageCodes = arrayOf(
     LanguageCode("Zulu", "zu"),
 )
 val auto = LanguageCode("Detect Language", "auto")
-fun languageCodeFor(locale: String): LanguageCode? =
-    supportedLanguageCodes.find { it.code.equals(locale, true) } ?:
-    supportedLanguageCodes.find { splitOnceFirst(it.code, "-").equals(splitOnceFirst(locale, "-"), true) }
+fun languageCodeFor(locale: String): LanguageCode? {
+    val normalized = locale.replace('_', '-')
+    return supportedLanguageCodes.find { it.code.equals(normalized, true) } ?:
+        supportedLanguageCodes.find { splitOnceFirst(it.code, "-").equals(splitOnceFirst(normalized, "-"), true) }
+}
 
 private val translationApiUrl = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&dt=t"
 

@@ -219,11 +219,19 @@ private fun team(caller: Player, team: Team, @Rest target: Player?) { (target ?:
 @EnabledIf(AdminCommandsEnabled::class)
 private fun despawn(caller: Player, @Rest unit: Unit?) {
     if (unit == null) {
-        Groups.unit.copy().each(Unit::kill)
+        caller.unit()?.let { Call.unitDespawn(it) }
     } else {
-        unit.kill()
+        Groups.unit.copy().each {Call.unitDespawn(it)}
     }
 }
+
+@Command
+@RequiresPermission(PermLevels.admin)
+@EnabledIf(AdminCommandsEnabled::class)
+private fun despawnall(caller: Player, @Rest kind: UnitType?, @Rest team: Team?) {
+    Groups.unit.copy().each { u -> if (u.type == kind && (team == null || u.team == team )) Call.unitDespawn(u) }
+}
+
 
 @Command
 @RequiresPermission(PermLevels.admin)

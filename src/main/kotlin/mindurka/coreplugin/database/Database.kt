@@ -131,6 +131,8 @@ internal object DatabaseScripts {
     val unbanScript: String = Streams.copyString(loader.getResourceAsStream("sql/unban.surrealql"))
     val statsScript: String = Streams.copyString(loader.getResourceAsStream("sql/stats.surrealql"));
     val gamePlayedScript: String = Streams.copyString(loader.getResourceAsStream("sql/game_played.surrealql"));
+    val resetStatsScript: String = Streams.copyString(loader.getResourceAsStream("sql/reset_stats.surrealql"))
+    val cheatBanCountScript: String = Streams.copyString(loader.getResourceAsStream("sql/cheat_ban_count.surrealql"))
 
     fun noop() {}
 }
@@ -656,6 +658,15 @@ object Database {
             banConnection(po.con, id, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
+    }
+
+    suspend fun cheatBanCount(userId: String): Int =
+        abstractQuerySingle(Query(DatabaseScripts.cheatBanCountScript)
+            .x("user", userId)).ok().result.asInteger()
+
+    suspend fun resetStats(profileId: String) {
+        abstractQuery(Query(DatabaseScripts.resetStatsScript)
+            .x("profile", profileId)).ok()
     }
 
     /**

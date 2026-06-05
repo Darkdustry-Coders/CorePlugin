@@ -1,0 +1,9 @@
+let $player = type::record("mindustry_profile", <uuid> $profile);
+update $player set
+    play_time = 0s,
+    games_played = 0,
+    blocks_placed = 0,
+    blocks_broken = 0,
+    waves = 0;
+delete mindustry_profile_gamemode where id[0] = $player;
+return none;

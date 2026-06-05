@@ -60,6 +60,7 @@ import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
 import kotlin.math.min
 import kotlin.system.exitProcess
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 
 object CorePlugin {
@@ -317,6 +318,19 @@ object CorePlugin {
             }
 
             false
+        }
+
+        // Only modified client can send buildSelect when possession disabled
+        Vars.netServer.admins.addActionFilter{action ->
+            if (action.type == Administration.ActionType.buildSelect && !Vars.state.rules.possessionAllowed) {
+                Async.run {
+                    Database.ban(action.player, null, Duration.parse("7d"), "Cheat")
+                    if (Database.cheatBanCount(action.player.sessionData.userId) > 1) {
+                        Database.resetStats(action.player.sessionData.profileId)
+                    }
+                }
+            }
+            true
         }
 
         on<EventType.PlayEvent> { _ ->
