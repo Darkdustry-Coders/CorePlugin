@@ -219,9 +219,9 @@ private fun team(caller: Player, team: Team, @Rest target: Player?) { (target ?:
 @EnabledIf(AdminCommandsEnabled::class)
 private fun despawn(caller: Player, @Rest unit: Unit?) {
     if (unit == null) {
-        caller.unit()?.let { Call.unitDespawn(it) }
+        Groups.unit.copy().each(Unit::kill)
     } else {
-        Groups.unit.copy().each {Call.unitDespawn(it)}
+        unit.kill()
     }
 }
 
