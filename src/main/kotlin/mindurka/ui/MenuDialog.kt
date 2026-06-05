@@ -16,6 +16,7 @@ import arc.func.Cons
 import arc.func.Prov
 import arc.util.Timer
 import arc.struct.Seq
+import kotlinx.coroutines.future.await
 import mindurka.api.Lifetime
 import mindurka.util.Ref
 import mindurka.util.UnsafeNull
@@ -346,7 +347,7 @@ class MenuBuilder<T>(
 
 @PublicAPI
 @OptIn(UiInternals::class, UnsafeNull::class)
-fun <T> Player.openMenu(dialogFun: MenuBuilder<T>.() -> kotlin.Unit): CompletableFuture<T?> {
+suspend fun <T> Player.openMenu(dialogFun: MenuBuilder<T>.() -> kotlin.Unit): T? {
     val dialog = Ref(nodecl<MenuDialog<T>>())
     val lifetime = object : Lifetime() {
         override fun uponEnd() {
@@ -370,5 +371,5 @@ fun <T> Player.openMenu(dialogFun: MenuBuilder<T>.() -> kotlin.Unit): Completabl
     dialog.r.rerender?.run()
     dialog.r.rerender = null
     dialog.r.write(this)
-    return dialog.r.future
+    return dialog.r.future.await()
 }

@@ -1,9 +1,12 @@
 package mindurka.coreplugin.extern
 
+import arc.struct.StringMap
+import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.hasMindurkaCompat
 import mindurka.coreplugin.sessionData
 import mindurka.util.Async
 import mindustry.gen.Player
+import mindustry.maps.Map
 
 /**
  * Frontend for custom Mindustry server to interact with CorePlugin.
@@ -20,4 +23,10 @@ object HeaderI: Header() {
     }
 
     override fun hasMindurkaCompat(player: Player?): Boolean = player?.hasMindurkaCompat ?: false
+    override fun onMapLoad(): Boolean {
+        if (CorePlugin.restarting) {
+            CorePlugin.actuallyDoARestart()
+        }
+        return !CorePlugin.restarting
+    }
 }

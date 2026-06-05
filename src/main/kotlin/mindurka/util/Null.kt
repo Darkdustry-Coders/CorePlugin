@@ -9,7 +9,7 @@ annotation class UnsafeNull
 @UnsafeNull
 @PublicAPI
 @Suppress("UNCHECKED_CAST")
-fun <T> nodecl(): T = null as T
+inline fun <T> nodecl(): T = null as T
 
 @UnsafeNull
 @PublicAPI

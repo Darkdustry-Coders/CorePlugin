@@ -1,13 +1,13 @@
 package mindurka.coreplugin
 
 // Keeping those unwrapped for my own sanity.
-import arc.Core
 import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.ObjectMap
 import arc.util.Log
 import arc.util.Strings
+import arc.util.Threads
 import arc.util.Time
 import buj.tl.Tl
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -32,6 +32,7 @@ import mindurka.coreplugin.messages.BringPlayerBack
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.nativeimage.nativeImageHeatUp
+import mindurka.coreplugin.recording.initRecording
 import mindurka.coreplugin.votes.Vote
 import mindurka.ui.handleUiEvent
 import mindurka.util.Async
@@ -93,27 +94,18 @@ object CorePlugin {
     @JvmField var currentGlobalVote: Vote? = null
     @JvmField val teamVotes = IntMap<Vote>()
     @JvmField val mainThread = Thread.currentThread()
-    @JvmField val teamRestoreCache = ObjectMap<String, TeamRestoreCache>()
     @JvmField var restarting = false
     @JvmField internal var shuttingDown = false
 
-    private fun actuallyDoARestart() {
-        if (Gamemode.sendHub) hubServer()?.let { hub ->
-            if (Gamemode.sendBringBackPacket) {
-                val ids = Groups.player.iterator().map { it.sessionData.profileId }.collect(ArrayList())
-                if (!NiMetadata.shortcircuit()) RabbitMQ.sendBypass(BringPlayerBack(ids), "#")
-            }
+    internal fun actuallyDoARestart() {
+        if (shuttingDown) return
+        shuttingDown = true
 
-            hub.splitOnceLast(":") { ip, port -> port?.toUShortOrNull()?.let { port ->
-                val packet = ConnectCallPacket()
-                packet.ip = ip
-                packet.port = port.toInt()
-                for (player in Groups.player) player.con.send(packet, true)
-            } }
+        Async.run {
+            for (player in Groups.player) player.sessionData.releaseLocks()
 
-            null
+            exitProcess(0)
         }
-        exitProcess(0)
     }
 
     fun scheduleRestart() {
@@ -334,8 +326,6 @@ object CorePlugin {
         }
 
         on<EventType.PlayEvent> { _ ->
-            teamRestoreCache.clear()
-
             if (SpecialSettings.currentMap().patch < 7) { Groups.build.each(Building::heal) }
         }
 
@@ -463,6 +453,7 @@ object CorePlugin {
         initHubDiscovery()
         initSchemeSize()
         initTeams()
+        initRecording()
 
         interval(30f) { Async.run {
             for (player in Groups.player) {
@@ -500,6 +491,7 @@ object CorePlugin {
             Log.info("Selected next map to be ${map.name()}.")
             Consts.serverControl.play {
                 emit(RoundEndEvent)
+                if (restarting) return@play
                 map.rtv()
             }
         }
@@ -546,12 +538,14 @@ object CorePlugin {
             }
             if (!NiMetadata.shortcircuit()) RabbitMQ.sendBypass(ServerDown(), "#")
 
-            if (!NiMetadata.shortcircuit()) RabbitMQ.close()
-
             for (player in Groups.player) {
                 player.con.kick("Server closed", 0L)
             }
             Vars.net.closeServer()
+
+            Threads.sleep(500)
+
+            if (!NiMetadata.shortcircuit()) RabbitMQ.close()
         })
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.")

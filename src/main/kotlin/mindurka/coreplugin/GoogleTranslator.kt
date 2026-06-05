@@ -5,6 +5,7 @@ import arc.util.Strings
 import arc.util.serialization.JsonReader
 import mindurka.util.Async
 import mindurka.util.splitOnceFirst
+import mindurka.util.splitOnceLast
 import mindustry.Vars
 import java.io.ByteArrayInputStream
 
@@ -140,11 +141,11 @@ val supportedLanguageCodes = arrayOf(
     LanguageCode("Zulu", "zu"),
 )
 val auto = LanguageCode("Detect Language", "auto")
-fun languageCodeFor(locale: String): LanguageCode? {
-    val normalized = locale.replace('_', '-')
-    return supportedLanguageCodes.find { it.code.equals(normalized, true) } ?:
-        supportedLanguageCodes.find { splitOnceFirst(it.code, "-").equals(splitOnceFirst(normalized, "-"), true) }
-}
+fun languageCodeFor(locale: String): LanguageCode? =
+    supportedLanguageCodes.find { it.code.equals(locale, true) } ?:
+    supportedLanguageCodes.find { it.code.equals(locale.replace('-', '_'), true) } ?:
+    supportedLanguageCodes.find { splitOnceFirst(it.code, "-").equals(splitOnceFirst(locale, "-"), true) } ?:
+    supportedLanguageCodes.find { splitOnceFirst(it.code, "_").equals(splitOnceFirst(locale, "_"), true) }
 
 private val translationApiUrl = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&dt=t"
 
@@ -159,4 +160,14 @@ suspend fun translateFor(source: String, from: LanguageCode, to: LanguageCode): 
         Log.err("Translation failed", e)
         return null
     }
+}
+
+fun sameLang(that: String, other: String): Boolean {
+    val that = that.replace('_', '-').lowercase()
+    val other = other.replace('_', '-').lowercase()
+
+    if (that == other) return true
+    that.splitOnceLast("-") { a, _ -> other.splitOnceLast("-") { b, _ -> if (a == b) return true } }
+
+    return false
 }

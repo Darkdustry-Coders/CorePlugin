@@ -6,9 +6,7 @@ import arc.util.CommandHandler
 import arc.util.Log
 import arc.util.Strings
 import buj.tl.Tl
-import kotlinx.coroutines.future.await
 import mindurka.annotations.Command
-import mindurka.annotations.ConsoleCommand
 import mindurka.annotations.EnabledIf
 import mindurka.annotations.Hidden
 import mindurka.annotations.RequiresPermission
@@ -53,7 +51,6 @@ import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.gen.Groups
 import mindustry.gen.Player
-import mindustry.gen.Call
 import net.buj.surreal.Query
 import java.util.Arrays
 import kotlin.collections.iterator
@@ -257,7 +254,7 @@ private fun help(caller: Player, pageInit: Int?) = Async.run async@{
             }
             else -> throw UnreachableException()
         }
-    }.await()
+    }
 }
 
 /** List commands. */
@@ -270,7 +267,7 @@ private fun help(caller: Player, command: String) {
         return
     }
 
-    caller.openMenu {
+    Async.run { caller.openMenu {
         title("{commands.help.man.title}")
         message("{commands.help.man.message}").put(
             "command",
@@ -278,7 +275,7 @@ private fun help(caller: Player, command: String) {
         )
 
         option("{generic.close}") { K }
-    }
+    } }
 }
 
 /** List maps. */
@@ -368,7 +365,7 @@ private fun maps(caller: Player, pageInit: Int?) = Async.run async@{
             }
             else -> throw UnreachableException()
         }
-    }.await()
+    }
 }
 
 @Command
@@ -396,7 +393,7 @@ private fun setkey(caller: Player) = Async.run {
             option("{generic.cancel}") { false }
             option("{generic.ok}") { true }
         }
-    }.await() != true) return@run
+    } != true) return@run
 
     try {
         Database.setKey(caller)
@@ -502,7 +499,7 @@ private fun artv(caller: Player, @Rest map: MapHandle?) {
                 option("{generic.ok}") { true }
                 option("{generic.cancel}") { false }
             }
-        }.await() != true) return@run
+        } != true) return@run
 
         if (!caller.admin) return@run
 

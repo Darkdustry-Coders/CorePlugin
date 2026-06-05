@@ -17,6 +17,7 @@ import mindurka.api.sleep
 import mindurka.config.SharedConfig
 import mindurka.coreplugin.Config
 import mindurka.coreplugin.PlayerData
+import mindurka.coreplugin.TranslatorStyle
 import mindurka.coreplugin.sessionData
 import mindurka.util.Async
 import mindurka.util.UnreachableException
@@ -51,6 +52,7 @@ import kotlin.jvm.javaClass
 import kotlin.math.max
 import kotlin.system.exitProcess
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -117,6 +119,7 @@ internal object DatabaseScripts {
     val loaduserScript: String = Streams.copyString(loader.getResourceAsStream("sql/loaduser.surrealql"))
     val setkeyScript: String = Streams.copyString(loader.getResourceAsStream("sql/setkey.surrealql"))
     val setpermissionlevelScript: String = Streams.copyString(loader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
+    val settranslatorsettingsScript: String = Streams.copyString(loader.getResourceAsStream("sql/settranslatorsettings.surrealql"))
 
     val ispsFetchScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_fetch.surrealql"))
     val ispsUpdateScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_update.surrealql"))
@@ -225,16 +228,57 @@ object Database {
                     .x("server_name", Config.i.serverName)).await().ok()
 
                 driver!!.onLive(liveQueries[0].result.asString()) { update ->
-                    val votekickId = update.data.at("id").asString()
-                    votekickCache.removeAll { it.value.id == votekickId }
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    votekickCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                    return@onLive
                 }
                 driver!!.onLive(liveQueries[1].result.asString()) { update ->
-                    val kickId = update.data.at("id").asString()
-                    kickCache.removeAll { it.value.id == kickId }
+                    val pardoned = update.data.at("pardoned").asBoolean()
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    if (pardoned) {
+                        kickCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                        return@onLive
+                    }
+
+                    val reason = update.data.at("reason").asString()
+                    val admin = update.data.at("admin").asString()
+                    val expires = update.data.at("duration").let { duration ->
+                        if (duration.isNull) return@let null
+                        Clock.System.now() + duration.asLong().milliseconds
+                    }
+
+                    Groups.player.each { player ->
+                        if (player.sessionData.userId != userId) return@each
+                        kickBroadcast(player.sessionData.simpleName(), reason, admin)
+                        kickConnection(player.con, entryId, player.locale, reason, expires, admin)
+                    }
                 }
                 driver!!.onLive(liveQueries[2].result.asString()) { update ->
-                    val banId = update.data.at("id").asString()
-                    banCache.removeAll { it.value.id == banId }
+                    val pardoned = update.data.at("pardoned").asBoolean()
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    if (pardoned) {
+                        banCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                        return@onLive
+                    }
+
+                    val reason = update.data.at("reason").asString()
+                    val admin = update.data.at("admin").asString()
+                    val expires = update.data.at("duration").let { duration ->
+                        if (duration.isNull) return@let null
+                        Clock.System.now() + duration.asLong().milliseconds
+                    }
+
+                    Groups.player.each { player ->
+                        if (player.sessionData.userId != userId) return@each
+                        banBroadcast(player.sessionData.simpleName(), reason, admin)
+                        banConnection(player.con, entryId, player.locale, reason, expires, admin)
+                    }
                 }
 
                 linkedChannels.addAll(liveQueries[3].result.asJsonList().iterator().map { link -> LinkedChannels.new(
@@ -472,6 +516,10 @@ object Database {
         session.keySet = query.result.at("key_set").asBoolean()
         session.shortId = if (query.result.at("short_id").isNull) null else query.result.at("short_id").asLong()
         session.customname = if (query.result.at("set_name").isNull) null else query.result.at("set_name").asString()
+        session.translatorStyle = query.result.at("translator_style").asInteger().let { id ->
+            if (id < 0 || id >= TranslatorStyle.entries.size) return@let TranslatorStyle.Disabled
+            TranslatorStyle.entries[id]
+        }
         session.`unsafe$rawSetPermissionLevel`(query.result.at("permission_level").asInteger())
     }
 
@@ -545,10 +593,10 @@ object Database {
             .x("server", Config.i.serverName)).ok().result.asBoolean()
     }
 
-    internal fun kickBroadcast(player: Player, reason: String, admin: String) {
+    internal fun kickBroadcast(player: String, reason: String, admin: String) {
         Tl.broadcast()
             .put("admin", admin)
-            .put("target", player.sessionData.fullName())
+            .put("target", player)
             .put("reason", reason)
             .done("{generic.admin.kick}")
     }
@@ -578,7 +626,7 @@ object Database {
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        kickBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
+        kickBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
         kickConnection(player.con, id, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
@@ -597,16 +645,16 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
-            kickBroadcast(po, reason, admin?.sessionData?.simpleName() ?: "<Console>")
+            kickBroadcast(po.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
             kickConnection(po.con, id, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
     }
 
-    internal fun banBroadcast(player: Player, reason: String, admin: String) {
+    internal fun banBroadcast(player: String, reason: String, admin: String) {
         Tl.broadcast()
             .put("admin", admin)
-            .put("target", player.sessionData.fullName())
+            .put("target", player)
             .put("reason", reason)
             .done("{generic.admin.ban}")
     }
@@ -636,7 +684,7 @@ object Database {
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        banBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
+        banBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
         banConnection(player.con, id, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
@@ -655,6 +703,7 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
+            banBroadcast(player.lastName, reason, admin?.sessionData?.simpleName() ?: "<Console>")
             banConnection(po.con, id, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
@@ -677,6 +726,15 @@ object Database {
         banCache.removeAll { it.value.user == userId }
         return abstractQuerySingle(Query(DatabaseScripts.unbanScript)
             .x("user", userId)).ok().result.asBoolean()
+    }
+
+    /** Set player's translation preferences. */
+    @PublicAPI
+    suspend fun setTranslationPreference(profileId: String, style: TranslatorStyle, skipTranslation: Seq<String>) {
+        abstractQuery(Query(DatabaseScripts.settranslatorsettingsScript)
+            .x("profile", profileId)
+            .x("translator_style", style.ordinal)
+            .x("skip_translation_of", skipTranslation.iterator().collect(ArrayList(skipTranslation.size)))).ok()
     }
 }
 
