@@ -140,11 +140,26 @@ internal class LocaleFile {
                     continue
                 }
 
-                // Both do the same thing.
-                if (span.stripPrefix("-") || span.stripPrefix(":")) {
+                // Both do not do the same thing anymore.
+                if (span.stripPrefix("-")) {
                     if (name.isEmpty()) throw RuntimeException("attempt to append a value despite not having an entry open")
 
                     collection.growFrom(StringSpan(" "))
+                    span.stripPrefix(" ")
+                    while (!span.isEmpty && span[0] != '\n') {
+                        if (span[0] == '\r') {
+                            span.inc()
+                            continue
+                        }
+                        collection.growFrom(span)
+                        span.inc()
+                    }
+                    continue
+                }
+
+                if (span.stripPrefix(":")) {
+                    if (name.isEmpty()) throw RuntimeException("attempt to append a value despite not having an entry open")
+
                     span.stripPrefix(" ")
                     while (!span.isEmpty && span[0] != '\n') {
                         if (span[0] == '\r') {

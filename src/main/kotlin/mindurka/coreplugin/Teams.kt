@@ -61,7 +61,7 @@ fun initTeams() {
             val vec = Groups.player.copy()
             vec.shuffle()
             for (player in vec) {
-                Log.info("[DEBUG] Shuffling ")
+                Log.info("[DEBUG] Shuffling team for ${Strings.stripColors(player.name)}")
                 if (player.team() != Team.derelict) {
                     Log.info("[DEBUG] Skipping team reassignment for ${Strings.stripColors(player.sessionData.simpleName())}")
                     continue
