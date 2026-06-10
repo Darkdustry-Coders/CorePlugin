@@ -57,7 +57,6 @@ publishing {
 }
 
 dependencies {
-    // compileOnly libs.bundles.mindustry, { changing = true }
     compileOnly files("$workspacePath/.cache/tools/buildscript/server-release.jar")
 
     implementation libs.bundles.kotlin.serialization

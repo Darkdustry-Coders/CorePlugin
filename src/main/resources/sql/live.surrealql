@@ -6,7 +6,7 @@ live select
     pardoned,
     reason,
     if admin = none { "<Console>" } else { admin } as admin,
-    if expires = none { null } else { (expires - time::now()).millis() } as expires,
+    if expires = none { null } else { (expires - time::now()).millis() } as expires
 from mindustry_kick
 where server_name = $server_name;
 
@@ -16,7 +16,7 @@ live select
     pardoned,
     reason,
     if admin = none { "<Console>" } else { admin } as admin,
-    if expires = none { null } else { (expires - time::now()).millis() } as expires,
+    if expires = none { null } else { (expires - time::now()).millis() } as expires
 from mindustry_ban;
 
 select <string> record::id(id) as id, links from linked_channel;
