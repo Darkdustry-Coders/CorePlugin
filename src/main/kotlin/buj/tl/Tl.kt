@@ -144,6 +144,7 @@ internal class LocaleFile {
                 if (span.stripPrefix("-") || span.stripPrefix(":")) {
                     if (name.isEmpty()) throw RuntimeException("attempt to append a value despite not having an entry open")
 
+                    collection.growFrom(StringSpan(" "))
                     span.stripPrefix(" ")
                     while (!span.isEmpty && span[0] != '\n') {
                         if (span[0] == '\r') {
@@ -175,7 +176,7 @@ internal class LocaleFile {
                 if (name.contains("..")) throw RuntimeException("entry name cannot contain 2 consecutive dots ($name) at $at")
 
                 span.trimStart()
-                if (!span.stripPrefix("=")) throw RuntimeException("'=' must be used to assing a value to the entry at ${span.at}")
+                if (!span.stripPrefix("=")) throw RuntimeException("'=' must be used to assign a value to the entry at ${span.at}")
 
                 val t = StringBuilder()
 

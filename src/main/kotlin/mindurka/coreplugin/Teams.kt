@@ -57,23 +57,21 @@ fun initTeams() {
         assignDerelict.r = true
         timer(3f, lifetime = Lifetime.Round) {
             assignDerelict.r = false
-            timer(0.1f, lifetime = Lifetime.Round) {
-                val vec = Groups.player.copy()
-                while (!vec.isEmpty) {
-                    val player = vec.random()
-                    vec.remove(player)
-                    if (player.team() != Team.derelict) {
-                        Log.info("Skipping team reassignment for ${Strings.stripColors(player.sessionData.simpleName())}")
-                        continue
-                    }
-                    val event = PlayerTeamAssign(
-                        player,
-                        Groups.player,
-                        vanillaTeamAssigner.assign(player, Groups.player)
-                    )
-                    emit(event)
-                    player.team(event.team)
+            val vec = Groups.player.copy()
+            vec.shuffle()
+            for (player in vec) {
+                Log.info("[DEBUG] Shuffling ")
+                if (player.team() != Team.derelict) {
+                    Log.info("[DEBUG] Skipping team reassignment for ${Strings.stripColors(player.sessionData.simpleName())}")
+                    continue
                 }
+                val event = PlayerTeamAssign(
+                    player,
+                    Groups.player,
+                    vanillaTeamAssigner.assign(player, Groups.player)
+                )
+                emit(event)
+                player.team(event.team)
             }
         }
     }
