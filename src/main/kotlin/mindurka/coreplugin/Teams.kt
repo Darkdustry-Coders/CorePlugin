@@ -3,6 +3,8 @@ package mindurka.coreplugin
 import arc.Core
 import arc.struct.ObjectIntMap
 import arc.struct.ObjectSet
+import arc.util.Log
+import arc.util.Strings
 import mindurka.annotations.Command
 import mindurka.annotations.EnabledIf
 import mindurka.api.Gamemode
@@ -52,21 +54,26 @@ fun initTeams() {
         if (!Gamemode.randomizeTeams) return@on
         if (!Vars.state.rules.pvp) return@on
 
-        assignDerelict.r = true;
+        assignDerelict.r = true
         timer(3f, lifetime = Lifetime.Round) {
-            val vec = Groups.player.copy()
-            assignDerelict.r = false;
-            while (!vec.isEmpty) {
-                val player = vec.random()
-                vec.remove(player)
-                if (Gamemode.enableSpectate && Gamemode.spectate[player]) continue
-                val event = PlayerTeamAssign(
-                    player,
-                    Groups.player,
-                    vanillaTeamAssigner.assign(player, Groups.player)
-                )
-                emit(event)
-                player.team(event.team)
+            assignDerelict.r = false
+            timer(0.1f, lifetime = Lifetime.Round) {
+                val vec = Groups.player.copy()
+                while (!vec.isEmpty) {
+                    val player = vec.random()
+                    vec.remove(player)
+                    if (player.team() != Team.derelict) {
+                        Log.info("Skipping team reassignment for ${Strings.stripColors(player.sessionData.simpleName())}")
+                        continue
+                    }
+                    val event = PlayerTeamAssign(
+                        player,
+                        Groups.player,
+                        vanillaTeamAssigner.assign(player, Groups.player)
+                    )
+                    emit(event)
+                    player.team(event.team)
+                }
             }
         }
     }

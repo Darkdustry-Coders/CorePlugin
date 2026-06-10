@@ -5,6 +5,7 @@ import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
 import arc.struct.ObjectMap
+import arc.struct.Seq
 import arc.util.Log
 import arc.util.Strings
 import arc.util.Threads
@@ -43,10 +44,12 @@ import mindurka.util.collect
 import mindurka.util.debug
 import mindurka.util.filter
 import mindurka.util.map
+import mindurka.util.newSeq
 import mindurka.util.random
 import mindurka.util.splitOnceLast
 import mindustry.NiMetadata
 import mindustry.Vars
+import mindustry.ai.UnitCommand
 import mindustry.content.Blocks
 import mindustry.game.EventType
 import mindustry.game.Team
@@ -59,8 +62,11 @@ import mindustry.gen.SetTileCallPacket
 import mindustry.net.Administration
 import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
+import mindustry.world.blocks.units.Reconstructor
+import mindustry.world.blocks.units.UnitFactory
 import kotlin.math.min
 import kotlin.system.exitProcess
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 
 object CorePlugin {
@@ -311,7 +317,52 @@ object CorePlugin {
             false
         }
 
+        // TODO: Other buildings.
+        val setCommands = newSeq<Pair<Block, UnitCommand>>()
+        fun isConfigSus(block: Block, config: Any?): Boolean {
+            if ((block is Reconstructor || block is UnitFactory)
+                && config is UnitCommand && setCommands.all { it.first != block || it.second != config }) {
+                return true
+            }
+
+            return false
+        }
+        Vars.netServer.admins.addActionFilter { act ->
+            val build = act.tile?.build
+            val config: Any? = act.config
+
+            run {
+                if ((act.type === Administration.ActionType.buildSelect) && !Vars.state.rules.possessionAllowed) return@run
+                if (act.type === Administration.ActionType.configure
+                    && (build is UnitFactory.UnitFactoryBuild || build is Reconstructor.ReconstructorBuild)
+                    && config is UnitCommand) {
+
+                    if (if (build is UnitFactory.UnitFactoryBuild) build.canSetCommand() else (build as Reconstructor.ReconstructorBuild).canSetCommand()) {
+                        if (setCommands.all { it.first != build.block || it.second != config }) {
+                            setCommands.add(build.block to config)
+                        }
+                        return@addActionFilter true
+                    }
+
+                    return@run
+                }
+                if (act.type == Administration.ActionType.placeBlock && !Vars.state.rules.schematicsAllowed
+                    && isConfigSus(act.block, act.config)) return@run
+
+                return@addActionFilter true
+            }
+
+            val player = act.player
+
+            Async.run {
+                Database.ban(player, null, 7.days, "Cheating")
+            }
+
+            false
+        }
+
         on<EventType.PlayEvent> { _ ->
+            setCommands.clear()
             if (SpecialSettings.currentMap().patch < 7) { Groups.build.each(Building::heal) }
         }
 

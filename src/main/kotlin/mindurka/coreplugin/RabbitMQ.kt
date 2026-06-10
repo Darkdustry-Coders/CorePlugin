@@ -157,7 +157,7 @@ internal class RabbitMQWorker() {
         }}}.$name"
 
         mainChannel.exchangeDeclare(name, BuiltinExchangeType.DIRECT, /*durable*/false, /*autoDelete*/true, /*internal*/false, emptyMap())
-        mainChannel.queueDeclare(queueName, /*durable*/false, /*exclusive*/false, /*autoDelete*/true, emptyMap())
+        mainChannel.queueDeclare(queueName, /*durable*/false, /*exclusive*/true, /*autoDelete*/true, emptyMap())
         mainChannel.queueBind(queueName, name, routingKey)
         mainChannel.queueBind(queueName, name, "#")
         mainChannel.basicConsume(queueName, false, consumerKey, object : Consumer {
