@@ -228,7 +228,7 @@ private fun despawn(caller: Player, @Rest unit: Unit?) {
 @Command
 @RequiresPermission(PermLevels.admin)
 @EnabledIf(AdminCommandsEnabled::class)
-private fun despawnall(caller: Player, @Rest kind: UnitType?, @Rest team: Team?) {
+private fun despawnall(caller: Player, kind: UnitType?, @Rest team: Team?) {
     Groups.unit.copy().each { u -> if (u.type == kind && (team == null || u.team == team )) Call.unitDespawn(u) }
 }
 
