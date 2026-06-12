@@ -1,5 +1,6 @@
 package mindurka.coreplugin
 
+import arc.math.Mathf
 import arc.struct.ObjectIntMap
 import arc.struct.ObjectSet
 import arc.util.Log
@@ -26,7 +27,32 @@ import java.util.WeakHashMap
 import kotlin.uuid.ExperimentalUuidApi
 
 private var assignDerelict = false
-private val vanillaTeamAssigner = Vars.netServer.assigner
+private val vanillaTeamAssigner = NetServer.TeamAssigner { player, players ->
+    if (Vars.state.rules.pvp) {
+        val re = Vars.state.teams.getActive().min { data ->
+            if (
+                (Vars.state.rules.waveTeam != data.team || !Vars.state.rules.waves)
+                && data.hasCore()
+                && data.team != Team.derelict
+                && data.team.rules().protectCores) {
+                var count = 0;
+
+                for (other in players) {
+                    if (other.team() == data.team && other != player) {
+                        ++count;
+                    }
+                }
+
+                count.toFloat() + Mathf.random(-0.1F, 0.1F);
+            } else {
+                Integer.MAX_VALUE.toFloat()
+            }
+        }
+        re?.team
+    } else {
+        Vars.state.rules.defaultTeam
+    }
+}
 private var restoreTeams = ObjectIntMap<String>()
 private val restoreSpectator: ObjectSet<String> = ObjectSet()
 private val didAssignTeam = WeakHashMap<Player, K>()

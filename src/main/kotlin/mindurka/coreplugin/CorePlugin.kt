@@ -367,8 +367,8 @@ object CorePlugin {
             val build = act.tile?.build
             val config: Any? = act.config
 
-            run {
-                if ((act.type === Administration.ActionType.buildSelect) && !Vars.state.rules.possessionAllowed) return@run
+            val reason: String = run {
+                if ((act.type === Administration.ActionType.buildSelect) && !Vars.state.rules.possessionAllowed) return@run "Spawned from a core"
                 if (act.type === Administration.ActionType.configure
                     && (build is UnitFactory.UnitFactoryBuild || build is Reconstructor.ReconstructorBuild)
                     && config is UnitCommand) {
@@ -383,10 +383,10 @@ object CorePlugin {
                         return@addActionFilter true
                     }
 
-                    return@run
+                    return@run "Configured an unconfigurable block"
                 }
                 if (act.type == Administration.ActionType.placeBlock && !Vars.state.rules.schematicsAllowed
-                    && isConfigSus(act.block, act.config)) return@run
+                    && isConfigSus(act.block, act.config)) return@run "Placed a pre-configured block"
 
                 return@addActionFilter true
             }
@@ -394,7 +394,7 @@ object CorePlugin {
             val player = act.player
 
             Async.run {
-                Database.ban(player, null, 7.days, "Cheating")
+                Database.ban(player, null, 7.days, "Cheating ($reason)")
             }
 
             false
