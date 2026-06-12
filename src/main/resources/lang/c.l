@@ -44,7 +44,15 @@ special-settings-error = [{col.err}]Flags on this map are not set correctly:
 # spam Spam SPAM
 welcome-message-title = Welcome message
 welcome-message = [accent]We are in the process of completely rewriting server plugins.
-                : Expect bugs!
+                - Expect bugs!
+                =
+                = [orange]<<< ATTENTION >>>
+                = [{col.err}]This server bans cheating, and may automatically ban you on notice.
+                - If you'll get banned for cheating and can't prove you did not cheat, [yellow]you will
+                - not be unbanned[] even if you promise to not use cheats anymore.
+                =
+                = Yes, hardware autoclickers and so-called "QOL" features like bypassing schemes
+                - count too.
 gamemode-uses-special-settings = [accent]Some of this gamemode's features don't work in vanilla.[]
                                =
                                = Install [{col.mdc}]MindurkaCompat[] from mod explorer to gain access to them.

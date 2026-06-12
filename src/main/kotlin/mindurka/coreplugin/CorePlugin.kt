@@ -323,19 +323,19 @@ object CorePlugin {
         }
 
         // TODO: Other buildings.
-        val ACCESS_TIME_LEEWAY = 2000000000L;
+        val ACCESS_TIME_LEEWAY = 3000000000L;
         val setCommands = newSeq<Pair<Block, UnitCommand>>()
         val lastAccess = object : ObjectMap<Player, Building>() {
             override fun remove(key: Player?): Building? {
                 val x = super.remove(key)
-                if (x != null) Log.info("[DEBUG/AC] Removed last accessed building")
+                // if (x != null) Log.info("[DEBUG/AC] Removed last accessed building")
                 return x
             }
         }
         fun isConfigSus(block: Block, config: Any?): Boolean {
             if ((block is Reconstructor || block is UnitFactory)
                 && config is UnitCommand && setCommands.all { it.first != block || it.second != config }) {
-                Log.info("[DEBUG/AC] Blacklisted pair (${block.name}, ${config.name})")
+                // Log.info("[DEBUG/AC] Blacklisted pair (${block.name}, ${config.name})")
                 return true
             }
 
@@ -360,7 +360,7 @@ object CorePlugin {
                 return@on
             }
 
-            Log.info("[DEBUG/AC] Set last accessed build to (${build.tileX()}, ${build.tileY()}, ${build.block.name})")
+            // Log.info("[DEBUG/AC] Set last accessed build to (${build.tileX()}, ${build.tileY()}, ${build.block.name})")
             lastAccess.put(it.player, build)
         }
         Vars.netServer.admins.addActionFilter { act ->
@@ -376,7 +376,7 @@ object CorePlugin {
                     if ((if (build is UnitFactory.UnitFactoryBuild) build.canSetCommand() else (build as Reconstructor.ReconstructorBuild).canSetCommand())
                         || lastAccess.get(act.player) === build) {
                         if (setCommands.all { it.first != build.block || it.second != config }) {
-                            Log.info("[DEBUG/AC] Registered pair (${build.block.name}, ${config.name})")
+                            // Log.info("[DEBUG/AC] Registered pair (${build.block.name}, ${config.name})")
                             setCommands.add(build.block to config)
                         }
                         lastAccess.remove(act.player)
