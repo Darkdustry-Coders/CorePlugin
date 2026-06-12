@@ -1,0 +1,1 @@
+return array::len(select id from mindustry_ban where user = type::record("user", <uuid> $user) and reason = "Cheat" and pardoned = false);

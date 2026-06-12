@@ -228,6 +228,14 @@ private fun despawn(caller: Player, @Rest unit: Unit?) {
 @Command
 @RequiresPermission(PermLevels.admin)
 @EnabledIf(AdminCommandsEnabled::class)
+private fun despawnall(caller: Player, kind: UnitType?, @Rest team: Team?) {
+    Groups.unit.copy().each { u -> if (u.type == kind && (team == null || u.team == team )) Call.unitDespawn(u) }
+}
+
+
+@Command
+@RequiresPermission(PermLevels.admin)
+@EnabledIf(AdminCommandsEnabled::class)
 private fun tp(caller: Player, x: Float, y: Float, @Rest target: Player?) {
     val target = target ?: caller
     val unit = target.unit() ?: return

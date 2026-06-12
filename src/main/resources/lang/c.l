@@ -646,10 +646,19 @@ manpage = Change unit of a player.
         = By default changes the unit of the caller.
 
 [commands.despawn]
-description = Despawn a unit.
-params = <unit>
+description = Despawn a unit/all units.
+params = [unit]
 params.unit = unit
 manpage = Despawn a unit.
+        =
+        = By default despawn all units.
+
+[commands.despawnall]
+description = Despawn unit type by id.
+params = <unit> [team]
+params.unit = unit
+params.team = team
+manpage = Despawn unit type by id.
 
 [commands.tp]
 description = Teleport a player.

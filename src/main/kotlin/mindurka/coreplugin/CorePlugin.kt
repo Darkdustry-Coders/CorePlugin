@@ -395,6 +395,9 @@ object CorePlugin {
 
             Async.run {
                 Database.ban(player, null, 7.days, "Cheating")
+                if (Database.cheatBanCount(player.sessionData.userId) > 1) {
+                    Database.resetStats(player.sessionData.profileId)
+                }
             }
 
             false
