@@ -1,6 +1,5 @@
 package mindurka.coreplugin
 
-import arc.Core
 import arc.struct.ObjectIntMap
 import arc.struct.ObjectSet
 import arc.util.Log
@@ -15,9 +14,7 @@ import mindurka.api.emit
 import mindurka.api.on
 import mindurka.api.timer
 import mindurka.coreplugin.commands.SpectateEnabled
-import mindurka.util.BoolRef
-import mindurka.util.UnsafeNull
-import mindurka.util.notnull
+import mindurka.util.K
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
@@ -25,19 +22,20 @@ import mindustry.game.Team
 import mindustry.gen.Groups
 import mindustry.gen.Player
 import mindustry.net.Administration
+import java.util.WeakHashMap
 import kotlin.uuid.ExperimentalUuidApi
 
 private var assignDerelict = false
 private val vanillaTeamAssigner = Vars.netServer.assigner
 private var restoreTeams = ObjectIntMap<String>()
 private val restoreSpectator: ObjectSet<String> = ObjectSet()
+private val didAssignTeam = WeakHashMap<Player, K>()
 
 fun teamAssigned(player: Player) = !assignDerelict &&
     (!Gamemode.enableSpectate || !Gamemode.spectate[player])
 
 @OptIn(ExperimentalUuidApi::class)
 fun initTeams() {
-
     on<EventType.PlayEvent> { restoreTeams = ObjectIntMap<String>() }
     on<RoundEndEvent> {
         for (player in Groups.player) {
@@ -56,14 +54,16 @@ fun initTeams() {
         if (!Vars.state.rules.pvp) return@on
 
         assignDerelict = true
-        timer(3f, lifetime = Lifetime.Round) {
+        didAssignTeam.clear()
+        timer(4f, lifetime = Lifetime.Round) {
             assignDerelict = false
             val vec = Groups.player.copy()
             vec.shuffle()
             for (player in vec) {
-                Log.info("[DEBUG] Shuffling ")
+                didAssignTeam[player] = K
+                // Log.info("[DEBUG] Shuffling team for ${Strings.stripColors(player.name)}")
                 if (player.team() != Team.derelict) {
-                    Log.info("[DEBUG] Skipping team reassignment for ${Strings.stripColors(player.sessionData.simpleName())}")
+                    // Log.info("[DEBUG] Skipping team reassignment for ${Strings.stripColors(player.sessionData.simpleName())}")
                     continue
                 }
                 val event = PlayerTeamAssign(
@@ -74,6 +74,20 @@ fun initTeams() {
                 emit(event)
                 player.team(event.team)
             }
+        }
+
+        on<EventType.PlayerConnectionConfirmed> {
+            val player = it.player
+            if (!assignDerelict && player.team() == Team.derelict && !didAssignTeam.containsKey(player)) {
+                val event = PlayerTeamAssign(
+                    player,
+                    Groups.player,
+                    vanillaTeamAssigner.assign(player, Groups.player)
+                )
+                emit(event)
+                player.team(event.team)
+            }
+            didAssignTeam[player] = K
         }
     }
 
@@ -90,6 +104,8 @@ fun initTeams() {
             Log.info("[DEBUG/Team] Assigning derelict team")
             return@TeamAssigner Team.derelict
         }
+
+        didAssignTeam[player] = K
 
         if (!Vars.state.isPaused && Gamemode.restoreTeams) restoreTeams.get(player.sessionData.profileId, -1).let { id ->
             Log.info("[DEBUG/Team] Trying to restore team")

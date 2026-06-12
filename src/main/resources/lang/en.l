@@ -1,41 +1,9 @@
-
-# Emojis
-[emo]
-
-x = 
-warn = ⚠
-play = 
-gplay = 
-ok = 
-admin = 
-discord = 
-team = 
-plane = 
-telegram = 
-settings = 
-book-open = 
-filter = 
-zoom = 
-
-# Colors
-[col]
-
-ok = #26d657
-warn = #fce174
-err = #ec5784
-cmd = #ec5784
-cmdarg = yellow
-mdc = #4c59e0
-sysmsg = #adadad
-
 [generic]
 
 close = [{col.ok}]{emo.gplay} Close
 cancel = [{col.err}]{emo.x} Cancel
 ok = [{col.ok}]{emo.ok} Ok
-server = Mindurka
-discord = https://mindurka.cc/discord
-special-settings-error = [{col.err}]Flags on this map are not set correctly:
+special-settings-error = [{col.err}]Errors have occurred while loading the map:
                        =
                        = {errors}
                        =
@@ -68,24 +36,6 @@ mdc-outdated = [accent]Your version of [{col.mdc}]MindurkaCompat[] is out of dat
              = [accent]Update the mod to the latest version from mod explorer.
 restart-scheduled = [{col.warn}]Server will be restarted after the end of the round.
 
-# Vars:
-# - service (service name, empty if none)
-# - isteam (whether the message is sent in team chat)
-# - isadmin (whether the message is sent in admin chat)
-# - tlstyle (translator style. none if message was not translated)
-# - lang (original language message was in)
-# - origmessage (original message)
-# - teamcolor (color of the player team)
-# - player (display name of the sender)
-chat = {if {service} != () then ({generic.chat.service.{service}} )}
-     : {if {isteam} = true then ({generic.chat.team} )}
-     : {if {isadmin} = true then ({generic.chat.admin} )}
-     : [scarlet][[{player}]
-     : {if {tlstyle} = short then ( [gray]({lang})[])}
-     : : [white]{if {tlstyle} = classic then {origmessage} else {message}}
-     : {if {tlstyle} = classic then [lightgray]({message})}
-     : {if {tlstyle} = multiline then (\n{generic.chat.original})}
-
 chat.original = [gray]Original ({lang}): []{origmessage}
 chat.team = [{teamcolor}][[{emo.team} Team]
 chat.admin = [scarlet][{emo.admin} Admins]
@@ -116,9 +66,7 @@ cooldown = [{col.err}] Slow down! This command is on cooldown.
 vote = [{col.err}] There's already a vote ongoing.
 vote-spectator = [{col.err}] Spectators cannot start team votes.
 unknown-command = [{col.err}] Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check [yellow]/help[].) else (Did you mean [yellow]/{suggestion}[]?)}
-unknown-command-console =  Could not find command [yellow]{command}[]. {if {suggestion} = () then (Check /help) else (Did you mean /{suggestion}?)}
 invalid-arguments = [{col.err}] {cause}. Try [yellow]/help {command}[]!
-invalid-arguments-console = {cause}. Usage: {command} {params}
 permission = [{col.err}] You don't have permission to execute this command.
 admin-action-permission = [{col.err}] You don't have permission to perform this action.
 admin-action-no-target = [{col.err}] You must specify a target to perform an action.
@@ -126,41 +74,23 @@ admin-action-target-admin = [{col.err}] You cannot perform this action agains
 
 [generic.command]
 disabled = Command [yellow]'/{command}'[] is disabled
-disabled-console = Command '{command}' is disabled
 missing = Missing parameter [yellow]'{commands.{command}.params.{param}}'[]
-missing-console = Missing parameter '{param}'
 invalid = Invalid parameter [yellow]'{commands.{command}.params.{param}}'[]
-invalid-console = Missing parameter '{param}'
 string-termination = Parameter [yellow]'{commands.{command}.params.{param}}'[] is not properly enclosed
-string-termination-console = Parameter '{param}' is not properly enclosed
 end-of-input = Not enough input
-end-of-input-console = Not enough input
 too-many-arguments = Too many arguments
-too-many-arguments-console = Too many arguments
 not-a-number = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be a number
-not-a-number-console = Parameter '{param}' must be a number
 not-a-boolean = Parameter [yellow]'{commands.{command}.params.{param}}'[] must be [#26d657]yes[] or [#EC5784]no[]
-not-a-boolean-console = Parameter '{param}' must be a boolean
 invalid-map-id = Unknown map ID
-invalid-map-id-console = Unknown map ID
 zero-map-id = But it refused
-zero-map-id-console = But it refused
 unknown-map = Could not find the map
-unknown-map-console = Could not find the map
 unknown-player = Could not find the player
-unknown-player-console = Could not find the player
 unknown-unit = Unknown unit
-unknown-unit-console = Unknown unit
 unknown-unit-type = Unknown unit type
-unknown-unit-type-console = Unknown unit type
 unknown-status-effect = Unknown unit type
-unknown-status-effect-console = Unknown status effect
 invalid-item = Invalid item
-invalid-item-console = Invalid item
 invalid-team = Invalid team
-invalid-team-console = Invalid team
 invalid-duration = Not a valid duration for parameter [yellow]'{commands.{command}.params.{param}}'[]
-invalid-duration-console = Not a valid duration for parameter {param}
 
 [generic.kick]
 merged = [{col.err}]This account was merged into another and thus no longer accessible.
@@ -458,7 +388,6 @@ vote.commit = [{col.ok}]Kicked player {target} for [yellow]{reason}[] for [yello
 vote.cancel = [{col.err}]Not enough votes to kick {target}.
 
 errors.self = [{col.err}] You cannot kick yourself!
-errors.self.special0 = [#49C9C7]u[#AE58C8]w[#49C9C7]u
 errors.self.special1 = [{col.err}] Not here, thanks.
 errors.self.special2 = [{col.err}] Try specifying somebody else!
 errors.admin = [{col.err}] Admins are immune to [yellow]/votekick[].
@@ -646,19 +575,10 @@ manpage = Change unit of a player.
         = By default changes the unit of the caller.
 
 [commands.despawn]
-description = Despawn a unit/all units.
-params = [unit]
+description = Despawn a unit.
+params = <unit>
 params.unit = unit
 manpage = Despawn a unit.
-        =
-        = By default despawn all units.
-
-[commands.despawnall]
-description = Despawn unit type by id.
-params = <unit> [team]
-params.unit = unit
-params.team = team
-manpage = Despawn unit type by id.
 
 [commands.tp]
 description = Teleport a player.
@@ -751,7 +671,7 @@ translator = {emo.book-open} Translator Settings
 title = {emo.settings} Settings [lightgray]>>[] Translator
 message = [lightgray]Current style: {commands.settings.translator.{style}.name}
         = [orange]{commands.settings.translator.{style}.description}
-        - {if {style} != none then (
+        : {if {style} != none then (
         =
         = [accent]<<< EXAMPLE >>>
         = {commands.settings.translator.{style}.example})}

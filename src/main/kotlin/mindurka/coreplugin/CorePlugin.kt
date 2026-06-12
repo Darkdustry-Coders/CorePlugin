@@ -4,6 +4,7 @@ package mindurka.coreplugin
 import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
+import arc.struct.ObjectIntMap
 import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.Log
@@ -47,6 +48,7 @@ import mindurka.util.map
 import mindurka.util.newSeq
 import mindurka.util.random
 import mindurka.util.splitOnceLast
+import mindustry.MdUtil
 import mindustry.NiMetadata
 import mindustry.Vars
 import mindustry.ai.UnitCommand
@@ -64,6 +66,7 @@ import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
 import mindustry.world.blocks.units.Reconstructor
 import mindustry.world.blocks.units.UnitFactory
+import java.util.WeakHashMap
 import kotlin.math.min
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.days
@@ -148,6 +151,8 @@ object CorePlugin {
     init {
         Log.info("Starting CorePlugin")
         Time.mark()
+
+        MdUtil.init()
 
         if (!NiMetadata.shortcircuit()) Database.load()
         else DatabaseScripts.noop()
@@ -318,14 +323,45 @@ object CorePlugin {
         }
 
         // TODO: Other buildings.
+        val ACCESS_TIME_LEEWAY = 3000000000L;
         val setCommands = newSeq<Pair<Block, UnitCommand>>()
+        val lastAccess = object : ObjectMap<Player, Building>() {
+            override fun remove(key: Player?): Building? {
+                val x = super.remove(key)
+                // if (x != null) Log.info("[DEBUG/AC] Removed last accessed building")
+                return x
+            }
+        }
         fun isConfigSus(block: Block, config: Any?): Boolean {
             if ((block is Reconstructor || block is UnitFactory)
                 && config is UnitCommand && setCommands.all { it.first != block || it.second != config }) {
+                // Log.info("[DEBUG/AC] Blacklisted pair (${block.name}, ${config.name})")
                 return true
             }
 
             return false
+        }
+        on<EventType.TapEvent> {
+            val tile = it.tile ?: run {
+                lastAccess.remove(it.player)
+                return@on
+            }
+            val build = tile.build ?: run {
+                lastAccess.remove(it.player)
+                return@on
+            }
+
+            if (when (build) {
+                is UnitFactory.UnitFactoryBuild -> Time.nanos() > build.mdLastUnitConstruct + ACCESS_TIME_LEEWAY
+                is Reconstructor.ReconstructorBuild -> Time.nanos() > build.mdLastUnitConstruct + ACCESS_TIME_LEEWAY
+                else -> false
+            }) {
+                lastAccess.remove(it.player)
+                return@on
+            }
+
+            // Log.info("[DEBUG/AC] Set last accessed build to (${build.tileX()}, ${build.tileY()}, ${build.block.name})")
+            lastAccess.put(it.player, build)
         }
         Vars.netServer.admins.addActionFilter { act ->
             val build = act.tile?.build
@@ -337,10 +373,13 @@ object CorePlugin {
                     && (build is UnitFactory.UnitFactoryBuild || build is Reconstructor.ReconstructorBuild)
                     && config is UnitCommand) {
 
-                    if (if (build is UnitFactory.UnitFactoryBuild) build.canSetCommand() else (build as Reconstructor.ReconstructorBuild).canSetCommand()) {
+                    if ((if (build is UnitFactory.UnitFactoryBuild) build.canSetCommand() else (build as Reconstructor.ReconstructorBuild).canSetCommand())
+                        || lastAccess.get(act.player) === build) {
                         if (setCommands.all { it.first != build.block || it.second != config }) {
+                            // Log.info("[DEBUG/AC] Registered pair (${build.block.name}, ${config.name})")
                             setCommands.add(build.block to config)
                         }
+                        lastAccess.remove(act.player)
                         return@addActionFilter true
                     }
 
@@ -366,6 +405,7 @@ object CorePlugin {
 
         on<EventType.PlayEvent> { _ ->
             setCommands.clear()
+            lastAccess.clear()
             if (SpecialSettings.currentMap().patch < 7) { Groups.build.each(Building::heal) }
         }
 
@@ -390,6 +430,7 @@ object CorePlugin {
 
         on<EventType.PlayerLeave> {
             fakeBlockPos.remove(it.player)
+            lastAccess.remove(it.player)
 
             handleUiEvent(it)
 
