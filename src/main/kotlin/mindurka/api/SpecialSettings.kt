@@ -138,7 +138,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
             rc.r("$SERVICE_TEAM_HEAD$team", team == 0 || (Gamemode.enableSpectate && Gamemode.spectate.isSpectatorTeam(Team.all[team])))
         ) }
 
-        operator fun get(team: Team): TeamRule = teams[team.id] ?: defaultTeamSettings
+        operator fun get(team: Team): TeamRule = teams[team.id]
         operator fun set(team: Team, rule: TeamRule) { teams[team.id] = rule }
     }
     class TeamRule (
