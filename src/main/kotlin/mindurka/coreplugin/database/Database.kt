@@ -64,6 +64,7 @@ class SharedAccountException: Exception("Unhandled shared account exception")
 class KeyValidationFailure: Exception("Unhandled key validation failure")
 class BannedAccountException(
     val banId: String,
+    val userId: String,
     val admin: String,
     val reason: String,
     val expires: Instant?,
@@ -71,6 +72,7 @@ class BannedAccountException(
 ): Exception("Unhandled ban")
 class KickedAccountException(
     val kickId: String,
+    val userId: String,
     val admin: String,
     val reason: String,
     val expires: Instant?
@@ -78,7 +80,13 @@ class KickedAccountException(
 class GraylistedAccountException: Exception("Unhandled graylist")
 class BlacklistedException: Exception("Unhandled blacklist")
 class AnotherLocationException: Exception("Unhandled double login")
-class VotekickedAccountException(val votekickId: String, val reason: String, val expires: Instant, val initiator: String, val votes: Seq<String>): Exception("Unhandled votekick")
+class VotekickedAccountException(
+    val votekickId: String,
+    val userId: String,
+    val reason: String,
+    val expires: Instant,
+    val initiator: String,
+    val votes: Seq<String>): Exception("Unhandled votekick")
 
 data class BannedInfo(
     val id: String,
@@ -477,7 +485,7 @@ object Database {
 
                 if (banCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 banCache.put(uuid, BannedInfo(id, user, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, expires, server))
-                throw BannedAccountException(id, admin, reason, expires, server);
+                throw BannedAccountException(id, user, admin, reason, expires, server);
             }
             DisableCodes.kicked -> {
                 val id = query.result.at("id").asString()
@@ -488,7 +496,7 @@ object Database {
 
                 if (kickCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 kickCache.put(uuid, KickedInfo(id, user, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, expires))
-                throw KickedAccountException(id, admin, reason, expires);
+                throw KickedAccountException(id, user, admin, reason, expires);
             }
             DisableCodes.votekicked -> {
                 val id = query.result.at("id").asString()
@@ -503,7 +511,7 @@ object Database {
 
                 if (votekickCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 votekickCache.put(uuid, VotekickedInfo(id, userId, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), reason, expires, initiator, votes))
-                throw VotekickedAccountException(id, reason, expires, initiator, votes);
+                throw VotekickedAccountException(id, userId, reason, expires, initiator, votes);
             }
             DisableCodes.blacklisted -> throw BlacklistedException()
             else -> throw RuntimeException("Unexpected login error: $error")

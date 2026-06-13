@@ -538,15 +538,15 @@ class Protocol {
                 player.ckick(Tl.fmt(player).done("{generic.kick.shared}"))
                 return
             } catch (ban: BannedAccountException) {
-                Database.banConnection(player.con, ban.banId, player.locale, ban.reason, ban.expires, ban.admin)
+                Database.banConnection(player.con, ban.banId, ban.userId, player.locale, ban.reason, ban.expires, ban.admin)
                 session.playerLeft(player)
                 return
             } catch (kick: KickedAccountException) {
-                Database.kickConnection(player.con, kick.kickId, player.locale, kick.reason, kick.expires, kick.admin)
+                Database.kickConnection(player.con, kick.kickId, kick.userId, player.locale, kick.reason, kick.expires, kick.admin)
                 session.playerLeft(player)
                 return
             } catch (kick: VotekickedAccountException) {
-                Database.votekickConnection(player.con, kick.votekickId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
+                Database.votekickConnection(player.con, kick.votekickId, kick.userId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
                 session.playerLeft(player)
                 return
             } catch (_: BlacklistedException) {
