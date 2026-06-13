@@ -430,7 +430,7 @@ object Database {
                 return@let
             }
 
-            throw VotekickedAccountException(entry.value.reason, entry.value.id, entry.value.expires, entry.value.initiator, entry.value.votes);
+            throw VotekickedAccountException(entry.value.reason, entry.value.user, entry.value.id, entry.value.expires, entry.value.initiator, entry.value.votes);
         }
         kickCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
             if (entry.value.expires?.minus(Clock.System.now())?.isPositive() == false) {
@@ -439,7 +439,7 @@ object Database {
                 return@let
             }
 
-            throw KickedAccountException(entry.value.id, entry.value.admin, entry.value.reason, entry.value.expires);
+            throw KickedAccountException(entry.value.id, entry.value.user, entry.value.admin, entry.value.reason, entry.value.expires);
         }
         banCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
             if (entry.value.expires?.minus(Clock.System.now())?.isPositive() == false) {
@@ -448,7 +448,7 @@ object Database {
                 return@let
             }
 
-            throw BannedAccountException(entry.value.id, entry.value.admin, entry.value.reason, entry.value.expires, entry.value.server);
+            throw BannedAccountException(entry.value.id, entry.value.user, entry.value.admin, entry.value.reason, entry.value.expires, entry.value.server);
         }
 
         // What's duh SurrealDB smoking?
