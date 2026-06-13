@@ -83,7 +83,7 @@ chat = {if {service} != () then ({generic.chat.service.{service}} )}
      : [scarlet][[{player}]
      : {if {tlstyle} = short then ( [gray]({lang})[])}
      : : [white]{if {tlstyle} = classic then {origmessage} else {message}}
-     : {if {tlstyle} = classic then [lightgray]( {message})}
+     : {if {tlstyle} = classic then ( [lightgray]({message}))}
      : {if {tlstyle} = multiline then (\n{generic.chat.original})}
 
 chat.original = [gray]Original ({lang}): []{origmessage}

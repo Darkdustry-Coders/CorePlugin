@@ -44,6 +44,7 @@ import mindurka.util.SendMessage
 import mindurka.util.collect
 import mindurka.util.debug
 import mindurka.util.filter
+import mindurka.util.isServiceTeam
 import mindurka.util.map
 import mindurka.util.newSeq
 import mindurka.util.random
@@ -398,6 +399,10 @@ object CorePlugin {
             }
 
             false
+        }
+
+        Vars.netServer.admins.addActionFilter { act ->
+            act.type != Administration.ActionType.respawn || !act.player.team().isServiceTeam
         }
 
         on<EventType.PlayEvent> { _ ->
