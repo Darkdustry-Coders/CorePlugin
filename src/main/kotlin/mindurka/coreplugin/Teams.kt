@@ -16,6 +16,7 @@ import mindurka.api.on
 import mindurka.api.timer
 import mindurka.coreplugin.commands.SpectateEnabled
 import mindurka.util.K
+import mindurka.util.isServiceTeam
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
@@ -34,7 +35,8 @@ private val vanillaTeamAssigner = NetServer.TeamAssigner { player, players ->
                 (Vars.state.rules.waveTeam != data.team || !Vars.state.rules.waves)
                 && data.hasCore()
                 && data.team != Team.derelict
-                && data.team.rules().protectCores) {
+                && data.team.rules().protectCores
+                && !data.team.isServiceTeam) {
                 var count = 0;
 
                 for (other in players) {

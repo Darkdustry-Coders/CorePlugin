@@ -3,8 +3,10 @@ package mindurka.api
 import arc.struct.Seq
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.Config
+import mindurka.coreplugin.CorePlugin
 import mindustry.Vars
 import mindustry.game.Rules
+import mindustry.game.Team
 import mindustry.maps.Map
 import mindustry.world.Block
 import mindustry.world.Tiles
@@ -48,6 +50,10 @@ data class RulesContext(
     }
 }
 
+private val defaultTeamSettings = SpecialSettings.TeamRule(
+    serviceTeam = false,
+)
+
 @PublicAPI
 class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeight: Int) {
     companion object {
@@ -90,6 +96,8 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
         @JvmField @PublicAPI val GAMEMODE_LEGACY = "mindurkaGamemode"
         @JvmField @PublicAPI val OVERDRIVE_IGNORES_CHEAT = "$PREFIX.overdriveIgnoresCheat"
         @JvmField @PublicAPI val ENABLE_SURRENDER = "$PREFIX.enableSurrender"
+        @JvmField @PublicAPI val TEAM_RULES = "$PREFIX.teams"
+        @JvmField @PublicAPI val SERVICE_TEAM_HEAD = "$TEAM_RULES.serviceTeam."
     }
 
     /** String name of the gamemode. */
@@ -100,6 +108,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
     @JvmField @PublicAPI val rc: RulesContext = RulesContext(rules, this, mapWidth, mapHeight)
     @JvmField @PublicAPI var overdriveIgnoresCheat = rc.r(OVERDRIVE_IGNORES_CHEAT, false)
     @JvmField @PublicAPI var enableSurrender = rc.r(ENABLE_SURRENDER, true)
+    @JvmField @PublicAPI val teams: TeamRules
 
     init {
         val tags = rules.tags;
@@ -119,6 +128,20 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
 
         patch = rc.r(PATCH, 0)
 
+        teams = TeamRules(rc)
+
         emit(SpecialSettingsLoad(rc, rules === Vars.state.rules))
     }
+
+    class TeamRules(rc: RulesContext) {
+        private val teams = Array(256) { team -> TeamRule(
+            rc.r("$SERVICE_TEAM_HEAD$team", team == 0 || (Gamemode.enableSpectate && Gamemode.spectate.isSpectatorTeam(Team.all[team])))
+        ) }
+
+        operator fun get(team: Team): TeamRule = teams[team.id] ?: defaultTeamSettings
+        operator fun set(team: Team, rule: TeamRule) { teams[team.id] = rule }
+    }
+    class TeamRule (
+        @JvmField val serviceTeam: Boolean,
+    )
 }

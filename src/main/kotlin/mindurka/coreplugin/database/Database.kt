@@ -252,7 +252,7 @@ object Database {
                     Groups.player.each { player ->
                         if (player.sessionData.userId != userId) return@each
                         kickBroadcast(player.sessionData.simpleName(), reason, admin)
-                        kickConnection(player.con, entryId, player.locale, reason, expires, admin)
+                        kickConnection(player.con, entryId, userId, player.locale, reason, expires, admin)
                     }
                 }
                 driver!!.onLive(liveQueries[2].result.asString()) { update ->
@@ -275,7 +275,7 @@ object Database {
                     Groups.player.each { player ->
                         if (player.sessionData.userId != userId) return@each
                         banBroadcast(player.sessionData.simpleName(), reason, admin)
-                        banConnection(player.con, entryId, player.locale, reason, expires, admin)
+                        banConnection(player.con, entryId, userId, player.locale, reason, expires, admin)
                     }
                 }
 
@@ -537,7 +537,7 @@ object Database {
         data.keySet = true
     }
 
-    internal fun votekickConnection(con: NetConnection, votekickId: String, locale: String, reason: String, expires: Instant, initiator: String, votes: Seq<String>) {
+    internal fun votekickConnection(con: NetConnection, votekickId: String, userId: String, locale: String, reason: String, expires: Instant, initiator: String, votes: Seq<String>) {
         val votesS = run {
             val builder = StringBuilder(run {
                 var i = 0
@@ -558,6 +558,7 @@ object Database {
 
         con.kick(Tl.fmt(locale)
             .put("id", votekickId)
+            .put("userid", userId)
             .put("initiator", initiator)
             .put("votes", votesS.toString())
             .put("remaining", remaining)
@@ -569,13 +570,13 @@ object Database {
         val isp = IspTables.of(player.ip)
         val id = abstractQuerySingle(Query(DatabaseScripts.votekickScript)
             .x("user", player.sessionData.userId)
-            .x("initiator", player.sessionData.userId)
+            .x("initiator", initiator.sessionData.userId)
             .x("votes", votes.iterator().map { it.sessionData.userId }.collect(ArrayList()))
             .x("ip", player.con.address)
             .apply { isp?.let { x("isp", it.isp) } }
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        votekickConnection(player.con, id, player.locale, reason, Clock.System.now() + 30.minutes,
+        votekickConnection(player.con, id, player.sessionData.userId, player.locale, reason, Clock.System.now() + 30.minutes,
             initiator.sessionData.simpleName(), votes.map { it.sessionData.simpleName() })
     }
 
@@ -599,11 +600,12 @@ object Database {
             .done("{generic.admin.kick}")
     }
 
-    internal fun kickConnection(con: NetConnection, kickId: String, locale: String, reason: String, expires: Instant?, admin: String) {
+    internal fun kickConnection(con: NetConnection, kickId: String, userId: String, locale: String, reason: String, expires: Instant?, admin: String) {
         val remaining = durationToTlString(expires?.let { max((it - Clock.System.now()).inWholeMilliseconds, 0) / 1000f } ?: Float.POSITIVE_INFINITY)
 
         con.kick(Tl.fmt(locale)
             .put("id", kickId)
+            .put("userid", userId)
             .put("admin", admin)
             .put("remaining", remaining)
             .put("reason", reason)
@@ -625,7 +627,7 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         kickBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
-        kickConnection(player.con, id, player.locale, reason,
+        kickConnection(player.con, id, player.sessionData.userId, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
     /**
@@ -644,7 +646,7 @@ object Database {
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
             kickBroadcast(po.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
-            kickConnection(po.con, id, po.locale, reason,
+            kickConnection(po.con, id, player.userId, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
     }
@@ -657,11 +659,12 @@ object Database {
             .done("{generic.admin.ban}")
     }
 
-    internal fun banConnection(con: NetConnection, banId: String, locale: String, reason: String, expires: Instant?, admin: String) {
+    internal fun banConnection(con: NetConnection, banId: String, userId: String, locale: String, reason: String, expires: Instant?, admin: String) {
         val remaining = durationToTlString(expires?.let { max((it - Clock.System.now()).inWholeMilliseconds, 0) / 1000f } ?: Float.POSITIVE_INFINITY)
 
         con.kick(Tl.fmt(locale)
             .put("id", banId)
+            .put("userid", userId)
             .put("admin", admin)
             .put("remaining", remaining)
             .put("reason", reason)
@@ -683,7 +686,7 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         banBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
-        banConnection(player.con, id, player.locale, reason,
+        banConnection(player.con, id, player.sessionData.userId, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
     /**
@@ -702,7 +705,7 @@ object Database {
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
             banBroadcast(player.lastName, reason, admin?.sessionData?.simpleName() ?: "<Console>")
-            banConnection(po.con, id, po.locale, reason,
+            banConnection(po.con, id, player.userId, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
     }

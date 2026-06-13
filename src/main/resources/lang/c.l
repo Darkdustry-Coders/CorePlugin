@@ -83,7 +83,7 @@ chat = {if {service} != () then ({generic.chat.service.{service}} )}
      : [scarlet][[{player}]
      : {if {tlstyle} = short then ( [gray]({lang})[])}
      : : [white]{if {tlstyle} = classic then {origmessage} else {message}}
-     : {if {tlstyle} = classic then [lightgray]({message})}
+     : {if {tlstyle} = classic then [lightgray]( {message})}
      : {if {tlstyle} = multiline then (\n{generic.chat.original})}
 
 chat.original = [gray]Original ({lang}): []{origmessage}
@@ -201,6 +201,7 @@ another-location = [{col.err}]You are already logged in from another location.
 ban = [{col.err}]You were banned from this server.
     =
     = [accent]Ban ID: [yellow]{id}
+    = [accent]User ID: [yellow]{userid}
     = [accent]Admin: {admin}
     = [accent]Reason: [#EC5784]{reason}
     = [accent]Remaining: [yellow]{remaining}
@@ -211,6 +212,7 @@ ban = [{col.err}]You were banned from this server.
 kick = [{col.err}]You were kicked from this server.
      =
      = [accent]Kick ID: [yellow]{id}
+     = [accent]User ID: [yellow]{userid}
      = [accent]Admin: {admin}
      = [accent]Reason: [#EC5784]{reason}
      = [accent]Remaining: [yellow]{remaining}
@@ -221,6 +223,7 @@ kick = [{col.err}]You were kicked from this server.
 votekick = [{col.err}]You were votekicked from this server.
          =
          = [accent]Votekick ID: [yellow]{id}
+         = [accent]User ID: [yellow]{userid}
          = [accent]Initiator: {initiator}
          = [accent]Reason: [#EC5784]{reason}
          = [accent]Remaining: [yellow]{remaining}
