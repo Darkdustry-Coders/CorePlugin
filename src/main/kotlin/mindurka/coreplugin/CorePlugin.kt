@@ -364,12 +364,13 @@ object CorePlugin {
             // Log.info("[DEBUG/AC] Set last accessed build to (${build.tileX()}, ${build.tileY()}, ${build.block.name})")
             lastAccess.put(it.player, build)
         }
+        val sillyCheatCounter = WeakHashMap<Player, Int>()
         Vars.netServer.admins.addActionFilter { act ->
             val build = act.tile?.build
             val config: Any? = act.config
 
             val reason: String = run {
-                if ((act.type === Administration.ActionType.buildSelect) && !Vars.state.rules.possessionAllowed) return@run "Spawned from a core"
+                if ((act.type === Administration.ActionType.buildSelect) && !Vars.state.rules.possessionAllowed) return@run "core-spawn"
                 if (act.type === Administration.ActionType.configure
                     && (build is UnitFactory.UnitFactoryBuild || build is Reconstructor.ReconstructorBuild)
                     && config is UnitCommand) {
@@ -384,18 +385,31 @@ object CorePlugin {
                         return@addActionFilter true
                     }
 
-                    return@run "Configured an unconfigurable block"
+                    return@run "config-unconfigurable"
                 }
                 if (act.type == Administration.ActionType.placeBlock && !Vars.state.rules.schematicsAllowed
-                    && isConfigSus(act.block, act.config)) return@run "Placed a pre-configured block"
+                    && isConfigSus(act.block, act.config)) return@run "pre-configured-block"
 
                 return@addActionFilter true
             }
 
             val player = act.player
 
-            Async.run {
-                Database.ban(player, null, 7.days, "Cheating ($reason)")
+            if ((sillyCheatCounter[player] ?: 0) > 8) {
+                Async.run {
+                    Database.ban(player, null, 3.hours, Tl.fmt("c").done("Cheating ({generic.warn.cheating.player.$reason})"))
+                }
+            } else {
+                sillyCheatCounter[player] = (sillyCheatCounter[player] ?: 0) + 1
+                Groups.player.each({ it.admin }) {
+                    Tl.send(it)
+                        .put("player", player.sessionData.fullName())
+                        .put("reason", reason)
+                        .done("{generic.warn.cheating.admin}")
+                }
+                Tl.send(player)
+                    .put("reason", reason)
+                    .done("{generic.warn.cheating.player}")
             }
 
             false

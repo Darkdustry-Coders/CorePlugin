@@ -87,10 +87,38 @@ unknown-map = Неизвестная карта
 unknown-player = Игрок не найден
 unknown-unit = Unknown unit
 unknown-unit-type = Unknown unit type
-unknown-status-effect = Unknown unit type
+unknown-status-effect = Unknown status effect
 invalid-item = Invalid item
 invalid-team = Invalid team
 invalid-duration = Неправильный параметр срока [yellow]'{commands.{command}.params.{param}}'[]
+
+[generic.warn]
+cheating.admin = [{col.err}]{emo.warn} {player} is cheating! ({generic.warn.cheating.admin.{reason}})
+cheating.player = [{col.warn}]{emo.warn} {generic.warn.cheating.player.{reason}}
+
+cheating.player._generic_warning = Cheating is banned on this server, so we highly recommend uninstalling them
+                                 - or learning about all the cheaty features your mods add so you can not
+                                 - use them.
+cheating.admin.config-unconfigurable = Configured an unconfigurable building
+cheating.player.config-unconfigurable = You tried configuring an unconfigurable building!
+                                      =
+                                      = This could either be due to high ping or if you're using cheats.
+                                      =
+                                      = {generic.warn.cheating.player._generic_warning}
+cheating.admin.core-spawn = Selected a core to respawn from
+cheating.player.core-spawn = You tried to spawn from a different core!
+                           =
+                           = Some cheats abuse a bug in Mindustry that bypasses "Possession allowed"
+                           - map rule to allow respawning from non-main cores.
+                           =
+                           = {generic.warn.cheating.player._generic_warning}
+cheating.admin.pre-configured-block = Placed a pre-configured block
+cheating.player.pre-configured-block = You tried to place a pre-configured block!
+                                     =
+                                     = Some cheats let you place schemes despite having "Schematics Allowed"
+                                     - map rule.
+                                     =
+                                     = {generic.warn.cheating.player._generic_warning}
 
 [generic.kick]
 merged = [{col.err}]Этот аккаунт был объединен с другим и, следовательно, больше недоступен.

@@ -15,12 +15,13 @@ welcome-message = [accent]We are in the process of completely rewriting server p
                 - Expect bugs!
                 =
                 = [orange]<<< ATTENTION >>>
-                = [{col.err}]This server bans cheating, and may automatically ban you on notice.
-                - If you'll get banned for cheating and can't prove you did not cheat, [yellow]you will
-                - not be unbanned[] even if you promise to not use cheats anymore.
+                = [white]Cheating on this server is a [{col.err}]bannable offense[], enforced by an anticheat.
                 =
-                = Yes, hardware autoclickers and so-called "QOL" features like bypassing schemes
-                - count too.
+                = We consider automation tools (software or hardware) and bypasses (i.e. schemes, possession of cores,
+                - configuration of unconfigurable blocks or preconfiguration, etc) as cheats.
+                =
+                = Things like expanding zoom or scheme size, increasing map brightness, or putting a tape
+                - on your mouse are OK.
 gamemode-uses-special-settings = [accent]Some of this gamemode's features don't work in vanilla.[]
                                =
                                = Install [{col.mdc}]MindurkaCompat[] from mod explorer to gain access to them.
@@ -87,10 +88,38 @@ unknown-map = Could not find the map
 unknown-player = Could not find the player
 unknown-unit = Unknown unit
 unknown-unit-type = Unknown unit type
-unknown-status-effect = Unknown unit type
+unknown-status-effect = Unknown status effect
 invalid-item = Invalid item
 invalid-team = Invalid team
 invalid-duration = Not a valid duration for parameter [yellow]'{commands.{command}.params.{param}}'[]
+
+[generic.warn]
+cheating.admin = [{col.err}]{emo.warn} {player} is cheating! ({generic.warn.cheating.admin.{reason}})
+cheating.player = [{col.warn}]{emo.warn} {generic.warn.cheating.player.{reason}}
+
+cheating.player._generic_warning = Cheating is banned on this server, so we highly recommend uninstalling them
+                                 - or learning about all the cheaty features your mods add so you can not
+                                 - use them.
+cheating.admin.config-unconfigurable = Configured an unconfigurable building
+cheating.player.config-unconfigurable = You tried configuring an unconfigurable building!
+                                      =
+                                      = This could either be due to high ping or if you're using cheats.
+                                      =
+                                      = {generic.warn.cheating.player._generic_warning}
+cheating.admin.core-spawn = Selected a core to respawn from
+cheating.player.core-spawn = You tried to spawn from a different core!
+                           =
+                           = Some cheats abuse a bug in Mindustry that bypasses "Possession allowed"
+                           - map rule to allow respawning from non-main cores.
+                           =
+                           = {generic.warn.cheating.player._generic_warning}
+cheating.admin.pre-configured-block = Placed a pre-configured block
+cheating.player.pre-configured-block = You tried to place a pre-configured block!
+                                     =
+                                     = Some cheats let you place schemes despite having "Schematics Allowed"
+                                     - map rule.
+                                     =
+                                     = {generic.warn.cheating.player._generic_warning}
 
 [generic.kick]
 merged = [{col.err}]This account was merged into another and thus no longer accessible.
