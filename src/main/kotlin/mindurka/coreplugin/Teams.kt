@@ -74,6 +74,7 @@ fun initTeams() {
         val profileId = it.player.sessionData.profileId
         restoreSpectator.remove(profileId)
         if (!teamAssigned(it.player)) return@on
+        Log.info("[DEBUG/Team] Saving team for $profileId = ${it.player.team().id}")
         restoreTeams.put(profileId, it.player.team().id)
     }
 
@@ -137,10 +138,19 @@ fun initTeams() {
 
         if (!Vars.state.isPaused && Gamemode.restoreTeams) restoreTeams.get(player.sessionData.profileId, -1).let { id ->
             Log.info("[DEBUG/Team] Trying to restore team")
-            if (id == -1) return@let
+            if (id == -1) {
+                Log.info("[DEBUG/Team] No restore team set")
+                return@let
+            }
             val team = Team.all[id]
-            if (!team.data().isAlive) return@let
-            if (team == Team.derelict) return@let
+            if (!team.data().isAlive) {
+                Log.info("[DEBUG/Team] Team $id is dead, skipping")
+                return@let
+            }
+            if (team.isServiceTeam) {
+                Log.info("[DEBUG/Team] Team $id is a service team, skipping")
+                return@let
+            }
             return@TeamAssigner team
         }
 

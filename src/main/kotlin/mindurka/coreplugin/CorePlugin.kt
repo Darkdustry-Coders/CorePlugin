@@ -324,7 +324,7 @@ object CorePlugin {
         }
 
         // TODO: Other buildings.
-        val ACCESS_TIME_LEEWAY = 3000000000L;
+        val ACCESS_TIME_LEEWAY = 3000000000L
         val setCommands = newSeq<Pair<Block, UnitCommand>>()
         val lastAccess = object : ObjectMap<Player, Building>() {
             override fun remove(key: Player?): Building? {
