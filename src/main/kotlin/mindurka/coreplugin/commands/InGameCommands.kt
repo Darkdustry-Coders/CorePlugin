@@ -582,7 +582,8 @@ private fun pardon(caller: Player, player: OfflinePlayer) = Async.run {
 /** Kick a player */
 @Command
 @RequiresPermission(PermLevels.moderator)
-private fun kick(caller: Player, player: OfflinePlayer, duration: Duration, @Rest reason: String) = Async.run {
+@JvmName("kick")
+private fun kick(caller: Player, player: OfflinePlayer, duration: Duration?, @Rest reason: String) = Async.run {
     Database.kick(player, caller, duration, reason)
     Tl.send(caller).put("target", player.lastName).done("{commands.kick.success}")
 }
@@ -598,7 +599,8 @@ private fun unban(caller: Player, player: OfflinePlayer) = Async.run {
 /** Ban a player */
 @Command
 @RequiresPermission(PermLevels.moderator)
-private fun ban(caller: Player, player: OfflinePlayer, duration: Duration, @Rest reason: String) = Async.run {
+@JvmName("ban")
+private fun ban(caller: Player, player: OfflinePlayer, duration: Duration?, @Rest reason: String) = Async.run {
     Database.ban(player, caller, duration, reason)
     Tl.send(caller).put("target", player.lastName).done("{commands.ban.success}")
 }
