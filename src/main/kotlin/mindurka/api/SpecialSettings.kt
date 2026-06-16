@@ -50,10 +50,6 @@ data class RulesContext(
     }
 }
 
-private val defaultTeamSettings = SpecialSettings.TeamRule(
-    serviceTeam = false,
-)
-
 @PublicAPI
 class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeight: Int) {
     companion object {
@@ -98,6 +94,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
         @JvmField @PublicAPI val ENABLE_SURRENDER = "$PREFIX.enableSurrender"
         @JvmField @PublicAPI val TEAM_RULES = "$PREFIX.teams"
         @JvmField @PublicAPI val SERVICE_TEAM_HEAD = "$TEAM_RULES.serviceTeam."
+        @JvmField @PublicAPI val PVP_DEATH_REQUIRED_HEAD = "$TEAM_RULES.pvpTeamDeathRequired."
     }
 
     /** String name of the gamemode. */
@@ -135,7 +132,8 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
 
     class TeamRules(rc: RulesContext) {
         private val teams = Array(256) { team -> TeamRule(
-            rc.r("$SERVICE_TEAM_HEAD$team", team == 0 || (Gamemode.enableSpectate && Gamemode.spectate.isSpectatorTeam(Team.all[team])))
+            rc.r("$SERVICE_TEAM_HEAD$team", team == 0 || (Gamemode.enableSpectate && Gamemode.spectate.isSpectatorTeam(Team.all[team]))),
+            rc.r("$PVP_DEATH_REQUIRED_HEAD$team", team != 0 && (!Gamemode.enableSpectate || !Gamemode.spectate.isSpectatorTeam(Team.all[team]))),
         ) }
 
         operator fun get(team: Team): TeamRule = teams[team.id]
@@ -143,5 +141,6 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
     }
     class TeamRule (
         @JvmField val serviceTeam: Boolean,
+        @JvmField val pvpTeamDeathRequired: Boolean,
     )
 }

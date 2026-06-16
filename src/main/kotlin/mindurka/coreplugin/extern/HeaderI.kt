@@ -1,12 +1,12 @@
 package mindurka.coreplugin.extern
 
-import arc.struct.StringMap
+import mindurka.api.SpecialSettings
 import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.hasMindurkaCompat
 import mindurka.coreplugin.sessionData
 import mindurka.util.Async
+import mindustry.game.Team
 import mindustry.gen.Player
-import mindustry.maps.Map
 
 /**
  * Frontend for custom Mindustry server to interact with CorePlugin.
@@ -29,4 +29,6 @@ object HeaderI: Header() {
         }
         return !CorePlugin.restarting
     }
+    override fun countAlive(team: Team): Boolean =
+        !SpecialSettings.currentMap().teams[team].pvpTeamDeathRequired
 }
