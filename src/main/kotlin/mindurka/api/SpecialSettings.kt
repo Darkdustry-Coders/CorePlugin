@@ -1,9 +1,11 @@
 package mindurka.api
 
 import arc.struct.Seq
+import arc.util.Log
 import mindurka.annotations.PublicAPI
 import mindurka.coreplugin.Config
 import mindurka.coreplugin.CorePlugin
+import mindurka.util.isServiceTeam
 import mindustry.Vars
 import mindustry.game.Rules
 import mindustry.game.Team
@@ -92,7 +94,7 @@ class SpecialSettings internal constructor(rules: Rules, mapWidth: Int, mapHeigh
         @JvmField @PublicAPI val GAMEMODE_LEGACY = "mindurkaGamemode"
         @JvmField @PublicAPI val OVERDRIVE_IGNORES_CHEAT = "$PREFIX.overdriveIgnoresCheat"
         @JvmField @PublicAPI val ENABLE_SURRENDER = "$PREFIX.enableSurrender"
-        @JvmField @PublicAPI val TEAM_RULES = "$PREFIX.teams"
+        @JvmField @PublicAPI val TEAM_RULES = "$PREFIX.team"
         @JvmField @PublicAPI val SERVICE_TEAM_HEAD = "$TEAM_RULES.serviceTeam."
         @JvmField @PublicAPI val PVP_DEATH_REQUIRED_HEAD = "$TEAM_RULES.pvpTeamDeathRequired."
     }
