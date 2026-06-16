@@ -30,5 +30,5 @@ object HeaderI: Header() {
         return !CorePlugin.restarting
     }
     override fun countAlive(team: Team): Boolean =
-        !SpecialSettings.currentMap().teams[team].pvpTeamDeathRequired
+        SpecialSettings.currentMap().teams[team].pvpTeamDeathRequired
 }
