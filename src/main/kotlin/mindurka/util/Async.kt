@@ -238,6 +238,35 @@ object AsyncCall {
      */
     @PublicAPI
     @JvmStatic
+    suspend fun connect(player: Player, address: String, port: Int, localAddress: String, localPort: Int): Boolean {
+        val host = try {
+            pingHost(localAddress, localPort)
+        } catch (_: Exception) {
+            return false
+        }
+        if (host.version != Version.build) return false
+        if (player.con.hasDisconnected) return false
+
+        Log.info("Sending player ${Strings.stripColors(player.name)} to $address:$port")
+
+        try {
+            player.sessionData.playerLeft(player)
+            Call.connect(player.con, address, port)
+            player.con.close()
+
+            return true
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            exitProcess(1)
+        }
+    }
+    /**
+     * Attempt to connect the player to a server.
+     *
+     * @return `false` if any of the checks have failed, `true` otherwise.
+     */
+    @PublicAPI
+    @JvmStatic
     suspend fun connect(player: Player, address: String, port: Int): Boolean {
         val host = try {
             pingHost(address, port)
