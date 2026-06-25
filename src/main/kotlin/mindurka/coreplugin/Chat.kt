@@ -1,14 +1,12 @@
 package mindurka.coreplugin
 
 import arc.func.Boolf
-import arc.func.Cons
 import arc.struct.ObjectMap
 import arc.struct.Seq
 import arc.util.CommandHandler
 import arc.util.Log
 import arc.util.Strings
 import arc.util.Time
-import buj.tl.L
 import buj.tl.Tl
 import mindurka.annotations.Command
 import mindurka.annotations.RequiresPermission
@@ -126,90 +124,164 @@ internal fun initChat() {
         if (!Database.linkedChannels.any { it.canHandle(event.service) }) return@on
         val service = event.service.split('@')[1].split('/')[0].lowercase()
         event.username?.let { username ->
-            broadcastChatMessage(service, username, event.message, null, key = "{chat.service}")
-        } ?: broadcastChatMessage(service, "", event.message, null, key = "{chat.service.unnamed}")
+            broadcastChatMessage(username, event.message, null, service = service)
+        } ?: broadcastChatMessage("<System>", event.message, null, service = service)
     }
 }
 
 // And it'll only become more complex as the time goes!
-fun broadcastChatMessage(service: String?, sender: String, message: String, playerSender: Player? = null, key: String = "{generic.chat}", extras: Cons<L<*>> = {}, filter: Boolf<Player> = { true }) {
-    val langCode = auto
-    val playerLangCode = playerSender?.let { languageCodeFor(it.locale) }
-    if (langCode == null) {
-        for (recv in Groups.player) {
-            if (!filter[recv]) continue
-            val send = Tl.fmt(recv)
-                .put("player", sender)
-                .put("message", message)
-                .apply { if (service != null) put("service", service) }
-                .apply { extras.get(this) }
-                .done(if (service == null) key else "{generic.chat.service}")
-            Call.sendMessage(recv.con, send, message, playerSender)
-        }
-        return
-    }
+fun broadcastChatMessage(sender: String, message: String, playerSender: Player? = null, service: String? = null, isTeam: Boolean = false, isAdmin: Boolean = false, filter: Boolf<Player> = { true }) {
+    val isTeam = isTeam.toString()
+    val isAdmin = isAdmin.toString()
 
     val langs = ObjectMap<LanguageCode, Seq<Player>>()
-    for (recv in Groups.player) {
-        if (!filter[recv]) continue
-        val otherCode = languageCodeFor(recv.locale)
-        if (otherCode == null || otherCode === playerLangCode) {
-            val send = Tl.fmt(recv)
+    for (target in Groups.player) {
+        if (!filter[target]) continue
+        val otherCode = languageCodeFor(target.locale)
+        if (otherCode === null || target === playerSender || playerSender?.sessionData?.translatorStyle === TranslatorStyle.Disabled) {
+            Call.sendMessage(target.con, Tl.fmt(target)
+                .put("service", service ?: "")
+                .put("isteam", isTeam)
+                .put("isadmin", isAdmin)
+                .put("tlstyle", "none")
+                .put("lang", "[scarlet]LANG???")
+                .put("origmessage", "[scarlet]OMSG???")
+                .put("teamcolor", playerSender?.team()?.color?.let { "#$it" } ?: "scarlet")
                 .put("player", sender)
                 .put("message", message)
-                .apply { if (service != null) put("service", service) }
-                .apply { extras.get(this) }
-                .done(if (service == null) key else "{generic.chat.service}")
-            Call.sendMessage(recv.con, send, message, playerSender)
+                .done("{generic.chat}"),
+            message, playerSender)
             continue
         }
-        langs.get(otherCode, ::newSeq)?.add(recv)
+        langs.get(otherCode, ::newSeq)?.add(target)
     }
+
     for (entry in langs) {
         val lang = entry.key
         val players = entry.value
-        Async.run {
-            @OptIn(UnsafeNull::class)
-            val message = notnull(message)
-            val translation = translateFor(message, langCode, lang)
-            if (translation == null) {
-                for (player in players) {
-                    val send = Tl.fmt(player)
+
+        Async.run async@{
+            val origmessage = message
+            val message = try { run t@{
+                val m = translateFor(message, auto, lang) ?: return@t null
+                if (m.text.equals(origmessage, true)) return@t null
+                if (sameLang(m.language, lang.name)) return@t null
+                m
+            } } catch (e: Exception) {
+                Log.err("Translation failed for lang $lang: ", e)
+                null
+            } ?: run {
+                for (target in players) {
+                    Call.sendMessage(target.con, Tl.fmt(target)
+                        .put("service", service ?: "")
+                        .put("isteam", isTeam)
+                        .put("isadmin", isAdmin)
+                        .put("tlstyle", "none")
+                        .put("lang", "[scarlet]LANG???")
+                        .put("origmessage", "[scarlet]OMSG???")
+                        .put("teamcolor", playerSender?.team()?.color?.let { "#$it" } ?: "scarlet")
                         .put("player", sender)
                         .put("message", message)
-                        .apply { if (service != null) put("service", service) }
-                        .apply { extras.get(this) }
-                        .done(if (service == null) key else "{generic.chat.service}")
-                    Call.sendMessage(player.con, send, message, playerSender)
+                        .done("{generic.chat}"),
+                        message, playerSender)
                 }
-                return@run
+                return@async
             }
-            if (translation.text.equals(message, true)) {
-                for (player in players) {
-                    val send = Tl.fmt(player)
-                        .put("player", sender)
-                        .put("message", message)
-                        .apply { if (service != null) put("service", service) }
-                        .apply { extras.get(this) }
-                        .done(if (service == null) key else "{generic.chat.service}")
-                    Call.sendMessage(player.con, send, message, playerSender)
-                }
-                return@run
-            }
-            for (player in players) {
-                val send = Tl.fmt(player)
+
+            for (target in players) {
+                Call.sendMessage(target.con, Tl.fmt(target)
+                    .put("service", service ?: "")
+                    .put("isteam", isTeam)
+                    .put("isadmin", isAdmin)
+                    .put("tlstyle", target.sessionData.translatorStyle.shortName)
+                    .put("lang", message.language)
+                    .put("origmessage", origmessage)
+                    .put("teamcolor", playerSender?.team()?.color?.let { "#$it" } ?: "scarlet")
                     .put("player", sender)
-                    .put("message", translation.text)
-                    .apply { if (service != null) put("service", service) }
-                    .apply { extras.get(this) }
-                    .done(if (service == null) key else "{generic.chat.service}")
-                Call.sendMessage(player.con, send, message, playerSender)
-                Tl.send(player)
-                    .put("lang", translation.language)
-                    .put("message", message).done("{generic.chat.original}")
+                    .put("message", message.text)
+                    .done("{generic.chat}"),
+                    message.text, playerSender)
             }
         }
     }
+
+    // val langCode = auto
+    // val playerLangCode = playerSender?.let { languageCodeFor(it.locale) }
+    // if (langCode == null) {
+    //     for (recv in Groups.player) {
+    //         if (!filter[recv]) continue
+    //         val send = Tl.fmt(recv)
+    //             .put("player", sender)
+    //             .put("message", message)
+    //             .apply { if (service != null) put("service", service) }
+    //             .apply { extras.get(this) }
+    //             .done(if (service == null) key else "{generic.chat.service}")
+    //         Call.sendMessage(recv.con, send, message, playerSender)
+    //     }
+    //     return
+    // }
+
+    // val langs = ObjectMap<LanguageCode, Seq<Player>>()
+    // for (recv in Groups.player) {
+    //     if (!filter[recv]) continue
+    //     val otherCode = languageCodeFor(recv.locale)
+    //     if (otherCode == null || recv == playerSender) {
+    //         val send = Tl.fmt(recv)
+    //             .put("player", sender)
+    //             .put("message", message)
+    //             .apply { if (service != null) put("service", service) }
+    //             .apply { extras.get(this) }
+    //             .done(if (service == null) key else "{generic.chat.service}")
+    //         Call.sendMessage(recv.con, send, message, playerSender)
+    //         continue
+    //     }
+    //     langs.get(otherCode, ::newSeq)?.add(recv)
+    // }
+    // for (entry in langs) {
+    //     val lang = entry.key
+    //     val players = entry.value
+    //     Async.run {
+    //         @OptIn(UnsafeNull::class)
+    //         val message = notnull(message)
+    //         val translation = translateFor(message, langCode, lang)
+    //         if (translation == null) {
+    //             for (player in players) {
+    //                 val send = Tl.fmt(player)
+    //                     .put("player", sender)
+    //                     .put("message", message)
+    //                     .apply { if (service != null) put("service", service) }
+    //                     .apply { extras.get(this) }
+    //                     .done(if (service == null) key else "{generic.chat.service}")
+    //                 Call.sendMessage(player.con, send, message, playerSender)
+    //             }
+    //             return@run
+    //         }
+    //         if (translation.text.equals(message, true)) {
+    //             for (player in players) {
+    //                 val send = Tl.fmt(player)
+    //                     .put("player", sender)
+    //                     .put("message", message)
+    //                     .apply { if (service != null) put("service", service) }
+    //                     .apply { extras.get(this) }
+    //                     .done(if (service == null) key else "{generic.chat.service}")
+    //                 Call.sendMessage(player.con, send, message, playerSender)
+    //             }
+    //             return@run
+    //         }
+    //         for (player in players) {
+    //             val send = Tl.fmt(player)
+    //                 .put("player", sender)
+    //                 .put("message", translation.text)
+    //                 .apply { if (service != null) put("service", service) }
+    //                 .apply { extras.get(this) }
+    //                 .done(if (service == null) key else "{generic.chat.service}")
+    //             Call.sendMessage(player.con, send, message, playerSender)
+    //             Tl.send(player)
+    //                 .put("lang", translation.language)
+    //                 .put("message", message).done("{generic.chat.original}")
+    //         }
+    //     }
+    // }
 }
 
 // src/core/NetServer.java
@@ -247,7 +319,7 @@ internal fun chatHandleMessage(player: Player?, message: String?) {
 
         Log.info("&fi@: @", "&lc" + player.plainName(), "&lw$message");
 
-        broadcastChatMessage(null, player.sessionData.fullName(), notnull(message), player)
+        broadcastChatMessage(player.sessionData.fullName(), notnull(message), player)
 
         val msg = ServerMessage(
             Strings.stripColors(message),
@@ -271,8 +343,7 @@ internal fun chatHandleMessage(player: Player?, message: String?) {
 private fun a(caller: Player, @Rest message: String) {
     val message = message.stripInvisible()
     if (message.isEmpty()) return
-    broadcastChatMessage(null, caller.sessionData.fullName(), message, caller,
-        key = "{generic.chat.admin} {generic.chat}") { it.permissionLevel >= 100 }
+    broadcastChatMessage(caller.sessionData.fullName(), message, caller, isAdmin = true) { it.permissionLevel >= 100 }
 }
 
 @Command
@@ -281,8 +352,7 @@ private fun t(caller: Player, @Rest message: String) {
     if (message.isEmpty()) return
 
     val team = caller.team()
-    broadcastChatMessage(null, caller.sessionData.fullName(), message, caller,
-        key = "[#${caller.team().color}]{generic.chat.team}[] {generic.chat}") { it.team() == team }
+    broadcastChatMessage(caller.sessionData.fullName(), message, caller, isTeam = true) { it.team() == team }
 
     val msg = ServerMessage(
         Strings.stripColors(message),

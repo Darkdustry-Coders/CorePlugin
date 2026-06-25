@@ -17,6 +17,7 @@ import mindurka.api.sleep
 import mindurka.config.SharedConfig
 import mindurka.coreplugin.Config
 import mindurka.coreplugin.PlayerData
+import mindurka.coreplugin.TranslatorStyle
 import mindurka.coreplugin.sessionData
 import mindurka.util.Async
 import mindurka.util.UnreachableException
@@ -51,6 +52,7 @@ import kotlin.jvm.javaClass
 import kotlin.math.max
 import kotlin.system.exitProcess
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -62,6 +64,7 @@ class SharedAccountException: Exception("Unhandled shared account exception")
 class KeyValidationFailure: Exception("Unhandled key validation failure")
 class BannedAccountException(
     val banId: String,
+    val userId: String,
     val admin: String,
     val reason: String,
     val expires: Instant?,
@@ -69,6 +72,7 @@ class BannedAccountException(
 ): Exception("Unhandled ban")
 class KickedAccountException(
     val kickId: String,
+    val userId: String,
     val admin: String,
     val reason: String,
     val expires: Instant?
@@ -76,7 +80,13 @@ class KickedAccountException(
 class GraylistedAccountException: Exception("Unhandled graylist")
 class BlacklistedException: Exception("Unhandled blacklist")
 class AnotherLocationException: Exception("Unhandled double login")
-class VotekickedAccountException(val votekickId: String, val reason: String, val expires: Instant, val initiator: String, val votes: Seq<String>): Exception("Unhandled votekick")
+class VotekickedAccountException(
+    val votekickId: String,
+    val userId: String,
+    val reason: String,
+    val expires: Instant,
+    val initiator: String,
+    val votes: Seq<String>): Exception("Unhandled votekick")
 
 data class BannedInfo(
     val id: String,
@@ -117,6 +127,7 @@ internal object DatabaseScripts {
     val loaduserScript: String = Streams.copyString(loader.getResourceAsStream("sql/loaduser.surrealql"))
     val setkeyScript: String = Streams.copyString(loader.getResourceAsStream("sql/setkey.surrealql"))
     val setpermissionlevelScript: String = Streams.copyString(loader.getResourceAsStream("sql/setpermissionlevel.surrealql"))
+    val settranslatorsettingsScript: String = Streams.copyString(loader.getResourceAsStream("sql/settranslatorsettings.surrealql"))
 
     val ispsFetchScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_fetch.surrealql"))
     val ispsUpdateScript: String = Streams.copyString(loader.getResourceAsStream("sql/isps_update.surrealql"))
@@ -223,16 +234,57 @@ object Database {
                     .x("server_name", Config.i.serverName)).await().ok()
 
                 driver!!.onLive(liveQueries[0].result.asString()) { update ->
-                    val votekickId = update.data.at("id").asString()
-                    votekickCache.removeAll { it.value.id == votekickId }
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    votekickCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                    return@onLive
                 }
                 driver!!.onLive(liveQueries[1].result.asString()) { update ->
-                    val kickId = update.data.at("id").asString()
-                    kickCache.removeAll { it.value.id == kickId }
+                    val pardoned = update.data.at("pardoned").asBoolean()
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    if (pardoned) {
+                        kickCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                        return@onLive
+                    }
+
+                    val reason = update.data.at("reason").asString()
+                    val admin = update.data.at("admin").asString()
+                    val expires = update.data.at("duration").let { duration ->
+                        if (duration.isNull) return@let null
+                        Clock.System.now() + duration.asLong().milliseconds
+                    }
+
+                    Groups.player.each { player ->
+                        if (player.sessionData.userId != userId) return@each
+                        kickBroadcast(player.sessionData.simpleName(), reason, admin)
+                        kickConnection(player.con, entryId, userId, player.locale, reason, expires, admin)
+                    }
                 }
                 driver!!.onLive(liveQueries[2].result.asString()) { update ->
-                    val banId = update.data.at("id").asString()
-                    banCache.removeAll { it.value.id == banId }
+                    val pardoned = update.data.at("pardoned").asBoolean()
+                    val userId = update.data.at("user_id").asString()
+                    val entryId = update.data.at("id").asString()
+
+                    if (pardoned) {
+                        banCache.removeAll { it.value.id == entryId || it.value.user == userId }
+                        return@onLive
+                    }
+
+                    val reason = update.data.at("reason").asString()
+                    val admin = update.data.at("admin").asString()
+                    val expires = update.data.at("duration").let { duration ->
+                        if (duration.isNull) return@let null
+                        Clock.System.now() + duration.asLong().milliseconds
+                    }
+
+                    Groups.player.each { player ->
+                        if (player.sessionData.userId != userId) return@each
+                        banBroadcast(player.sessionData.simpleName(), reason, admin)
+                        banConnection(player.con, entryId, userId, player.locale, reason, expires, admin)
+                    }
                 }
 
                 linkedChannels.addAll(liveQueries[3].result.asJsonList().iterator().map { link -> LinkedChannels.new(
@@ -378,7 +430,7 @@ object Database {
                 return@let
             }
 
-            throw VotekickedAccountException(entry.value.reason, entry.value.id, entry.value.expires, entry.value.initiator, entry.value.votes);
+            throw VotekickedAccountException(entry.value.reason, entry.value.user, entry.value.id, entry.value.expires, entry.value.initiator, entry.value.votes);
         }
         kickCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
             if (entry.value.expires?.minus(Clock.System.now())?.isPositive() == false) {
@@ -387,7 +439,7 @@ object Database {
                 return@let
             }
 
-            throw KickedAccountException(entry.value.id, entry.value.admin, entry.value.reason, entry.value.expires);
+            throw KickedAccountException(entry.value.id, entry.value.user, entry.value.admin, entry.value.reason, entry.value.expires);
         }
         banCache.find { it.key == uuid || it.value.key.contains(keyHash) || it.value.ips.contains(ip)}?.let { entry ->
             if (entry.value.expires?.minus(Clock.System.now())?.isPositive() == false) {
@@ -396,7 +448,7 @@ object Database {
                 return@let
             }
 
-            throw BannedAccountException(entry.value.id, entry.value.admin, entry.value.reason, entry.value.expires, entry.value.server);
+            throw BannedAccountException(entry.value.id, entry.value.user, entry.value.admin, entry.value.reason, entry.value.expires, entry.value.server);
         }
 
         // What's duh SurrealDB smoking?
@@ -433,7 +485,7 @@ object Database {
 
                 if (banCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 banCache.put(uuid, BannedInfo(id, user, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, expires, server))
-                throw BannedAccountException(id, admin, reason, expires, server);
+                throw BannedAccountException(id, user, admin, reason, expires, server);
             }
             DisableCodes.kicked -> {
                 val id = query.result.at("id").asString()
@@ -444,7 +496,7 @@ object Database {
 
                 if (kickCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 kickCache.put(uuid, KickedInfo(id, user, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), admin, reason, expires))
-                throw KickedAccountException(id, admin, reason, expires);
+                throw KickedAccountException(id, user, admin, reason, expires);
             }
             DisableCodes.votekicked -> {
                 val id = query.result.at("id").asString()
@@ -459,7 +511,7 @@ object Database {
 
                 if (votekickCache.size > 128) votekickCache.remove(votekickCache.keys().random())
                 votekickCache.put(uuid, VotekickedInfo(id, userId, Seq.with(ip), if (keyHash != null) Seq.with(keyHash) else Seq.with(), reason, expires, initiator, votes))
-                throw VotekickedAccountException(id, reason, expires, initiator, votes);
+                throw VotekickedAccountException(id, userId, reason, expires, initiator, votes);
             }
             DisableCodes.blacklisted -> throw BlacklistedException()
             else -> throw RuntimeException("Unexpected login error: $error")
@@ -470,6 +522,10 @@ object Database {
         session.keySet = query.result.at("key_set").asBoolean()
         session.shortId = if (query.result.at("short_id").isNull) null else query.result.at("short_id").asLong()
         session.customname = if (query.result.at("set_name").isNull) null else query.result.at("set_name").asString()
+        session.translatorStyle = query.result.at("translator_style").asInteger().let { id ->
+            if (id < 0 || id >= TranslatorStyle.entries.size) return@let TranslatorStyle.Disabled
+            TranslatorStyle.entries[id]
+        }
         session.`unsafe$rawSetPermissionLevel`(query.result.at("permission_level").asInteger())
     }
 
@@ -489,7 +545,7 @@ object Database {
         data.keySet = true
     }
 
-    internal fun votekickConnection(con: NetConnection, votekickId: String, locale: String, reason: String, expires: Instant, initiator: String, votes: Seq<String>) {
+    internal fun votekickConnection(con: NetConnection, votekickId: String, userId: String, locale: String, reason: String, expires: Instant, initiator: String, votes: Seq<String>) {
         val votesS = run {
             val builder = StringBuilder(run {
                 var i = 0
@@ -510,6 +566,7 @@ object Database {
 
         con.kick(Tl.fmt(locale)
             .put("id", votekickId)
+            .put("userid", userId)
             .put("initiator", initiator)
             .put("votes", votesS.toString())
             .put("remaining", remaining)
@@ -521,13 +578,13 @@ object Database {
         val isp = IspTables.of(player.ip)
         val id = abstractQuerySingle(Query(DatabaseScripts.votekickScript)
             .x("user", player.sessionData.userId)
-            .x("initiator", player.sessionData.userId)
+            .x("initiator", initiator.sessionData.userId)
             .x("votes", votes.iterator().map { it.sessionData.userId }.collect(ArrayList()))
             .x("ip", player.con.address)
             .apply { isp?.let { x("isp", it.isp) } }
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        votekickConnection(player.con, id, player.locale, reason, Clock.System.now() + 30.minutes,
+        votekickConnection(player.con, id, player.sessionData.userId, player.locale, reason, Clock.System.now() + 30.minutes,
             initiator.sessionData.simpleName(), votes.map { it.sessionData.simpleName() })
     }
 
@@ -543,19 +600,20 @@ object Database {
             .x("server", Config.i.serverName)).ok().result.asBoolean()
     }
 
-    internal fun kickBroadcast(player: Player, reason: String, admin: String) {
+    internal fun kickBroadcast(player: String, reason: String, admin: String) {
         Tl.broadcast()
             .put("admin", admin)
-            .put("target", player.sessionData.fullName())
+            .put("target", player)
             .put("reason", reason)
             .done("{generic.admin.kick}")
     }
 
-    internal fun kickConnection(con: NetConnection, kickId: String, locale: String, reason: String, expires: Instant?, admin: String) {
+    internal fun kickConnection(con: NetConnection, kickId: String, userId: String, locale: String, reason: String, expires: Instant?, admin: String) {
         val remaining = durationToTlString(expires?.let { max((it - Clock.System.now()).inWholeMilliseconds, 0) / 1000f } ?: Float.POSITIVE_INFINITY)
 
         con.kick(Tl.fmt(locale)
             .put("id", kickId)
+            .put("userid", userId)
             .put("admin", admin)
             .put("remaining", remaining)
             .put("reason", reason)
@@ -576,8 +634,8 @@ object Database {
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        kickBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
-        kickConnection(player.con, id, player.locale, reason,
+        kickBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
+        kickConnection(player.con, id, player.sessionData.userId, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
     /**
@@ -595,25 +653,26 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
-            kickBroadcast(po, reason, admin?.sessionData?.simpleName() ?: "<Console>")
-            kickConnection(po.con, id, po.locale, reason,
+            kickBroadcast(po.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
+            kickConnection(po.con, id, player.userId, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
     }
 
-    internal fun banBroadcast(player: Player, reason: String, admin: String) {
+    internal fun banBroadcast(player: String, reason: String, admin: String) {
         Tl.broadcast()
             .put("admin", admin)
-            .put("target", player.sessionData.fullName())
+            .put("target", player)
             .put("reason", reason)
             .done("{generic.admin.ban}")
     }
 
-    internal fun banConnection(con: NetConnection, banId: String, locale: String, reason: String, expires: Instant?, admin: String) {
+    internal fun banConnection(con: NetConnection, banId: String, userId: String, locale: String, reason: String, expires: Instant?, admin: String) {
         val remaining = durationToTlString(expires?.let { max((it - Clock.System.now()).inWholeMilliseconds, 0) / 1000f } ?: Float.POSITIVE_INFINITY)
 
         con.kick(Tl.fmt(locale)
             .put("id", banId)
+            .put("userid", userId)
             .put("admin", admin)
             .put("remaining", remaining)
             .put("reason", reason)
@@ -634,8 +693,8 @@ object Database {
             .x("duration", duration?.let { it.inWholeMilliseconds / 1000f })
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
-        banBroadcast(player, reason, admin?.sessionData?.simpleName() ?: "<Console>")
-        banConnection(player.con, id, player.locale, reason,
+        banBroadcast(player.sessionData.simpleName(), reason, admin?.sessionData?.simpleName() ?: "<Console>")
+        banConnection(player.con, id, player.sessionData.userId, player.locale, reason,
             duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
     }
     /**
@@ -653,7 +712,8 @@ object Database {
             .x("reason", reason)
             .x("server", Config.i.serverName)).ok().result.at("id").asString()
         player.player?.let { po ->
-            banConnection(po.con, id, po.locale, reason,
+            banBroadcast(player.lastName, reason, admin?.sessionData?.simpleName() ?: "<Console>")
+            banConnection(po.con, id, player.userId, po.locale, reason,
                 duration?.let { Clock.System.now() + it }, admin?.sessionData?.simpleName() ?: "<Console>")
         }
     }
@@ -666,6 +726,15 @@ object Database {
         banCache.removeAll { it.value.user == userId }
         return abstractQuerySingle(Query(DatabaseScripts.unbanScript)
             .x("user", userId)).ok().result.asBoolean()
+    }
+
+    /** Set player's translation preferences. */
+    @PublicAPI
+    suspend fun setTranslationPreference(profileId: String, style: TranslatorStyle, skipTranslation: Seq<String>) {
+        abstractQuery(Query(DatabaseScripts.settranslatorsettingsScript)
+            .x("profile", profileId)
+            .x("translator_style", style.ordinal)
+            .x("skip_translation_of", skipTranslation.iterator().collect(ArrayList(skipTranslation.size)))).ok()
     }
 }
 

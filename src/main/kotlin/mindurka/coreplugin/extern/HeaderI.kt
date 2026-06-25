@@ -1,8 +1,11 @@
 package mindurka.coreplugin.extern
 
+import mindurka.api.SpecialSettings
+import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.hasMindurkaCompat
 import mindurka.coreplugin.sessionData
 import mindurka.util.Async
+import mindustry.game.Team
 import mindustry.gen.Player
 
 /**
@@ -20,4 +23,12 @@ object HeaderI: Header() {
     }
 
     override fun hasMindurkaCompat(player: Player?): Boolean = player?.hasMindurkaCompat ?: false
+    override fun onMapLoad(): Boolean {
+        if (CorePlugin.restarting) {
+            CorePlugin.actuallyDoARestart()
+        }
+        return !CorePlugin.restarting
+    }
+    override fun countAlive(team: Team): Boolean =
+        SpecialSettings.currentMap().teams[team].pvpTeamDeathRequired
 }

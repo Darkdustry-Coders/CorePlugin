@@ -1,13 +1,15 @@
 package mindurka.coreplugin
 
 // Keeping those unwrapped for my own sanity.
-import arc.Core
 import arc.func.Cons
 import arc.math.Mathf
 import arc.struct.IntMap
+import arc.struct.ObjectIntMap
 import arc.struct.ObjectMap
+import arc.struct.Seq
 import arc.util.Log
 import arc.util.Strings
+import arc.util.Threads
 import arc.util.Time
 import buj.tl.Tl
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -32,6 +34,7 @@ import mindurka.coreplugin.messages.BringPlayerBack
 import mindurka.coreplugin.messages.ServerDown
 import mindurka.coreplugin.messages.ServerMessage
 import mindurka.coreplugin.nativeimage.nativeImageHeatUp
+import mindurka.coreplugin.recording.initRecording
 import mindurka.coreplugin.votes.Vote
 import mindurka.ui.handleUiEvent
 import mindurka.util.Async
@@ -41,11 +44,15 @@ import mindurka.util.SendMessage
 import mindurka.util.collect
 import mindurka.util.debug
 import mindurka.util.filter
+import mindurka.util.isServiceTeam
 import mindurka.util.map
+import mindurka.util.newSeq
 import mindurka.util.random
 import mindurka.util.splitOnceLast
+import mindustry.MdUtil
 import mindustry.NiMetadata
 import mindustry.Vars
+import mindustry.ai.UnitCommand
 import mindustry.content.Blocks
 import mindustry.game.EventType
 import mindustry.game.Team
@@ -58,8 +65,12 @@ import mindustry.gen.SetTileCallPacket
 import mindustry.net.Administration
 import mindustry.world.Block
 import mindustry.world.blocks.environment.StaticWall
+import mindustry.world.blocks.units.Reconstructor
+import mindustry.world.blocks.units.UnitFactory
+import java.util.WeakHashMap
 import kotlin.math.min
 import kotlin.system.exitProcess
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 
 object CorePlugin {
@@ -92,27 +103,18 @@ object CorePlugin {
     @JvmField var currentGlobalVote: Vote? = null
     @JvmField val teamVotes = IntMap<Vote>()
     @JvmField val mainThread = Thread.currentThread()
-    @JvmField val teamRestoreCache = ObjectMap<String, TeamRestoreCache>()
     @JvmField var restarting = false
     @JvmField internal var shuttingDown = false
 
-    private fun actuallyDoARestart() {
-        if (Gamemode.sendHub) hubServer()?.let { hub ->
-            if (Gamemode.sendBringBackPacket) {
-                val ids = Groups.player.iterator().map { it.sessionData.profileId }.collect(ArrayList())
-                if (!NiMetadata.shortcircuit()) RabbitMQ.sendBypass(BringPlayerBack(ids), "#")
-            }
+    internal fun actuallyDoARestart() {
+        if (shuttingDown) return
+        shuttingDown = true
 
-            hub.splitOnceLast(":") { ip, port -> port?.toUShortOrNull()?.let { port ->
-                val packet = ConnectCallPacket()
-                packet.ip = ip
-                packet.port = port.toInt()
-                for (player in Groups.player) player.con.send(packet, true)
-            } }
+        Async.run {
+            for (player in Groups.player) player.sessionData.releaseLocks()
 
-            null
+            exitProcess(0)
         }
-        exitProcess(0)
     }
 
     fun scheduleRestart() {
@@ -150,6 +152,8 @@ object CorePlugin {
     init {
         Log.info("Starting CorePlugin")
         Time.mark()
+
+        MdUtil.init()
 
         if (!NiMetadata.shortcircuit()) Database.load()
         else DatabaseScripts.noop()
@@ -319,9 +323,105 @@ object CorePlugin {
             false
         }
 
-        on<EventType.PlayEvent> { _ ->
-            teamRestoreCache.clear()
+        // TODO: Other buildings.
+        val ACCESS_TIME_LEEWAY = 3000000000L
+        val setCommands = newSeq<Pair<Block, UnitCommand>>()
+        val lastAccess = object : ObjectMap<Player, Building>() {
+            override fun remove(key: Player?): Building? {
+                val x = super.remove(key)
+                // if (x != null) Log.info("[DEBUG/AC] Removed last accessed building")
+                return x
+            }
+        }
+        fun isConfigSus(block: Block, config: Any?): Boolean {
+            if ((block is Reconstructor || block is UnitFactory)
+                && config is UnitCommand && setCommands.all { it.first != block || it.second != config }) {
+                // Log.info("[DEBUG/AC] Blacklisted pair (${block.name}, ${config.name})")
+                return true
+            }
 
+            return false
+        }
+        on<EventType.TapEvent> {
+            val tile = it.tile ?: run {
+                lastAccess.remove(it.player)
+                return@on
+            }
+            val build = tile.build ?: run {
+                lastAccess.remove(it.player)
+                return@on
+            }
+
+            if (when (build) {
+                is UnitFactory.UnitFactoryBuild -> Time.nanos() > build.mdLastUnitConstruct + ACCESS_TIME_LEEWAY
+                is Reconstructor.ReconstructorBuild -> Time.nanos() > build.mdLastUnitConstruct + ACCESS_TIME_LEEWAY
+                else -> false
+            }) {
+                lastAccess.remove(it.player)
+                return@on
+            }
+
+            // Log.info("[DEBUG/AC] Set last accessed build to (${build.tileX()}, ${build.tileY()}, ${build.block.name})")
+            lastAccess.put(it.player, build)
+        }
+        val sillyCheatCounter = WeakHashMap<Player, Int>()
+        Vars.netServer.admins.addActionFilter { act ->
+            val build = act.tile?.build
+            val config: Any? = act.config
+
+            val reason: String = run {
+                if ((act.type === Administration.ActionType.buildSelect) && !Vars.state.rules.possessionAllowed) return@run "core-spawn"
+                if (act.type === Administration.ActionType.configure
+                    && (build is UnitFactory.UnitFactoryBuild || build is Reconstructor.ReconstructorBuild)
+                    && config is UnitCommand) {
+
+                    if ((if (build is UnitFactory.UnitFactoryBuild) build.canSetCommand() else (build as Reconstructor.ReconstructorBuild).canSetCommand())
+                        || lastAccess.get(act.player) === build) {
+                        if (setCommands.all { it.first != build.block || it.second != config }) {
+                            // Log.info("[DEBUG/AC] Registered pair (${build.block.name}, ${config.name})")
+                            setCommands.add(build.block to config)
+                        }
+                        lastAccess.remove(act.player)
+                        return@addActionFilter true
+                    }
+
+                    return@run "config-unconfigurable"
+                }
+                if (act.type == Administration.ActionType.placeBlock && !Vars.state.rules.schematicsAllowed
+                    && isConfigSus(act.block, act.config)) return@run "pre-configured-block"
+
+                return@addActionFilter true
+            }
+
+            val player = act.player
+
+            if ((sillyCheatCounter[player] ?: 0) > 8) {
+                Async.run {
+                    Database.ban(player, null, 3.hours, Tl.fmt("c").done("Cheating ({generic.warn.cheating.player.$reason})"))
+                }
+            } else {
+                sillyCheatCounter[player] = (sillyCheatCounter[player] ?: 0) + 1
+                Groups.player.each({ it.admin }) {
+                    Tl.send(it)
+                        .put("player", player.sessionData.fullName())
+                        .put("reason", reason)
+                        .done("{generic.warn.cheating.admin}")
+                }
+                Tl.send(player)
+                    .put("reason", reason)
+                    .done("{generic.warn.cheating.player}")
+            }
+
+            false
+        }
+
+        Vars.netServer.admins.addActionFilter { act ->
+            act.type != Administration.ActionType.respawn || !act.player.team().isServiceTeam
+        }
+
+        on<EventType.PlayEvent> { _ ->
+            setCommands.clear()
+            lastAccess.clear()
             if (SpecialSettings.currentMap().patch < 7) { Groups.build.each(Building::heal) }
         }
 
@@ -346,6 +446,7 @@ object CorePlugin {
 
         on<EventType.PlayerLeave> {
             fakeBlockPos.remove(it.player)
+            lastAccess.remove(it.player)
 
             handleUiEvent(it)
 
@@ -449,6 +550,7 @@ object CorePlugin {
         initHubDiscovery()
         initSchemeSize()
         initTeams()
+        initRecording()
 
         interval(30f) { Async.run {
             for (player in Groups.player) {
@@ -486,6 +588,7 @@ object CorePlugin {
             Log.info("Selected next map to be ${map.name()}.")
             Consts.serverControl.play {
                 emit(RoundEndEvent)
+                if (restarting) return@play
                 map.rtv()
             }
         }
@@ -532,12 +635,14 @@ object CorePlugin {
             }
             if (!NiMetadata.shortcircuit()) RabbitMQ.sendBypass(ServerDown(), "#")
 
-            if (!NiMetadata.shortcircuit()) RabbitMQ.close()
-
             for (player in Groups.player) {
                 player.con.kick("Server closed", 0L)
             }
             Vars.net.closeServer()
+
+            Threads.sleep(500)
+
+            if (!NiMetadata.shortcircuit()) RabbitMQ.close()
         })
 
         Log.info("CorePlugin loaded in ${Time.elapsed()} ms.")

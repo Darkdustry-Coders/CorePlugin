@@ -13,6 +13,7 @@ import mindustry.game.EventType.PlayerLeave
 import mindustry.game.EventType.TextInputEvent
 import arc.func.Func
 import arc.func.Prov
+import kotlinx.coroutines.future.await
 import mindurka.util.Ref
 import mindurka.util.UnsafeNull
 
@@ -155,7 +156,7 @@ class TextDialogBuilder(private val dialog: TextDialog, private val player: Play
 
 @PublicAPI
 @OptIn(UiInternals::class, UnsafeNull::class)
-fun Player.openText(builder: TextDialogBuilder.() -> Unit): CompletableFuture<String?> {
+suspend fun Player.openText(builder: TextDialogBuilder.() -> Unit): String? {
     val d = TextDialog()
     val b: Ref<TextDialogBuilder> = Ref(nodecl())
     b.r = TextDialogBuilder(d, this) {
@@ -168,5 +169,5 @@ fun Player.openText(builder: TextDialogBuilder.() -> Unit): CompletableFuture<St
     d.rerender = null
     d.write(this)
 
-    return d.future
+    return d.future.await()
 }

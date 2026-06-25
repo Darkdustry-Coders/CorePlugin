@@ -9,6 +9,8 @@ import arc.util.Time
 import arc.util.io.Streams
 import buj.tl.Script
 import buj.tl.Tl
+import mindurka.api.Gamemode
+import mindurka.api.SpecialSettings
 import mindurka.coreplugin.CorePlugin
 import mindurka.coreplugin.sessionData
 import mindustry.MdFontRanges
@@ -75,7 +77,8 @@ fun unreachable(message: String = "Unreachable reached!"): Nothing = throw Unrea
 class UnreachableException(message: String = "Unreachable reached!"): RuntimeException(message)
 
 // TODO: Make spectator team configurable
-val Team.isServiceTeam get() = this == Team.derelict || this == Team.all[69]
+val Team.isServiceTeam get() = this == Team.derelict || (Gamemode.enableSpectate && Gamemode.spectate.isSpectatorTeam(this))
+    || SpecialSettings.currentMap().teams[this].serviceTeam
 
 private val commandCooldowns = WeakHashMap<Player, ObjectIntMap<String>>()
 fun Player.cooldownDuration(name: String): Float = commandCooldowns[this]?.get(name)?.let { max(it - (Time.millis() - CorePlugin.epoch).toInt(), 0) / 1000f } ?: 0f

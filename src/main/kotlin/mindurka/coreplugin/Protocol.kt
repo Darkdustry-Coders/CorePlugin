@@ -38,6 +38,7 @@ import mindurka.util.unreachable
 import mindustry.Vars
 import mindustry.core.NetServer
 import mindustry.game.EventType
+import mindustry.game.Team
 import mindustry.gen.Call
 import mindustry.gen.Player
 import mindustry.gen.SendChatMessageCallPacket
@@ -497,6 +498,7 @@ class Protocol {
 
     private suspend fun login(player: Player, mods: Seq<String>) {
         val isp = IspTables.of(player.ip)
+        player.team(Team.derelict)
 
         val playerUuid = player.uuid()
         var done = false
@@ -517,9 +519,6 @@ class Protocol {
                 }).let { session.addLock(it); K }
             }
 
-            // In case a gamemode overrides that. Although idk if it should be an option. It probably should be.
-            player.team(Vars.netServer.assignTeam(player))
-
             try {
                 Database.login(player.uuid(), player.usid(), player.con.address, isp?.isp, session.publicKey, player.coloredName(), session)
             } catch (_: MergedAccountException) {
@@ -538,15 +537,15 @@ class Protocol {
                 player.ckick(Tl.fmt(player).done("{generic.kick.shared}"))
                 return
             } catch (ban: BannedAccountException) {
-                Database.banConnection(player.con, ban.banId, player.locale, ban.reason, ban.expires, ban.admin)
+                Database.banConnection(player.con, ban.banId, ban.userId, player.locale, ban.reason, ban.expires, ban.admin)
                 session.playerLeft(player)
                 return
             } catch (kick: KickedAccountException) {
-                Database.kickConnection(player.con, kick.kickId, player.locale, kick.reason, kick.expires, kick.admin)
+                Database.kickConnection(player.con, kick.kickId, kick.userId, player.locale, kick.reason, kick.expires, kick.admin)
                 session.playerLeft(player)
                 return
             } catch (kick: VotekickedAccountException) {
-                Database.votekickConnection(player.con, kick.votekickId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
+                Database.votekickConnection(player.con, kick.votekickId, kick.userId, player.locale, kick.reason, kick.expires, kick.initiator, kick.votes)
                 session.playerLeft(player)
                 return
             } catch (_: BlacklistedException) {
@@ -584,6 +583,9 @@ class Protocol {
 
             Call.hideHudText(player.con) // holy annoying otherwise
             Vars.netServer.sendWorldData(player)
+
+            // In case a gamemode overrides that. Although idk if it should be an option. It probably should be.
+            player.team(Vars.netServer.assignTeam(player))
 
             emit(EventType.PlayerConnect(player))
             done = true

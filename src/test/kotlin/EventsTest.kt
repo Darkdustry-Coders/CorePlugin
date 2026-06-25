@@ -1,5 +1,4 @@
 import kotlin.test.Test
-import mindurka.build.StringPtr
 import mindurka.api.on
 import mindurka.api.Events
 

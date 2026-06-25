@@ -1,5 +1,11 @@
 package mindurka.coreplugin.database
 
+import mindurka.api.OfflinePlayer
+import mindustry.gen.Player
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.Unit as Nada
+
 /**
  * Account disabled codes.
  *
@@ -93,3 +99,33 @@ object PermLevels {
      */
     const val console = 1000
 }
+
+// class OffenseStat(
+//     /** The amount of times the player was banned for the same reason. Does not include pardoned bans. */
+//     val times: Long,
+//     /** The player that is receiving the punishment. */
+//     val player: OfflinePlayer,
+//     val duration: Duration,
+// )
+
+// /**
+//  * Categorized offense kinds.
+//  */
+// enum class OffenseKind(
+//     @JvmField val ruleOrdinal: Long,
+//     @JvmField val legacyReason: String,
+//     private val punish: (OffenseStat) -> Nada) {
+//     Cheating(1, "Cheating"),
+//     Grief(2, "Grief"),
+//
+//     ;
+//
+//     @JvmField val tlKey: String = run {
+//         name.replace(Regex("[A-Z]")) { "${if (it.range.contains(0)) "" else "-"}${it.value.lowercase()}" }
+//     }
+//
+//     companion object {
+//         @JvmField val items = entries
+//         @JvmStatic fun of(value: Long): OffenseKind? = items.find { it.ruleOrdinal == value }
+//     }
+// }

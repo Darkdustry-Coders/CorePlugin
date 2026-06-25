@@ -125,6 +125,7 @@ private data class ArgMeta (
     val subtype: String?,
 
     val originalType: String,
+    val originalSubtype: String?,
 
     val spread: Boolean,
     val nullable: Boolean,
@@ -133,8 +134,8 @@ private data class ArgMeta (
     val list get() = subtype != null
     val resolvedType get() = subtype ?: type
 
-    fun datatype(replace: String? = null): String = "${replace ?: originalType}${if (list) "<$subtype>" else ""}${if (nullable) "?" else ""}"
-    fun nooptdt(replace: String? = null): String = "${replace ?: originalType}${if (list) "<$subtype>" else ""}"
+    fun datatype(replace: String? = null): String = "${replace ?: originalType}${if (list) "<$originalSubtype>" else ""}${if (nullable) "?" else ""}"
+    fun nooptdt(replace: String? = null): String = "${replace ?: originalType}${if (list) "<$originalSubtype>" else ""}"
 }
 
 /**
@@ -183,10 +184,12 @@ private fun createParser(stringKind: Boolean,
                 write.println("ParserError.String -> return ${invalid(meta.name, "{generic.command.string-termination}")}")
                 write.println("ParserError.Eof -> return ${invalid(meta.name, "{generic.command.end-of-input}")}")
                 write.println("ParserError.Empty -> return@parser null")
+                write.println("ParserError.Ok -> {}")
             } else {
                 write.println("ParserError.String -> return ${invalid(meta.name, "{generic.command.string-termination}")}")
                 write.println("ParserError.Eof -> return ${invalid(meta.name, "{generic.command.end-of-input}")}")
                 write.println("ParserError.Empty -> return ${missing(meta.name)}")
+                write.println("ParserError.Ok -> {}")
             }
 
             write.leave() // when (..)
@@ -555,7 +558,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                     val prio = PARAM_TYPES[strParam]
                     if (prio != null) {
                         classFile.print("$prio,")
-                        paramTypes.add(ArgMeta(remapped, param.name?.asString() ?: "_", null, strParam, rest, nullable, f.type == CommandType.Console))
+                        paramTypes.add(ArgMeta(remapped, param.name?.asString() ?: "_", null, strParam, null, rest, nullable, f.type == CommandType.Console))
                         continue
                     }
                     if (strParam in LIST_TYPES) {
@@ -563,7 +566,7 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                         val remappedArg = REMAP_TYPES_NULLABLE[strParam2] ?: strParam2
                         val prio = PARAM_TYPES[strParam2]
                         if (prio != null) {
-                            paramTypes.add(ArgMeta(remapped, param.name?.asString() ?: "_", remappedArg, strParam, rest, nullable, f.type == CommandType.Console))
+                            paramTypes.add(ArgMeta(remapped, param.name?.asString() ?: "_", remappedArg, strParam, strParam2, rest, nullable, f.type == CommandType.Console))
                             classFile.print("${prio + LIST_TYPES_PRIORITY},")
                             continue
                         }
@@ -628,8 +631,6 @@ class AnnotationProcessor(private val environment: SymbolProcessorEnvironment): 
                 }
                 classFile.println()
                 classFile.println("if (!args.isEmpty()) return CommandResult.TooMuchData")
-                // val awaits = sym.annotations.any { it.annotationType.resolve().declaration.qualifiedName!!.asString() == Awaits::class.java.canonicalName }
-                // if (awaits) classFile.println("Async.run {")
 
                 if (f.firstParam != null) classFile.println("val firstParam = caller as ${f.firstParam}")
 

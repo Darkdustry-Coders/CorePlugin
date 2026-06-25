@@ -61,6 +61,14 @@ data class ServerInfo(
      * This includes both domain and port separated with a colon (`:`).
      */
     val ip: String,
+    /**
+     * Local server IP.
+     *
+     * Used exclusively by the network.
+     *
+     * This includes both domain and port separated with a colon (`:`).
+     */
+    val localIp: String? = null,
 )
 
 /**

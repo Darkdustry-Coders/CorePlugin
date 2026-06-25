@@ -1,10 +1,15 @@
 package mindurka.coreplugin
 
+import arc.struct.Seq
 import arc.util.Log
+import mindurka.annotations.Command
 import mindurka.annotations.PublicAPI
+import mindurka.annotations.Rest
 import mindurka.api.Gamemode
 import mindurka.api.interval
 import mindurka.coreplugin.database.Database
+import mindurka.ui.openMenu
+import mindurka.ui.openText
 import mindurka.util.Async
 import mindurka.util.K
 import mindurka.util.newSeq
@@ -19,6 +24,36 @@ import java.lang.ref.WeakReference
 import java.security.PublicKey
 import java.util.WeakHashMap
 import kotlin.time.TimeSource
+
+enum class TranslatorStyle(@JvmField val shortName: String) {
+    /** Translator is disabled. */
+    Disabled("none"),
+    /**
+     * Multiline style.
+     *
+     * ```
+     * [player]: Hello
+     * Original (en): Hello
+     * ```
+     */
+    Multiline("multiline"),
+    /**
+     * Shorter style hiding original translation.
+     *
+     * ```
+     * [player] (en): Hello
+     * ```
+     */
+    Short("short"),
+    /**
+     * Classic chat style.
+     *
+     * ```
+     * [player]: Hallo (Hello)
+     * ```
+     */
+    Classic("classic"),
+}
 
 /** Player session data. */
 class PlayerData private constructor(player: Player) {
@@ -157,6 +192,11 @@ class PlayerData private constructor(player: Player) {
      */
     @JvmField
     var schemeSizeSubtitle: String? = null
+    /**
+     * Translator style.
+     */
+    @JvmField
+    var translatorStyle = TranslatorStyle.Multiline
 
     /** Per-player banned SS tools. Combined with gamemode flags at send time. */
     @JvmField
@@ -290,3 +330,76 @@ class PlayerData private constructor(player: Player) {
 @PublicAPI val Player.mindurkaCompat get() = MdcVersion.of(sessionData.mindurkaCompatVersion)
 @PublicAPI suspend fun Player.ckick(reason: String) = PlayerData.of(this).kick(this, reason)
 @PublicAPI suspend fun Player.ckick(reason: Packets.KickReason) = PlayerData.of(this).kick(this, reason)
+
+@Command
+private fun settings(caller: Player, @Rest path: Seq<String>?) = Async.run async@{
+    path?.let { path ->
+        for (x in path) Log.info(x)
+        return@async
+    }
+
+    open class State(val openText: Boolean)
+    val MainMenu = State(false)
+    val TranslatorMenu = State(false)
+
+    var state = MainMenu
+
+    // TODO: MindurkaCompat extra UI components.
+    while (true) {
+        if (state.openText) {
+            val text = caller.openText {
+
+            } ?: break
+
+        }
+        else state = caller.openMenu {
+            when (state) {
+                MainMenu -> {
+                    title("{commands.settings.maindialog.title}")
+
+                    option("{commands.settings.maindialog.translator}") { state = TranslatorMenu; rerenderDialog() }
+                    option("{generic.close}") { null }
+                }
+                TranslatorMenu -> {
+                    title("{commands.settings.translatordialog.title}")
+                    // TODO: Alignment, potentially?
+                    message("{commands.settings.translatordialog.message}").apply {
+                        put("style", caller.sessionData.translatorStyle.shortName)
+                        put("player", caller.sessionData.fullName())
+                    }
+
+                    group {
+                        option("{commands.settings.translator.none.name}") {
+                            val sessionData = caller.sessionData
+                            sessionData.translatorStyle = TranslatorStyle.Disabled
+                            Async.run { Database.setTranslationPreference(sessionData.profileId, sessionData.translatorStyle, newSeq()) }
+                            rerenderDialog()
+                        }
+                        option("{commands.settings.translator.multiline.name}") {
+                            val sessionData = caller.sessionData
+                            sessionData.translatorStyle = TranslatorStyle.Multiline
+                            Async.run { Database.setTranslationPreference(sessionData.profileId, sessionData.translatorStyle, newSeq()) }
+                            rerenderDialog()
+                        }
+                    }
+                    group {
+                        option("{commands.settings.translator.short.name}") {
+                            val sessionData = caller.sessionData
+                            sessionData.translatorStyle = TranslatorStyle.Short
+                            Async.run { Database.setTranslationPreference(sessionData.profileId, sessionData.translatorStyle, newSeq()) }
+                            rerenderDialog()
+                        }
+                        option("{commands.settings.translator.classic.name}") {
+                            val sessionData = caller.sessionData
+                            sessionData.translatorStyle = TranslatorStyle.Classic
+                            Async.run { Database.setTranslationPreference(sessionData.profileId, sessionData.translatorStyle, newSeq()) }
+                            rerenderDialog()
+                        }
+                    }
+
+                    option("{generic.close}") { state = MainMenu; rerenderDialog() }
+                }
+            }
+        } ?: break
+    }
+}

@@ -15,7 +15,9 @@ import mindurka.coreplugin.messages.ServersRefresh
 import mindurka.util.Async
 import mindurka.util.AsyncCall
 import mindurka.util.checkOnCooldown
+import mindurka.util.debug
 import mindurka.util.setCooldown
+import mindurka.util.splitOnceLast
 import mindustry.Vars
 import mindustry.game.EventType
 import mindustry.gen.Groups
@@ -24,6 +26,7 @@ import mindustry.net.Administration
 
 private class HubServer(
     @JvmField var ip: String,
+    @JvmField var localIp: String,
     @JvmField var refreshing: Boolean,
 )
 private val hubServers = ObjectMap<String, HubServer>(2)
@@ -42,6 +45,7 @@ private fun serverInfo(): ServerInfo? {
         wave = if (Vars.state.rules.waves) Vars.state.wave else -1,
         maxWaves = if (Vars.state.rules.winWave > 0) Vars.state.rules.winWave else -1,
         ip = "${SharedConfig.i.serverIp}:${Administration.Config.port.get()}",
+        localIp = SharedConfig.i.localServerIp?.let { ip -> "$ip:${Administration.Config.port.get()}" },
     )
 }
 
@@ -64,14 +68,16 @@ internal fun initHubDiscovery() {
         }
     }
     on<ServerInfo> { msg ->
+        debug { "[Discovery] Server info: ${msg.name} (at ${msg.ip}${msg.localIp?.let { ip -> " or $ip" } ?: ""})" }
         if (msg.gamemode != "hub") return@on
         val sender = RabbitMQ.sentBy(msg)
         var server = hubServers[sender]
         if (server == null) {
-            server = HubServer(msg.ip, false)
+            server = HubServer(msg.ip, msg.localIp ?: msg.ip, false)
             hubServers.put(sender, server)
         } else {
             server.ip = msg.ip
+            server.localIp = msg.localIp ?: msg.ip
             server.refreshing = false
         }
     }
@@ -90,11 +96,15 @@ private fun hub(caller: Player) = Async.run {
     if (caller.checkOnCooldown("/hub")) return@run
 
     for (server in hubServers.copy()) {
-        val i = server.value.ip.indexOf(':')
+        var i = server.value.ip.lastIndexOf(':')
         val host = server.value.ip.substring(0, i)
         val port = server.value.ip.substring(i + 1).toInt()
 
-        if (AsyncCall.connect(caller, host, port)) return@run
+        i = server.value.localIp.lastIndexOf(':')
+        val localHost = server.value.localIp.substring(0, i)
+        val localPort = server.value.localIp.substring(i + 1).toInt()
+
+        if (AsyncCall.connect(caller, host, port, localHost, localPort)) return@run
     }
 
     Tl.send(caller).done("{commands.hub.errors.hub-down}")

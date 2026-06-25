@@ -1,5 +1,6 @@
 package mindurka.api
 
+import arc.Core
 import arc.func.Cons
 import arc.struct.ObjectMap
 import arc.struct.Seq
@@ -567,7 +568,6 @@ object Events {
         return cancel
     }
 
-    // TODO: Make this API thread-safe and remove `Bus`
     /** Emit an event. */
     @JvmStatic
     fun <T: Any> fire(event: T) {

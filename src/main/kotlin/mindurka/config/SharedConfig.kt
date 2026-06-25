@@ -13,8 +13,10 @@ import mindurka.coreplugin.Config as CorePluginConfig
 @Serializable
 data class SharedConfig(
     val serverIp: String = "127.0.0.1",
+    val localServerIp: String? = null,
     val rabbitMqUrl: String = "",
     val surrealDbUrl: String = "",
+    val replayFilesPath: String? = null,
 ) {
     companion object {
         @JvmStatic
