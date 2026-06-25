@@ -217,9 +217,9 @@ private fun team(caller: Player, team: Team, @Rest target: Player?) { (target ?:
 @Command
 @RequiresPermission(PermLevels.admin)
 @EnabledIf(AdminCommandsEnabled::class)
-private fun despawn(caller: Player, @Rest unit: Unit?) {
+private fun despawn(caller: Player, team: Short?, @Rest unit: Unit?) {
     if (unit == null) {
-        Groups.unit.copy().each(Unit::kill)
+        Groups.unit.copy().each{ if(team == null || it.team.id.toShort() == team) it.kill()}
     } else {
         unit.kill()
     }
@@ -228,8 +228,8 @@ private fun despawn(caller: Player, @Rest unit: Unit?) {
 @Command
 @RequiresPermission(PermLevels.admin)
 @EnabledIf(AdminCommandsEnabled::class)
-private fun despawntype(caller: Player, unit: UnitType) {
-    Groups.unit.copy().each { if(it.type == unit)it.kill() }
+private fun despawntype(caller: Player, unit: UnitType, team: Team?) {
+    Groups.unit.copy().each { if(it.type == unit && (team==null || it.team == team))it.kill() }
 }
 
 @Command
