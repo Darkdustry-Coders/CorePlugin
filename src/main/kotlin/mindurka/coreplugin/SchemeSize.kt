@@ -126,7 +126,7 @@ internal fun initSchemeSize() {
     // Different packet name since in the packet sheet `fill` packet didn't have `overlay`.
     Vars.netServer.addPacketHandler("schemesize.fill") { player, data ->
         if (!Gamemode.adminCommands) return@addPacketHandler
-        if (player.permissionLevel < 200) {
+        if (player.permissionLevel < PermLevels.admin) {
             Tl.send(player).done("{generic.checks.admin-action-permission}")
             return@addPacketHandler
         }
@@ -166,7 +166,7 @@ internal fun initSchemeSize() {
     // Writeup did not have this packet at all
     Vars.netServer.addPacketHandler("schemesize.brush") { player, data ->
         if (!Gamemode.adminCommands) return@addPacketHandler
-        if (player.permissionLevel < 200) {
+        if (player.permissionLevel < PermLevels.admin) {
             Tl.send(player).done("{generic.checks.admin-action-permission}")
             return@addPacketHandler
         }
@@ -217,12 +217,19 @@ private fun team(caller: Player, team: Team, @Rest target: Player?) { (target ?:
 @Command
 @RequiresPermission(PermLevels.admin)
 @EnabledIf(AdminCommandsEnabled::class)
-private fun despawn(caller: Player, @Rest unit: Unit?) {
+private fun despawn(caller: Player, team: Short?, @Rest unit: Unit?) {
     if (unit == null) {
-        Groups.unit.copy().each(Unit::kill)
+        Groups.unit.copy().each{ if(team == null || it.team.id.toShort() == team) it.kill()}
     } else {
         unit.kill()
     }
+}
+
+@Command
+@RequiresPermission(PermLevels.admin)
+@EnabledIf(AdminCommandsEnabled::class)
+private fun despawntype(caller: Player, unit: UnitType, team: Team?) {
+    Groups.unit.copy().each { if(it.type == unit && (team==null || it.team == team))it.kill() }
 }
 
 @Command

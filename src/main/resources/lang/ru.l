@@ -609,6 +609,13 @@ params = <unit>
 params.unit = unit
 manpage = Despawn a unit.
 
+[commands.despawntype]
+description = Despawn a unit by type.
+params = <type> [team]
+params.type = unit type
+params.team = team
+manpage = Despawn a unit by type.
+
 [commands.tp]
 description = Teleport a player.
 params = <x> <y> [target]
