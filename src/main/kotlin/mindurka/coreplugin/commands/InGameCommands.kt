@@ -543,6 +543,10 @@ private fun nick(caller: Player, @Rest name: String?) = Async.run {
     val data = caller.sessionData
 
     if (name != null) {
+        if(Strings.stripColors(name).isEmpty()){
+            Tl.send(caller).done("{commands.nick.errors.empty-nick}")
+            return@run
+        }
         if (Strings.stripColors(name).length > 32) {
             Tl.send(caller).done("{commands.nick.errors.too-long}")
             return@run
@@ -562,11 +566,10 @@ private fun nick(caller: Player, @Rest name: String?) = Async.run {
         }
     }
 
-    data.customname = "[#${caller.color.toString().uppercase()}]$name"
-    data.updateUsername()
+    data.customname = if(name!=null)"[#${caller.color.toString().uppercase()}]$name" else null
     Database.abstractQuery(Query(DatabaseScripts.playerSetNick)
         .x("profile", data.profileId)
-        .apply { if (name != null) x("name", name) }).ok()
+        .apply { if (name != null) x("name", data.name) }).ok()
 
     caller.setCooldown("/nick", 3f)
 }

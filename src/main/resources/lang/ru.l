@@ -535,6 +535,7 @@ manpage = Установить отображаемый никнейм.
 
 errors.too-long = [{col.err}] Ваш никнейм слишком длинен.
 errors.colors-too-long = [{col.err}] У вашего ника слишком много цветов.
+errors.empty-nick = [{col.err}] Ник пуст.
 warns.same-name = [{col.warn}] У вас уже установлен данный никнейм.
 warns.nothing-reset = [{col.warn}] Нет никнейма для ресета.
 success = [{col.ok}] Никнейм изменен на {name}.
